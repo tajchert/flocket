@@ -146,10 +146,13 @@ The rules below are enforced by the build where possible.
 - A pure-Kotlin `FakeTerminalEngine` handles JVM tests, previews and screenshot tests.
 - Flow control: credit is returned only after bytes have been fed into the engine.
   Outgoing input is bounded. A stalled terminal never blocks control RPCs.
-- **Resize policy:** by default the phone views the terminal at its current size and does
-  not resize it (shared-terminal courtesy). An explicit "Fit to this screen" action, or a
-  terminal the phone started, does resize it. The exact semantics follow the
-  core's attach contract (see `protocol/SPEC.md`).
+- **Resize policy** (`protocol/SPEC.md` §7.5): the most recently active viewer owns the
+  size, so attaching from the phone would resize a desktop user's terminal. The phone
+  therefore attaches **passively** (`observe`, or `resumed` without RESIZE) and renders at
+  the terminal's current size (scaled or pannable). It takes ownership (RESIZE + FOCUS 1)
+  on the first keystroke or an explicit "Fit to this screen", and for terminals it
+  started itself. It sends FOCUS 0 when the app goes to the background, and never sends
+  FACTS while passive (on 0.1.15, FACTS takes size ownership).
 
 ### Security
 
