@@ -50,6 +50,8 @@ Other tasks:
 ./gradlew :benchmark:connectedNonMinifiedReleaseAndroidTest
 ```
 
+End-to-end against a real `hc` over SSH on an emulator (manual): [journeys/E2E_SMOKE.md](journeys/E2E_SMOKE.md), using `scripts/dev-sshd.sh`.
+
 Reports: tests in `<module>/build/reports/tests/`, screenshots in `<module>/build/reports/screenshotTest/preview/debug/index.html`.
 
 ## Compose behaviour tests run on the JVM

@@ -437,30 +437,44 @@ class CoreSessionImpl(
                 host,
                 logger,
             )
+        val resumed = request.mode == AttachMode.Passive
+        val (cols, rows) = if (resumed) passiveSize(stream) else request.cols to request.rows
         val ch =
             try {
-                l.conn.attach(
-                    attachParams(stream, resumed = request.mode == AttachMode.Passive),
-                )
+                l.conn.attach(attachParams(stream, resumed, cols, rows))
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 return AppResult.Failure(e.toAppError("terminal.attach"))
             }
         val attached =
-            stream.install(l.epoch, ch, request.mode == AttachMode.Owner, request.cols, request.rows, request.display)
+            stream.install(l.epoch, ch, request.mode == AttachMode.Owner, cols, rows, request.display)
                 ?: error("fresh stream cannot be ended")
         streams.add(stream)
         monitor(stream, attached)
         return AppResult.Success(stream)
     }
 
+    /**
+     * Size to send with a `resumed:true` attach: the core's current size for the terminal, not the
+     * viewer's. hc 0.1.15 applies a resumed viewer's size when no other viewer leads (a headless
+     * terminal, or one whose desktop viewer left), so sending the phone's grid would resize the
+     * terminal without any interaction (SPEC §7.5). The viewer's size is sent on activation.
+     */
+    private fun passiveSize(s: TerminalStreamImpl): Pair<Int, Int> {
+        val record = stateFlow.value.terminals.firstOrNull { it.address == s.address }
+        if (record != null && record.cols > 0 && record.rows > 0) return record.cols to record.rows
+        val known = s.size.value
+        return if (known.cols > 0 && known.rows > 0) known.cols to known.rows else s.desiredSize()
+    }
+
     private fun attachParams(
         s: TerminalStreamImpl,
         resumed: Boolean,
-    ): AttachParams {
-        val (cols, rows) = s.desiredSize()
-        return AttachParams(
+        cols: Int,
+        rows: Int,
+    ): AttachParams =
+        AttachParams(
             terminal = s.address.value,
             cols = cols,
             rows = rows,
@@ -470,7 +484,6 @@ class CoreSessionImpl(
             display = s.desiredDisplay()?.toDisplayDto(),
             timeout = config.attachTimeout,
         )
-    }
 
     /**
      * Re-attach [s] on [l] with `resumed:true` unless it already has a live channel there. A
@@ -487,11 +500,11 @@ class CoreSessionImpl(
                 if (s.isEnded || s.isDetaching || link.get() !== l) return
                 val cur = s.current
                 if (cur != null && cur.epoch == l.epoch && cur.channel.closeReason.value == null) return
-                val (cols, rows) = s.desiredSize()
+                val (cols, rows) = passiveSize(s)
                 val display = s.desiredDisplay()
                 val ch: AttachChannel =
                     try {
-                        l.conn.attach(attachParams(s, resumed = true))
+                        l.conn.attach(attachParams(s, resumed = true, cols, rows))
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: RpcException) {

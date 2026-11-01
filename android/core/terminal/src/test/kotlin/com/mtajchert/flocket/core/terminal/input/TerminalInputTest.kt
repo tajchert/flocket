@@ -111,6 +111,19 @@ class TerminalInputTest {
     }
 
     @Test
+    fun `a key that bypasses the IME is preceded by the pending composition`() {
+        val sink = RecordingSink()
+        val ic = connection(sink)
+        sink.sendText("e")
+        ic.setComposingText("ch", 1)
+        assertTrue(ic.commitComposing())
+        sink.sendText("o")
+        assertEquals(listOf("text:e", "text:ch", "text:o"), sink.log)
+        assertEquals(false, ic.commitComposing())
+        assertEquals(3, sink.log.size)
+    }
+
+    @Test
     fun `IME deleteSurroundingText edits composition or sends backspace`() {
         val sink = RecordingSink()
         val ic = connection(sink)

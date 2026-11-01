@@ -13,6 +13,7 @@ import com.mtajchert.flocket.feature.hosts.api.HostsRoute
 import com.mtajchert.flocket.feature.onboarding.api.OnboardingRoute
 import com.mtajchert.flocket.feature.settings.api.LicensesRoute
 import com.mtajchert.flocket.feature.settings.api.SettingsRoute
+import com.mtajchert.flocket.feature.terminal.api.TerminalRoute
 import com.mtajchert.flocket.feature.terminals.api.TerminalsRoute
 import kotlinx.serialization.Serializable
 
@@ -31,4 +32,10 @@ val TopLevelDestinations =
     )
 
 /** Routes that cover the whole window; the navigation bar/rail is hidden while one is on top. */
-fun NavKey?.isFullScreen(): Boolean = this is OnboardingRoute || this is HostEditRoute || this is LicensesRoute
+fun NavKey?.isFullScreen(singlePane: Boolean): Boolean =
+    this is OnboardingRoute ||
+        this is HostEditRoute ||
+        this is LicensesRoute ||
+        // Compact width: the terminal gets the whole screen (docs/ADAPTIVE_LAYOUTS.md); a bottom bar
+        // would also sit under the IME and leave a gap above it. Two-pane keeps the rail.
+        (singlePane && this is TerminalRoute)

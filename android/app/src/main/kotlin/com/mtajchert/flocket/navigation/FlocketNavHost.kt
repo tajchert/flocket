@@ -35,7 +35,7 @@ import com.mtajchert.flocket.feature.terminals.api.TerminalsRoute
  *
  * The root of the back stack is the selected top-level destination; switching tabs replaces the stack.
  * [NavigationSuiteScaffold] shows a bottom bar on compact windows and a rail on wider ones, and hides
- * itself on full-screen routes (see [isFullScreen]).
+ * itself on full-screen routes (see [isFullScreen]), including the terminal on single-pane windows.
  */
 @OptIn(ExperimentalMaterial3AdaptiveApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -58,7 +58,7 @@ fun FlocketNavHost(
     val current = backStack.lastOrNull()
     val selectedRoot = backStack.firstOrNull()
     val layoutType =
-        if (current.isFullScreen()) {
+        if (current.isFullScreen(singlePane = directive.maxHorizontalPartitions == 1)) {
             NavigationSuiteType.None
         } else {
             NavigationSuiteScaffoldDefaults.calculateFromAdaptiveInfo(adaptiveInfo)
