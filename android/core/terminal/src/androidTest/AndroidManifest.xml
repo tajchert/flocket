@@ -1,6 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- DeviceThroughputTest talks to a dev sshd. -->
+    <uses-permission android:name="android.permission.INTERNET" />
     <application>
+        <activity
+            android:name="com.mtajchert.flocket.core.terminal.ThroughputTestActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.Material.NoActionBar" />
         <activity
             android:name="com.mtajchert.flocket.core.terminal.TerminalTestActivity"
             android:exported="false"

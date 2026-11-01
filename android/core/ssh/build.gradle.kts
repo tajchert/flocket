@@ -13,4 +13,5 @@ dependencies {
     implementation(libs.bouncycastle.prov)
     implementation(libs.bouncycastle.pkix)
     testImplementation(libs.mina.sshd.core)
+    testImplementation(testFixtures(projects.core.protocol))
 }

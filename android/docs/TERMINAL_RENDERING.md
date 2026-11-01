@@ -24,7 +24,8 @@ glyphs fall back to the system fonts through Minikin.
 
 ```
 stream.output ──collect──▶ [engine thread] engine.feed(chunk) ─▶ frame request (conflated)
-                                   │ (credit for the chunk returns when feed returns)
+                                   │ (the chunk counts as consumed when feed returns; CoreConnection
+                                   │  batches its credit: 32 KiB or end of burst)
 vsync (Choreographer) ──▶ [engine thread] drainEvents + engine.snapshot(work)
                                    └─ copy dirty rows work ─▶ shared   (lock, ~µs)
                                       frameVersion = (v + 1) & 0x7F
@@ -35,7 +36,7 @@ vsync (Choreographer) ──▶ [engine thread] drainEvents + engine.snapshot(wo
 
 - One engine per controller, confined to a private daemon thread (`flocket-terminal`), also for `close()`.
 - Output is fed as it arrives; there is no queue in the controller, so backpressure (credit) is exactly the engine's
-  parse speed. The collector yields after every chunk so frames and keystrokes interleave with a backlog.
+  parse speed. Feeding is never gated on vsync: only publishing is. The collector yields after every chunk so frames and keystrokes interleave with a backlog.
 - Coalescing: any number of chunks between two vsyncs produce one snapshot. Nothing is published while the surface is
   not visible (`setVisible(false)`), bytes are still consumed. Test: `publishes at most one frame per vsync tick and
   drops no bytes`.
@@ -157,3 +158,56 @@ RenderThread); the slow tail matches the emulated GPU's per-frame cost (RenderTh
 redraw, which records just as many rows but mostly rects, has a P90 of 5 ms. Re-measure on a physical device before
 optimizing further. Next steps if a device shows the same tail: scroll-blit (shift row display lists instead of
 re-recording on pure scrolls), a 30 Hz cap while the engine has a backlog, and a glyph-run cache per row.
+
+## Performance: output throughput
+
+How fast a flood reaches the engine end to end, measured layer by layer with the same program: a terminal
+that waits for a go signal, then floods `base64` of random bytes or the coloured `yes` of the
+[E2E smoke journey](journeys/E2E_SMOKE.md), and prints its own duration. "MB/s" is bytes delivered to the
+consumer divided by the time from go to the end marker. Before the fix the 5 MB JVM runs hit the
+core's repaint (see below), so only their CREDIT pattern is comparable. Floods over 4 MiB make the core drop a slow
+viewer's backlog and repaint (SPEC §7.3), which hides the drain rate, so the device runs use 3 MB.
+
+| Layer (where) | Before | After |
+|---|---|---|
+| No viewer (program alone, macOS) | 0.04-0.06 s for 5 MB | same |
+| `CoreConnection` over `hc connect` (JVM, macOS) | fast; 1 CREDIT per DATA (avg 1.9-2.4 KB) | 3 MB colour: 32.7 MB/s, avg 8 KB/CREDIT; 5 MB base64: 65 MB/s |
+| + SSHJ over embedded MINA sshd (JVM) | fast; avg 2.4-4.9 KB/CREDIT | 3 MB colour: 27.4 MB/s; 5 MB base64: 52-64 MB/s |
+| + SSHJ over OpenSSH (`dev-sshd.sh`, JVM) | fast; avg 0.6-2.9 KB/CREDIT | 3 MB colour: 29.6 MB/s, avg 11 KB/CREDIT |
+| Device: `CoreConnection` + SSHJ, emulator → 10.0.2.2, 3 MB colour | 5.2 MB/s, 820 CREDITs | 12.6-13.6 MB/s, 216-272 CREDITs |
+| Device: + CoreSession + TerminalController + Ghostty 52x41, shell | 2.9 MB/s, 2705 CREDITs | 11.8-12.1 MB/s, 103-120 CREDITs |
+| Device: same, shown in a `TerminalSurface` (View + vsync) | 2.85 MB/s, 1769 CREDITs | 8.4-9.0 MB/s (base64: 10.7) |
+
+Emulator: arm64 `pixel` AVD, API 36, hc 0.1.15, OpenSSH harness on the Mac. Frames published during a
+3 MB flood: 14-20 (coalesced), so throughput is not tied to vsync.
+
+What was slow: every DATA frame (often only 0.5-2 KB, the core's PTY reads) cost one CREDIT frame,
+and the collector waited for that write (an SSH packet via SSHJ) before taking the next chunk. With a
+256 KiB window that capped a remote viewer at a few MB/s and made it very sensitive to latency. Fixes:
+
+- `CoreConnection` batches credit: one CREDIT per 32 KiB consumed, or when the stream's queue runs dry
+  (end of a burst), so idle unreturned credit never sits at the window. Credit is still only for bytes
+  the collector finished with.
+- Attach streams get a one-off 768 KiB CREDIT after the reply (window 1 MiB, like the events boost), so
+  one round trip can carry 1 MiB. Client-side memory stays bounded by the window (+64 KiB slack).
+- SSHJ sockets use TCP_NODELAY: credit and keystrokes are small writes someone waits for; with Nagle
+  they can wait for a delayed ACK.
+
+The ~70 s for a 5 MB flood seen in the first E2E run was not reproduced on the current code (the same
+journey on the emulator, before these changes, finished in under 2 s); the layer numbers above
+are the measurable cost that remained.
+
+Reproduce (each test skips itself without `hc`, runs in an isolated `flocket-test-tp*` session, and appends
+to `build/throughput/results.txt` of its module; `FLOCKET_FLOOD_KIND=color`, `FLOCKET_FLOOD_BYTES=3000000`):
+
+```bash
+./gradlew :core:protocol:test --tests '*ProtocolThroughputIntegrationTest' --rerun
+FLOCKET_TP_SSH_PORT=2222 FLOCKET_TP_SSH_KEY=<key> ./gradlew :core:ssh:test --tests '*SshThroughputIntegrationTest' --rerun
+# Device: dev-sshd.sh running with the key authorized; tpKey = base64 of the private key file.
+./gradlew :core:terminal:assembleDebugAndroidTest   # then adb install -t the androidTest APK and:
+adb shell am instrument -w -e class com.mtajchert.flocket.core.terminal.DeviceThroughputTest \
+  -e tpPort 2222 -e tpUser "$(id -un)" -e tpKey "<base64>" -e tpHc "$(command -v hc)" \
+  -e tpSession flocket-test-tpdev -e tpKind color -e tpBytes 3000000 -e tpCols 52 -e tpRows 41 -e tpShell 1 -e tpUi 1 \
+  com.mtajchert.flocket.core.terminal.test/androidx.test.runner.AndroidJUnitRunner
+adb logcat -d -s THROUGHPUT:I     # results; afterwards: HC_SESSION=flocket-test-tpdev TMPDIR=/tmp hc server stop
+```

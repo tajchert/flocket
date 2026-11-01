@@ -18,6 +18,9 @@ dependencies {
     testImplementation(libs.kotlinx.coroutines.test)
 
     androidTestImplementation(projects.core.terminalGhostty)
+    // DeviceThroughputTest: SSH + flood fixtures.
+    androidTestImplementation(projects.core.ssh)
+    androidTestImplementation(testFixtures(projects.core.protocol))
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.bundles.testing.android)
     androidTestImplementation(libs.androidx.compose.ui.test.manifest)
