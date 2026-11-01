@@ -156,6 +156,10 @@ jlong nCreate(JNIEnv*, jclass, jint cols, jint rows, jint scrollbackLines) {
     delete e;
     return 0;
   }
+  // Grapheme clustering (mode 2027) on by default, like the Ghostty app. MODE_DEFAULT also sets the
+  // value that RIS/DECSTR restore, so a reset does not turn it off. Programs may still toggle it.
+  GhosttyTerminalModeConfig grapheme_mode{GHOSTTY_MODE_GRAPHEME_CLUSTER, true};
+  ghostty_terminal_set(e->terminal, GHOSTTY_TERMINAL_OPT_MODE_DEFAULT, &grapheme_mode);
   size_t lines = static_cast<size_t>(scrollbackLines);
   ghostty_terminal_set(e->terminal, GHOSTTY_TERMINAL_OPT_SCROLLBACK_MAX_LINES, &lines);
   ghostty_terminal_set(e->terminal, GHOSTTY_TERMINAL_OPT_USERDATA, e);

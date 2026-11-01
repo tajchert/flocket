@@ -59,6 +59,47 @@ class GhosttyTerminalEngineTest {
     ) = engine.encodeKey(KeyInput(k, text, ctrl = ctrl, alt = alt, shift = shift)).toString(Charsets.ISO_8859_1)
 
     @Test
+    fun zwjFamilyIsOneWideGrapheme() {
+        feed("\uD83D\uDC68\u200D\uD83D\uDC69\u200D\uD83D\uDC67X")
+        val s = engine.snapshot()
+        assertEquals("\uD83D\uDC68\u200D\uD83D\uDC69\u200D\uD83D\uDC67", s.textAt(s.index(0, 0)))
+        assertEquals(3, s.cursorCol)
+        assertEquals("X", s.textAt(s.index(2, 0)))
+    }
+
+    @Test
+    fun zwjFamilyStaysOneGraphemeAfterSoftReset() {
+        feed("\u001b[!p")
+        feed("\uD83D\uDC68\u200D\uD83D\uDC69\u200D\uD83D\uDC67X")
+        val s = engine.snapshot()
+        assertEquals("X", s.textAt(s.index(2, 0)))
+    }
+
+    @Test
+    fun zwjFamilyStaysOneGraphemeAfterHardReset() {
+        feed("\u001bc")
+        feed("\uD83D\uDC68\u200D\uD83D\uDC69\u200D\uD83D\uDC67X")
+        val s = engine.snapshot()
+        assertEquals("X", s.textAt(s.index(2, 0)))
+    }
+
+    @Test
+    fun flagIsOneWideCell() {
+        feed("\uD83C\uDDF5\uD83C\uDDF1X")
+        val s = engine.snapshot()
+        assertEquals("\uD83C\uDDF5\uD83C\uDDF1", s.textAt(s.index(0, 0)))
+        assertEquals("X", s.textAt(s.index(2, 0)))
+    }
+
+    @Test
+    fun programCanDisableGraphemeClustering() {
+        feed("\u001b[?2027l")
+        feed("\uD83D\uDC68\u200D\uD83D\uDC69\u200D\uD83D\uDC67X")
+        val s = engine.snapshot()
+        assertTrue(s.cursorCol > 3)
+    }
+
+    @Test
     fun plainTextAndCursor() {
         feed("hello\r\nworld")
         val s = engine.snapshot()
