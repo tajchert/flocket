@@ -131,6 +131,7 @@ class FakeCore(
     private val nextChannel = AtomicInteger(1)
     private val streams = ConcurrentHashMap<Int, ServerStream>()
     private val credits = ConcurrentHashMap<Int, AtomicLong>()
+    private val creditFrameCounts = ConcurrentHashMap<Int, AtomicLong>()
 
     @Volatile
     var eventsChannel: Int? = null
@@ -144,6 +145,9 @@ class FakeCore(
 
     /** Payload bytes of CREDIT frames the client sent on [channel]. */
     fun creditReceived(channel: Int): Long = credits[channel]?.get() ?: 0
+
+    /** Number of CREDIT frames the client sent on [channel]. */
+    fun creditFrames(channel: Int): Long = creditFrameCounts[channel]?.get() ?: 0
 
     /** Bytes the fake has actually written to [channel] so far (limited by credit). */
     fun sentOn(channel: Int): Long = streams[channel]?.sent ?: 0
@@ -335,6 +339,7 @@ class FakeCore(
             FrameKind.CREDIT -> {
                 val n = FrameCodec.readLe32(f.payload).toLong() and 0xFFFFFFFFL
                 credits.getOrPut(f.channel) { AtomicLong() }.addAndGet(n)
+                creditFrameCounts.getOrPut(f.channel) { AtomicLong() }.incrementAndGet()
                 if (s != null) {
                     s.credit += n
                     pump(s)

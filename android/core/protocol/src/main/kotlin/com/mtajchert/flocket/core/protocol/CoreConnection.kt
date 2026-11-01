@@ -243,7 +243,7 @@ class CoreConnection private constructor(
             val splitter = LineSplitter()
             try {
                 while (true) {
-                    val chunk = st.rx.receiveCatching().getOrNull() ?: break
+                    val chunk = nextChunk(st) ?: break
                     for (line in splitter.feed(chunk)) {
                         parseNotification(line)?.let { emit(it) }
                     }
@@ -326,11 +326,13 @@ class CoreConnection private constructor(
                 val ch =
                     res.jsonObject["channel"]?.jsonPrimitive?.intOrNull
                         ?: throw ProtocolException("terminal.attach reply without channel")
-                registerStream(StreamChannel(ch, WireLimits.WINDOW + SLACK))
+                registerStream(StreamChannel(ch, WireLimits.WINDOW + WireLimits.ATTACH_CREDIT_BOOST + SLACK))
             }
         val st = checkNotNull(reply.stream)
         return ownedBy(st) {
             val result = ProtocolJson.decodeFromJsonElement(AttachResult.serializer(), reply.result)
+            // A 256 KiB window caps a stream at 256 KiB per round trip (2.5 MB/s at 100 ms): grow it.
+            sendCredit(st.id, WireLimits.ATTACH_CREDIT_BOOST)
             AttachChannelImpl(st, TerminalDto.parse(result.terminal))
         }
     }
@@ -347,7 +349,7 @@ class CoreConnection private constructor(
                 check(st.collected.compareAndSet(false, true)) { "attach output can be collected only once" }
                 try {
                     while (true) {
-                        val chunk = st.rx.receiveCatching().getOrNull() ?: break
+                        val chunk = nextChunk(st) ?: break
                         emit(chunk)
                         consumed(st, chunk.size)
                     }
@@ -486,11 +488,37 @@ class CoreConnection private constructor(
         n: Int,
     ) = sendBytes(FrameCodec.credit(channel, n))
 
+    /**
+     * Next chunk for the stream's single collector. Before suspending on an empty queue (the end of
+     * a burst) the batched credit is returned, so unreturned credit never sits idle (SPEC §3.5).
+     */
+    private suspend fun nextChunk(st: StreamChannel): ByteArray? {
+        st.rx
+            .tryReceive()
+            .getOrNull()
+            ?.let { return it }
+        flushCredit(st)
+        return st.rx.receiveCatching().getOrNull()
+    }
+
+    /**
+     * The collector finished [n] bytes. Credit is batched: one CREDIT per [CREDIT_BATCH] consumed
+     * bytes or per burst ([nextChunk]), not one per DATA frame. Each CREDIT is a write through the
+     * transport (over SSH: an encrypted packet), so per-frame credit made small chunks expensive.
+     */
     private suspend fun consumed(
         st: StreamChannel,
         n: Int,
     ) {
         st.unconsumed.addAndGet(-n.toLong())
+        st.pendingCredit += n
+        if (st.pendingCredit >= CREDIT_BATCH) flushCredit(st)
+    }
+
+    private suspend fun flushCredit(st: StreamChannel) {
+        val n = st.pendingCredit
+        if (n == 0) return
+        st.pendingCredit = 0
         if (st.end.value != null || closed.get()) return
         try {
             sendCredit(st.id, n)
@@ -736,11 +764,17 @@ class CoreConnection private constructor(
 
         @Volatile var closingLocally = false
         val collected = AtomicBoolean(false)
+
+        /** Consumed but not yet credited; only touched by the single collector. */
+        var pendingCredit = 0
     }
 
     companion object {
         private const val TAG = "CoreConnection"
         private const val SLACK = 64L * 1024
+
+        /** Return credit once this many bytes were consumed (or at the end of a burst). */
+        internal const val CREDIT_BATCH = 32 * 1024
 
         const val GENERATION = 1
         val REQUIRED_FEATURES = setOf("framed", "attach", "events", "status")

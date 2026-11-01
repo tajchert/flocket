@@ -32,6 +32,9 @@ object WireLimits {
     /** One-off credit boost sent after subscribing to events. */
     const val EVENTS_CREDIT_BOOST = 1_048_576
 
+    /** Extra credit sent right after an attach: the stream window becomes 1 MiB (see CoreConnection.attach). */
+    const val ATTACH_CREDIT_BOOST = 786_432
+
     /** Cap on the undecoded buffer: one maximal frame plus slack for a couple of reads. */
     const val MAX_BUFFERED = MAX_PAYLOAD + 2 * 64 * 1024 + HEADER_SIZE
 
