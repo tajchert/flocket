@@ -27,6 +27,7 @@ class NetworkJourneyTest {
         val address = journey.openOwnerTerminal()
         val key = journey.deviceKeyFingerprint()
         val loginsBefore = journey.host.acceptedLogins(key)
+        val staleControl = journey.host.controlSessionPid()
         val tag = System.nanoTime().toString(36)
         val offline = "offline-$tag"
         val online = "online-$tag"
@@ -54,6 +55,7 @@ class NetworkJourneyTest {
             } finally {
                 // The rule's own cleanup uses the dropped control connection.
                 runCatching { mac.killAll() }
+                runCatching { mac.killStaleSession(staleControl) }
             }
         }
     }

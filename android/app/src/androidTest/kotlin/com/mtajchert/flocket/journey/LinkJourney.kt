@@ -140,6 +140,36 @@ fun HostControl.killAppLink(
     return pids
 }
 
+/** Pid of the `sshd-session` monitor (`[postauth]`) that serves this control connection: an ancestor of the shell. */
+fun HostControl.controlSessionPid(): Int =
+    sh(
+        """
+        a=${'$'}${'$'}
+        while [ "${'$'}a" -gt 1 ]; do
+            case "${'$'}(ps -o command= -p "${'$'}a")" in "sshd-session: "*"[postauth]"*) echo "${'$'}a"; exit 0 ;; esac
+            a=${'$'}(ps -o ppid= -p "${'$'}a" | tr -d ' ')
+        done
+        exit 1
+        """.trimIndent(),
+    ).toInt()
+
+/**
+ * Kills the control connection's session [pid] (from [controlSessionPid]) after a network loss. The emulator drops
+ * the socket without a FIN reaching the Mac, so that session would otherwise stay half-open until `down`. Only
+ * kills it when it is still an `sshd-session ... [postauth]` with a socket on the harness port.
+ */
+fun HostControl.killStaleSession(pid: Int) {
+    sh(
+        """
+        ps -o command= -p "${'$'}1" | grep -q '^sshd-session: .*\[postauth\]' || exit 0
+        lsof -nP -a -p "${'$'}1" -iTCP -Fn 2>/dev/null | grep -q "^n127\.0\.0\.1:${'$'}2->" || exit 0
+        kill "${'$'}1"
+        """.trimIndent(),
+        pid.toString(),
+        args.port.toString(),
+    )
+}
+
 /** Stops the harness sshd listener (`dev-sshd.sh stop`); established sessions keep running. */
 fun HostControl.stopListener() {
     sh("FLOCKET_SSHD_DIR=\"$1\" \"$2\" stop >/dev/null", args.sshdDir, args.devSshd)
