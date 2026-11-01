@@ -201,7 +201,7 @@ class TerminalsComposeTest {
     private val studio = HostId("studio")
     private val refA = LayoutRef(null, "a")
 
-    /** A desktop space with two tabs (one named), and a folder space whose tabs have no layout. */
+    /** A desktop space with two document tabs (one named) and an implicit one, and a folder space whose tabs have no layout. */
     private val renameWorkspace =
         Workspace(
             listOf(
@@ -230,6 +230,8 @@ class TerminalsComposeTest {
                             2,
                             LayoutRef(null, "a", "ta2"),
                         ),
+                        // The implicit tab of folder-joined terminals: not in the document, no ref.
+                        WorkspaceTab("all", "", listOf(TerminalAddress("t5")), null, null, 3),
                     ),
                     null,
                     1,
@@ -279,6 +281,9 @@ class TerminalsComposeTest {
         rule.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("first"))
         rule.onNodeWithText("first").performTouchInput { longClick() }
         rule.onNodeWithText("second").performTouchInput { longClick() }
+        // The implicit tab of a desktop space shows its number and has no rename.
+        // The first "3" is the space's terminal count; the second is the tab label.
+        rule.onAllNodesWithText("3", useUnmergedTree = true)[1].performTouchInput { longClick() }
         // Last: without a long-press action the header just toggles collapse on release.
         rule.onNodeWithText("x").performTouchInput { longClick() }
         assertEquals(0, asked)
