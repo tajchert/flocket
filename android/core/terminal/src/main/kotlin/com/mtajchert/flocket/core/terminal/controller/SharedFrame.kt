@@ -13,6 +13,31 @@ interface TerminalFrameSource {
      * the UI thread; must be cheap (row copies under a short lock, no allocation in steady state).
      */
     fun acquireFrame(target: ScreenSnapshot): Boolean
+
+    /**
+     * Smooth scrolling needs the row just above the viewport (it is partly visible while the view
+     * sits between two rows). While [wanted], the source keeps one ready; it costs nothing otherwise.
+     */
+    fun setRowAboveWanted(wanted: Boolean) = Unit
+
+    /**
+     * Copy the row above the viewport of the latest frame into [target] if it changed since the
+     * last call with this target. Returns true if [target] changed. `target.id` is -1 when there
+     * is none (no scrollback above, or not [setRowAboveWanted]).
+     */
+    fun acquireRowAbove(target: RowSnapshot): Boolean = false
+}
+
+/** One screen row outside the viewport, `id` in [ScreenSnapshot.historyBase] space (-1 = none). */
+class RowSnapshot {
+    val cells = ScreenSnapshot(1, 1)
+    var id: Long = NONE
+        internal set
+    internal var version = -1
+
+    companion object {
+        const val NONE = -1L
+    }
 }
 
 /** A fixed screen (previews, screenshot tests). */
@@ -70,7 +95,8 @@ internal fun copyRows(
         dst.cursorVisible != src.cursorVisible ||
         dst.cursorStyle != src.cursorStyle ||
         dst.viewportOffset != src.viewportOffset ||
-        dst.scrollbackRows != src.scrollbackRows
+        dst.scrollbackRows != src.scrollbackRows ||
+        dst.historyBase != src.historyBase
     ) {
         any = true
     }
@@ -80,6 +106,7 @@ internal fun copyRows(
     dst.cursorStyle = src.cursorStyle
     dst.scrollbackRows = src.scrollbackRows
     dst.viewportOffset = src.viewportOffset
+    dst.historyBase = src.historyBase
     dst.title = src.title
     return any
 }

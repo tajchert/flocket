@@ -55,6 +55,31 @@ interface TerminalEngine : AutoCloseable {
 
     /** Plain text of the current selection-free viewport + [historyLines] of scrollback (copy). */
     fun text(historyLines: Int = 0): String
+
+    /**
+     * Copy one row of the screen buffer into row 0 of [target] (resized to cols x 1), resolved like
+     * [snapshot]. [screenRow] counts from the oldest retained scrollback row (0) to
+     * `scrollbackRows + rows - 1`; the viewport's top row is `scrollbackRows - viewportOffset`. Does
+     * not move the viewport or touch [snapshot]'s dirty tracking. Returns false (target untouched)
+     * when the row does not exist. Used for the row above the viewport while scrolling smoothly,
+     * not for whole frames.
+     */
+    fun readRow(
+        screenRow: Int,
+        target: ScreenSnapshot,
+    ): Boolean = false
+
+    /**
+     * Plain text from ([startRow], [startCol]) to ([endRow], [endCol]) inclusive, rows in the
+     * [readRow] space (selection copy). Soft-wrapped rows are joined without a newline, trailing
+     * blanks of each line are trimmed, a wide character or grapheme cluster appears once.
+     */
+    fun textRange(
+        startRow: Int,
+        startCol: Int,
+        endRow: Int,
+        endCol: Int,
+    ): String = ""
 }
 
 /** ARGB colors (0xAARRGGBB). [palette] holds the 16 ANSI colors. */
@@ -120,6 +145,13 @@ class ScreenSnapshot(
     /** Rows of scrollback above the viewport, and how far the viewport is scrolled up into it. */
     var scrollbackRows: Int = 0
     var viewportOffset: Int = 0
+
+    /**
+     * Rows that have left the top of the screen buffer since the engine was created (scrollback
+     * eviction, clear scrollback, reset); never decreases. `historyBase + screen row` (see
+     * [TerminalEngine.readRow]) is a row id that stays on the same content while output arrives.
+     */
+    var historyBase: Long = 0
 
     var title: String = ""
 

@@ -109,6 +109,30 @@ internal object GhosttyNative {
         handle: Long,
         historyLines: Int,
     ): ByteArray
+
+    // ---- Smooth scrolling and selection (readRow / historyBase / textRange) ----
+
+    /** Returns the grapheme ints needed (retry with a bigger [graphemes] if more than its size), -1 = no row. */
+    @JvmStatic external fun nativeReadRow(
+        handle: Long,
+        screenRow: Int,
+        cols: Int,
+        codepoints: IntArray,
+        foreground: IntArray,
+        background: IntArray,
+        flags: IntArray,
+        graphemes: IntArray,
+    ): Int
+
+    @JvmStatic external fun nativeHistoryBase(handle: Long): Long
+
+    @JvmStatic external fun nativeTextRange(
+        handle: Long,
+        startRow: Int,
+        startCol: Int,
+        endRow: Int,
+        endCol: Int,
+    ): ByteArray
 }
 
 /** Indices into the header IntArray filled by `nativeSnapshot`. */

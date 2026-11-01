@@ -29,6 +29,10 @@ struct Engine {
   std::vector<uint8_t> events;     // see drainEvents
   bool theme_dirty = false;
   int32_t title_gen = 0;
+  // historyBase (nHistoryBase): a tracked ref on the primary screen's last row and its screen y.
+  GhosttyTrackedGridRef pin = nullptr;
+  uint32_t pin_y = 0;
+  int64_t trimmed = 0;
 };
 
 // Upper bound for undrained events: the remote program controls titles, OSC 52 payloads and
@@ -177,6 +181,7 @@ void nFree(JNIEnv*, jclass, jlong h) {
   ghostty_render_state_row_cells_free(e->cells);
   ghostty_render_state_row_iterator_free(e->rows);
   ghostty_render_state_free(e->render);
+  ghostty_tracked_grid_ref_free(e->pin);
   ghostty_terminal_free(e->terminal);
   delete e;
 }
@@ -609,6 +614,166 @@ jbyteArray nText(JNIEnv* env, jclass, jlong h, jint history) {
   return r;
 }
 
+// ---- Smooth scrolling and selection: TerminalEngine.readRow / textRange, ScreenSnapshot.historyBase.
+// Read-only grid-ref and formatter lookups: they never move the viewport or touch the render state.
+
+bool screen_ref(Engine* e, int col, int row, GhosttyGridRef* out) {
+  GhosttyPoint p = {GHOSTTY_POINT_TAG_SCREEN, {}};
+  p.value.coordinate = {static_cast<uint16_t>(col), static_cast<uint32_t>(row)};
+  *out = GHOSTTY_INIT_SIZED(GhosttyGridRef);
+  return ghostty_terminal_grid_ref(e->terminal, p, out) == GHOSTTY_SUCCESS;
+}
+
+GhosttyColorRgb style_rgb(const GhosttyStyleColor& c, const GhosttyColorRgb* pal, GhosttyColorRgb dflt) {
+  if (c.tag == GHOSTTY_STYLE_COLOR_PALETTE) return pal[c.value.palette];
+  if (c.tag == GHOSTTY_STYLE_COLOR_RGB) return c.value.rgb;
+  return dflt;
+}
+
+// Copies screen row `row` (0 = oldest scrollback row) into the first `cols` entries of the arrays,
+// resolved like nSnapshot. Multi-code-point graphemes go to `jg` as [col, n, cp0..]*. Returns the
+// grapheme ints needed (call again with a bigger `jg` if that exceeds its length) or -1 if the row
+// does not exist.
+jint nReadRow(JNIEnv* env, jclass, jlong h, jint row, jint cols, jintArray jcp, jintArray jfg, jintArray jbg,
+              jintArray jflags, jintArray jg) {
+  Engine* e = H(h);
+  if (cols != e->cols || env->GetArrayLength(jcp) < cols || env->GetArrayLength(jfg) < cols ||
+      env->GetArrayLength(jbg) < cols || env->GetArrayLength(jflags) < cols) {
+    throw_java(env, "java/lang/IllegalArgumentException", "row arrays smaller than cols");
+    return -1;
+  }
+  GhosttyGridRef ref;
+  if (row < 0 || !screen_ref(e, 0, row, &ref)) return -1;
+  GhosttyColorRgb pal[256];
+  GhosttyColorRgb dfg{}, dbg{};
+  ghostty_terminal_get(e->terminal, GHOSTTY_TERMINAL_DATA_COLOR_PALETTE, pal);
+  ghostty_terminal_get(e->terminal, GHOSTTY_TERMINAL_DATA_COLOR_FOREGROUND, &dfg);
+  ghostty_terminal_get(e->terminal, GHOSTTY_TERMINAL_DATA_COLOR_BACKGROUND, &dbg);
+  std::vector<int32_t> cp(cols, 0), fgA(cols, pack(dfg)), bgA(cols, pack(dbg)), flA(cols, 0), g;
+  std::vector<uint32_t> buf(16);
+  for (int col = 0; col < cols; col++) {
+    if (!screen_ref(e, col, row, &ref)) continue;
+    size_t n = 0;
+    GhosttyResult r = ghostty_grid_ref_graphemes(&ref, buf.data(), buf.size(), &n);
+    if (r == GHOSTTY_OUT_OF_SPACE) {
+      buf.resize(n);
+      r = ghostty_grid_ref_graphemes(&ref, buf.data(), buf.size(), &n);
+    }
+    if (r != GHOSTTY_SUCCESS) n = 0;
+    if (n > 0) cp[col] = static_cast<int32_t>(buf[0]);
+    if (n > 1) {
+      g.push_back(col);
+      g.push_back(static_cast<int32_t>(n));
+      for (size_t i = 0; i < n; i++) g.push_back(static_cast<int32_t>(buf[i]));
+    }
+    GhosttyCell cell = 0;
+    ghostty_grid_ref_cell(&ref, &cell);
+    GhosttyStyle st = GHOSTTY_INIT_SIZED(GhosttyStyle);
+    ghostty_grid_ref_style(&ref, &st);
+    GhosttyColorRgb fg = style_rgb(st.fg_color, pal, dfg), bg = style_rgb(st.bg_color, pal, dbg);
+    GhosttyCellContentTag tag = GHOSTTY_CELL_CONTENT_CODEPOINT;
+    ghostty_cell_get(cell, GHOSTTY_CELL_DATA_CONTENT_TAG, &tag);
+    if (tag == GHOSTTY_CELL_CONTENT_BG_COLOR_PALETTE) {
+      GhosttyColorPaletteIndex i = 0;
+      if (ghostty_cell_get(cell, GHOSTTY_CELL_DATA_COLOR_PALETTE, &i) == GHOSTTY_SUCCESS) bg = pal[i];
+    } else if (tag == GHOSTTY_CELL_CONTENT_BG_COLOR_RGB) {
+      ghostty_cell_get(cell, GHOSTTY_CELL_DATA_COLOR_RGB, &bg);
+    }
+    GhosttyCellWide wide = GHOSTTY_CELL_WIDE_NARROW;
+    ghostty_cell_get(cell, GHOSTTY_CELL_DATA_WIDE, &wide);
+    bool link = false;
+    ghostty_cell_get(cell, GHOSTTY_CELL_DATA_HAS_HYPERLINK, &link);
+    int32_t flags = 0;
+    if (st.bold) flags |= F_BOLD;
+    if (st.italic) flags |= F_ITALIC;
+    if (st.underline) flags |= F_UNDERLINE;
+    if (st.strikethrough) flags |= F_STRIKE;
+    if (st.faint) flags |= F_FAINT;
+    if (st.invisible) flags |= F_INVISIBLE;
+    if (st.blink) flags |= F_BLINK;
+    if (st.inverse) std::swap(fg, bg);
+    if (st.faint) fg = mix(fg, bg, 2, 1);
+    if (wide == GHOSTTY_CELL_WIDE_WIDE) flags |= F_WIDE;
+    if (wide == GHOSTTY_CELL_WIDE_SPACER_TAIL || wide == GHOSTTY_CELL_WIDE_SPACER_HEAD) flags |= F_SPACER;
+    if (link) flags |= F_LINK;
+    fgA[col] = pack(fg);
+    bgA[col] = pack(bg);
+    flA[col] = flags;
+  }
+  env->SetIntArrayRegion(jcp, 0, cols, cp.data());
+  env->SetIntArrayRegion(jfg, 0, cols, fgA.data());
+  env->SetIntArrayRegion(jbg, 0, cols, bgA.data());
+  env->SetIntArrayRegion(jflags, 0, cols, flA.data());
+  if (!g.empty() && g.size() <= static_cast<size_t>(env->GetArrayLength(jg))) {
+    env->SetIntArrayRegion(jg, 0, static_cast<jsize>(g.size()), g.data());
+  }
+  return static_cast<jint>(g.size());
+}
+
+// Rows that left the top of the primary screen since creation. A tracked ref sits on the last row;
+// rows removed above it (eviction, clear scrollback) lower its screen y. If the ref itself was
+// removed (huge burst, reset), every older row is gone: skip past all of them.
+jlong nHistoryBase(JNIEnv*, jclass, jlong h) {
+  Engine* e = H(h);
+  if (e->pin) {
+    GhosttyPointCoordinate c{};
+    if (ghostty_tracked_grid_ref_point(e->pin, GHOSTTY_POINT_TAG_SCREEN, &c) == GHOSTTY_SUCCESS) {
+      if (c.y < e->pin_y) e->trimmed += e->pin_y - c.y;
+      e->pin_y = c.y;
+    } else {
+      e->trimmed += static_cast<int64_t>(e->pin_y) + 1;
+      ghostty_tracked_grid_ref_free(e->pin);
+      e->pin = nullptr;
+    }
+  }
+  GhosttyTerminalScreen screen = GHOSTTY_TERMINAL_SCREEN_PRIMARY;
+  ghostty_terminal_get(e->terminal, GHOSTTY_TERMINAL_DATA_ACTIVE_SCREEN, &screen);
+  GhosttyTerminalScrollbar sb{};
+  if (screen == GHOSTTY_TERMINAL_SCREEN_PRIMARY &&
+      ghostty_terminal_get(e->terminal, GHOSTTY_TERMINAL_DATA_SCROLLBAR, &sb) == GHOSTTY_SUCCESS && sb.total > 0) {
+    uint32_t last = static_cast<uint32_t>(sb.total - 1);
+    if (!e->pin || e->pin_y != last) {
+      GhosttyPoint p = {GHOSTTY_POINT_TAG_SCREEN, {}};
+      p.value.coordinate = {0, last};
+      bool ok = e->pin ? ghostty_tracked_grid_ref_set(e->pin, e->terminal, p) == GHOSTTY_SUCCESS
+                       : ghostty_terminal_grid_ref_track(e->terminal, p, &e->pin) == GHOSTTY_SUCCESS;
+      if (ok) e->pin_y = last;
+    }
+  }
+  return static_cast<jlong>(e->trimmed);
+}
+
+// Plain text between two screen cells (inclusive), unwrapped and trimmed like nText.
+jbyteArray nTextRange(JNIEnv* env, jclass, jlong h, jint r0, jint c0, jint r1, jint c1) {
+  Engine* e = H(h);
+  GhosttySelection sel = GHOSTTY_INIT_SIZED(GhosttySelection);
+  if (r0 < 0 || r1 < r0 || !screen_ref(e, std::clamp(c0, 0, e->cols - 1), r0, &sel.start) ||
+      !screen_ref(e, std::clamp(c1, 0, e->cols - 1), r1, &sel.end)) {
+    return to_java(env, nullptr, 0);
+  }
+  sel.rectangle = false;
+  GhosttyFormatterTerminalOptions opts = GHOSTTY_INIT_SIZED(GhosttyFormatterTerminalOptions);
+  opts.emit = GHOSTTY_FORMATTER_FORMAT_PLAIN;
+  opts.unwrap = true;
+  opts.trim = true;
+  opts.extra = GHOSTTY_INIT_SIZED(GhosttyFormatterTerminalExtra);
+  opts.extra.screen = GHOSTTY_INIT_SIZED(GhosttyFormatterScreenExtra);
+  opts.selection = &sel;
+  GhosttyFormatter f = nullptr;
+  if (ghostty_formatter_terminal_new(nullptr, &f, e->terminal, opts) != GHOSTTY_SUCCESS) return to_java(env, nullptr, 0);
+  uint8_t* ptr = nullptr;
+  size_t len = 0;
+  jbyteArray r;
+  if (ghostty_formatter_format_alloc(f, nullptr, &ptr, &len) == GHOSTTY_SUCCESS) {
+    r = to_java(env, ptr, len);
+    ghostty_free(nullptr, ptr, len);
+  } else {
+    r = to_java(env, nullptr, 0);
+  }
+  ghostty_formatter_free(f);
+  return r;
+}
+
 const JNINativeMethod kMethods[] = {
     {"nativeCreate", "(III)J", reinterpret_cast<void*>(nCreate)},
     {"nativeFree", "(J)V", reinterpret_cast<void*>(nFree)},
@@ -624,6 +789,9 @@ const JNINativeMethod kMethods[] = {
     {"nativeDrainEvents", "(J)[B", reinterpret_cast<void*>(nDrainEvents)},
     {"nativeTitle", "(J)[B", reinterpret_cast<void*>(nTitle)},
     {"nativeText", "(JI)[B", reinterpret_cast<void*>(nText)},
+    {"nativeReadRow", "(JII[I[I[I[I[I)I", reinterpret_cast<void*>(nReadRow)},
+    {"nativeHistoryBase", "(J)J", reinterpret_cast<void*>(nHistoryBase)},
+    {"nativeTextRange", "(JIIII)[B", reinterpret_cast<void*>(nTextRange)},
 };
 
 }  // namespace
