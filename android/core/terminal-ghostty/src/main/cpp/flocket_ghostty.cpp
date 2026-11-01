@@ -723,12 +723,14 @@ jint nReadRow(JNIEnv* env, jclass, jlong h, jint row, jint cols, jintArray jcp, 
   return static_cast<jint>(g.size());
 }
 
-// Rows that left the top of the primary screen since creation. A tracked ref (pin) sits on the
-// last active row; rows removed above it (eviction, clear scrollback) lower its screen y. While the
-// pin is in the active area its screen y is scrollback rows + active y (cheap: no page-list walk).
-// Only once it has scrolled into history (once per screenful of output) is it resolved in screen
-// coordinates and moved back to the last row. If the pin itself was removed (huge burst, reset),
-// every older row is gone: skip past all of them. The alternate screen never touches the primary.
+// Rows that left the top of the primary screen since creation. A tracked ref (pin) is put on the
+// newest row (last active row) at every call; rows removed above it (eviction, clear scrollback)
+// lower its screen y. While the pin is still in the active area its screen y is scrollback rows +
+// active y (cheap: no page-list walk); only after a screenful of output since the last call is it
+// resolved in screen coordinates. Ghostty prunes whole pages (a page holds thousands of narrow
+// rows), so a burst can remove the pin itself: because it was the newest row, every row that
+// existed at the last call is then gone, and skipping past all of them keeps ids unique (rows
+// pruned unseen are simply never numbered). The alternate screen never touches the primary.
 jlong nHistoryBase(JNIEnv*, jclass, jlong h) {
   Engine* e = H(h);
   GhosttyTerminalScreen screen = GHOSTTY_TERMINAL_SCREEN_PRIMARY;
@@ -740,14 +742,12 @@ jlong nHistoryBase(JNIEnv*, jclass, jlong h) {
     return static_cast<jlong>(e->trimmed);
   }
   const uint64_t above = sb.total > sb.len ? sb.total - sb.len : 0;
-  bool in_active = false;
   if (e->pin) {
     GhosttyPointCoordinate c{};
     uint64_t y = 0;
     bool found = true;
     if (ghostty_tracked_grid_ref_point(e->pin, GHOSTTY_POINT_TAG_ACTIVE, &c) == GHOSTTY_SUCCESS) {
       y = above + c.y;
-      in_active = true;
     } else if (ghostty_tracked_grid_ref_point(e->pin, GHOSTTY_POINT_TAG_SCREEN, &c) == GHOSTTY_SUCCESS) {
       y = c.y;
     } else {
@@ -762,7 +762,7 @@ jlong nHistoryBase(JNIEnv*, jclass, jlong h) {
       e->pin = nullptr;
     }
   }
-  if (!e->pin || !in_active) {
+  if (!e->pin || e->pin_y != sb.total - 1) {
     GhosttyPoint p = {GHOSTTY_POINT_TAG_ACTIVE, {}};
     p.value.coordinate = {0, static_cast<uint32_t>(sb.len - 1)};
     bool ok = e->pin ? ghostty_tracked_grid_ref_set(e->pin, e->terminal, p) == GHOSTTY_SUCCESS
