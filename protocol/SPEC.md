@@ -555,6 +555,7 @@ The desktop app (herdr-app) stores its spaces/tabs/pane layout in the document n
 
 Further details from the Herdr.app 0.x bundle (field names and its built-in docs, [I]; synthetic example in `fixtures/herdr-app-layout.json`):
 - Each machine keeps its own spaces in its own core's `herdr-app` document (read remote ones with `on`). Federated terminals never appear in the local document.
+- [W] (hc 0.1.16, machine added with `hc machine add --via "sh -c" --session <other>`): `doc.get {name:"herdr-app", on:"rohan"}` returns rohan's own document, and a `doc.set` made on rohan reaches the local subscriber as a `doc` event with `"machine":"rohan"`.
 - A node may carry `"type"`: `"row"`, `"column"`, `"stack"` or `"block"`. `size` is `{"weight": n}` or `{"px": n}`. `active` names the shown child of a `stack`. Content kinds seen besides `terminal` and `mod`: `agent`, `context`, `tab` (treat all unknown kinds as non-terminal panes).
 - Focus, zoom and the selected space/tab are per screen (the desktop's `view.json`), not in the document: the `active` chain is the best available hint for the focused pane.
 - Unnamed spaces are shown after their first terminal's live folder (repo, else folder, `~` at home); unnamed tabs by their 1-based place. A terminal with labels `herdr.space=<id>`/`herdr.tab=<id>` is adopted into that space/tab (a new tab when `herdr.tab` is missing).

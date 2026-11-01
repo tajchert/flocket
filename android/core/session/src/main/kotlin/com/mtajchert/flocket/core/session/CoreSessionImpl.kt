@@ -7,7 +7,10 @@ import com.mtajchert.flocket.core.common.time.Clock
 import com.mtajchert.flocket.core.model.ConnectionState
 import com.mtajchert.flocket.core.model.CoreEndpoint
 import com.mtajchert.flocket.core.model.CoreInfo
+import com.mtajchert.flocket.core.model.DesktopLayout
 import com.mtajchert.flocket.core.model.Liveness
+import com.mtajchert.flocket.core.model.MachineInfo
+import com.mtajchert.flocket.core.model.MachineState
 import com.mtajchert.flocket.core.model.TerminalAddress
 import com.mtajchert.flocket.core.model.TerminalRecord
 import com.mtajchert.flocket.core.model.TerminalTemplate
@@ -84,9 +87,14 @@ class CoreSessionImpl(
     ) {
         val info: CoreInfo get() = conn.info
 
-        /** `herdr-app` read coalescing ([refreshLayout]); guarded by [layoutLock]. */
-        var layoutFetching = false
-        var layoutDirty = false
+        /** `herdr-app` read coalescing per machine ([refreshLayout]; key null = local); guarded by [layoutLock]. */
+        val layoutReads = HashMap<String?, LayoutRead>()
+    }
+
+    /** One machine's `herdr-app` read state on one link. */
+    private class LayoutRead {
+        var fetching = false
+        var dirty = false
     }
 
     private val stateFlow = MutableStateFlow(SessionState(endpoint))
@@ -110,7 +118,7 @@ class CoreSessionImpl(
     @Volatile
     private var parkOnExit = false
 
-    /** Guards [Link.layoutFetching] / [Link.layoutDirty]; never held across suspension. */
+    /** Guards [Link.layoutReads]; never held across suspension. */
     private val layoutLock = Any()
 
     private val connectionOptions = ConnectionOptions(clock = clock, logger = logger)
@@ -233,6 +241,7 @@ class CoreSessionImpl(
                         core = c.info,
                         terminals = snap.terminals,
                         machines = machines ?: it.machines,
+                        machineLayouts = machines?.let { m -> it.machineLayouts.onlyFor(m) } ?: it.machineLayouts,
                         confirmedAtMs = clock.nowMillis(),
                     )
                 }
@@ -240,6 +249,7 @@ class CoreSessionImpl(
             online = l
             publishSizes()
             refreshLayout(l)
+            refreshMachineLayouts(l)
             logger.info(
                 TAG,
             ) { "${endpoint.hostId.value}: online (core ${c.info.version}, ${sub.terminals.size} terminals)" }
@@ -311,55 +321,97 @@ class CoreSessionImpl(
         }
 
     /**
-     * Re-read the local `herdr-app` document on [l] (SPEC §9: after subscribing, `missed` and its
-     * `doc` events). At most one read per link is in flight; triggers during it cause exactly one
-     * more read afterwards. A failed read keeps the last layout; so does a disconnect (the state is
-     * then stale). A reply is applied only while [l] is still the current link.
+     * Re-read the `herdr-app` document of [machine] (null = local) on [l] (SPEC §9: after subscribing,
+     * `missed` and its `doc` events). Per machine, at most one read per link is in flight; triggers
+     * during it cause exactly one more read afterwards. Machines are read independently, so a slow
+     * machine never delays the local document or another machine. A failed read keeps the last
+     * layout; so does a disconnect (the state is then stale). A reply is applied only while [l] is
+     * still the current link and, for a remote one, while [machine] is still listed.
      */
-    private fun refreshLayout(l: Link) {
-        synchronized(layoutLock) {
-            if (l.layoutFetching) {
-                l.layoutDirty = true
-                return
+    private fun refreshLayout(
+        l: Link,
+        machine: String? = null,
+    ) {
+        val read =
+            synchronized(layoutLock) {
+                val r = l.layoutReads.getOrPut(machine) { LayoutRead() }
+                if (r.fetching) {
+                    r.dirty = true
+                    return
+                }
+                r.fetching = true
+                r.dirty = false
+                r
             }
-            l.layoutFetching = true
-            l.layoutDirty = false
-        }
         scope.launch {
             var released = false
             try {
                 while (!released) {
-                    fetchLayout(l)
+                    fetchLayout(l, machine)
                     // Check and release in one step, so a trigger arriving now is never lost.
                     synchronized(layoutLock) {
-                        if (l.layoutDirty && link.get() === l) {
-                            l.layoutDirty = false
+                        if (read.dirty && link.get() === l) {
+                            read.dirty = false
                         } else {
-                            l.layoutFetching = false
+                            read.fetching = false
                             released = true
                         }
                     }
                 }
             } finally {
-                if (!released) synchronized(layoutLock) { l.layoutFetching = false }
+                if (!released) synchronized(layoutLock) { read.fetching = false }
             }
         }
     }
 
-    private suspend fun fetchLayout(l: Link) {
+    /** Re-read the `herdr-app` document of every listed machine that is connected (SPEC §8.5, §9.1). */
+    private fun refreshMachineLayouts(l: Link) {
+        stateFlow.value.machines
+            .filter { it.state == MachineState.Connected }
+            .forEach { refreshLayout(l, it.name) }
+    }
+
+    /** Publish a fresh machine list read on [l]: drop layouts of machines that left it, read connected ones. */
+    private fun applyMachines(
+        l: Link,
+        machines: List<MachineInfo>,
+    ) {
+        synchronized(reduceLock) {
+            if (link.get() !== l) return
+            stateFlow.update { it.copy(machines = machines, machineLayouts = it.machineLayouts.onlyFor(machines)) }
+        }
+    }
+
+    private suspend fun fetchLayout(
+        l: Link,
+        machine: String?,
+    ) {
         val reply =
             try {
-                l.conn.docGet(HerdrAppLayoutParser.DOCUMENT, timeout = config.readTimeout)
+                l.conn.docGet(HerdrAppLayoutParser.DOCUMENT, on = machine, timeout = config.readTimeout)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                logger.debug(TAG) { "doc.get ${HerdrAppLayoutParser.DOCUMENT} failed: ${e.javaClass.simpleName}" }
+                // Remote: machine_unknown / unavailable / needs_update / timeout. Not a user-visible error.
+                val kind = (e as? RpcException)?.kind ?: e.javaClass.simpleName
+                val where = if (machine == null) "" else " (remote)"
+                logger.debug(TAG) { "doc.get ${HerdrAppLayoutParser.DOCUMENT}$where failed: $kind" }
                 return
             }
         // Absent or deleted (`value: null`) means no layout. A version going backwards is trusted (SPEC §9).
         val layout = HerdrAppLayoutParser.parse(reply.value)
         synchronized(reduceLock) {
-            if (link.get() === l) stateFlow.update { it.copy(desktopLayout = layout) }
+            if (link.get() !== l) return
+            if (machine == null) {
+                stateFlow.update { it.copy(desktopLayout = layout) }
+            } else {
+                // A machine removed (machine.rm / rename) while this read was in flight must not come back.
+                if (stateFlow.value.machines.none { it.name == machine }) return
+                stateFlow.update {
+                    val m = if (layout == null) it.machineLayouts - machine else it.machineLayouts + (machine to layout)
+                    it.copy(machineLayouts = m)
+                }
+            }
         }
     }
 
@@ -416,6 +468,7 @@ class CoreSessionImpl(
             }
             publishSizes()
             refreshLayout(l)
+            refreshMachineLayouts(l)
         }
     }
 
@@ -455,18 +508,21 @@ class CoreSessionImpl(
             }
 
             ReduceEffect.SnapshotReplaced -> {
-                refreshLayout(l) // a snapshot carries no documents (SPEC §8.5)
+                // A snapshot carries no documents; a remote machine (re)connecting also sends `missed`, so
+                // re-list machines and re-read every connected machine's document (SPEC §8.5, §10).
+                refreshLayout(l)
                 if (l.info.supports(CoreInfo.MACHINE_LIST)) {
                     scope.launch {
-                        val m = fetchMachines(l.conn) ?: return@launch
-                        if (link.get() === l) stateFlow.update { it.copy(machines = m) }
+                        fetchMachines(l.conn)?.let { applyMachines(l, it) }
+                        refreshMachineLayouts(l)
                     }
                 }
             }
 
             is ReduceEffect.DocChanged -> {
-                // Remote machines' layouts are not shown yet: only the local herdr-app document.
-                if (effect.name == HerdrAppLayoutParser.DOCUMENT && effect.machine == null) refreshLayout(l)
+                // A machine not (yet) listed is read after its first `missed` re-lists machines (SPEC §8.5).
+                val listed = effect.machine == null || state.value.machines.any { it.name == effect.machine }
+                if (effect.name == HerdrAppLayoutParser.DOCUMENT && listed) refreshLayout(l, effect.machine)
             }
 
             null -> {
@@ -848,6 +904,12 @@ class CoreSessionImpl(
         val RUN_ENV: Map<String, String> =
             mapOf("TERM" to "xterm-256color", "COLORTERM" to "truecolor", "TERM_PROGRAM" to "Flocket")
     }
+}
+
+/** Layouts of machines still in [machines] only (a removed or renamed machine loses its entry). */
+private fun Map<String, DesktopLayout>.onlyFor(machines: List<MachineInfo>): Map<String, DesktopLayout> {
+    val names = machines.mapTo(HashSet()) { it.name }
+    return if (keys.all { it in names }) this else filterKeys { it in names }
 }
 
 /** Builds sessions; one per endpoint. Convenience for DI in core:data. */
