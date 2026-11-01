@@ -467,6 +467,26 @@ class CoreConnectionTest {
         }
 
     @Test
+    fun `doc get sends on only for a remote machine`() =
+        runTest {
+            val core = fake(backgroundScope)
+            val conn = open(core)
+            val local = conn.docGet("herdr-app")
+            assertEquals(0L, local.version)
+            assertFalse(
+                core.calls
+                    .last()
+                    .params
+                    .containsKey("on"),
+            )
+            conn.docGet("herdr-app", on = "rohan")
+            val p = core.calls.last().params
+            assertEquals("doc.get", core.calls.last().method)
+            assertEquals("\"herdr-app\"", p["name"].toString())
+            assertEquals("\"rohan\"", p["on"].toString())
+        }
+
+    @Test
     fun `attach errors surface as rpc exceptions`() =
         runTest {
             val core = fake(backgroundScope)
