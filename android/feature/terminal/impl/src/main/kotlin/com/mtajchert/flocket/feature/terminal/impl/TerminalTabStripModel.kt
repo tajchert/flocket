@@ -49,7 +49,8 @@ data class StripPane(
 
 /**
  * Derives the strip for [current] from a host's terminals and the desktop layout; null when [current]
- * is unknown or there is nothing to switch between (a single tab with a single pane).
+ * is unknown or there is nothing to switch between (a single tab with a single pane). Finished
+ * terminals other than [current] are left out, as in the sidebar.
  */
 fun buildTabStrip(
     terminals: List<TerminalRecord>,
@@ -65,10 +66,14 @@ fun buildTabStrip(
 ): TabStripUi? {
     val (space, currentTab) = workspace.locate(current) ?: return null
     val byAddress = terminals.associateBy { it.address }
+
+    // Like the sidebar, finished terminals are left out (the open one always stays); tab numbers keep
+    // coming from the full workspace, so an unnamed tab is called the same in both places.
+    fun shown(address: TerminalAddress) = address == current || byAddress[address]?.liveness !is Liveness.Finished
     val tabs =
         space.tabs.mapNotNull { tab ->
-            val target =
-                (tab.activePane?.takeIf { it in tab.panes } ?: tab.panes.firstOrNull()) ?: return@mapNotNull null
+            val panes = tab.panes.filter(::shown)
+            val target = (tab.activePane?.takeIf { it in panes } ?: panes.firstOrNull()) ?: return@mapNotNull null
             StripTab(
                 key = tab.key,
                 name = tab.name,
@@ -81,7 +86,7 @@ fun buildTabStrip(
         }
     // Panes matter only when there is something to switch between.
     val panes =
-        currentTab.panes.takeIf { it.size >= 2 }.orEmpty().map { address ->
+        currentTab.panes.filter(::shown).takeIf { it.size >= 2 }.orEmpty().map { address ->
             val record = byAddress[address]
             StripPane(
                 address = address.value,
