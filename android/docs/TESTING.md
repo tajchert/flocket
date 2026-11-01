@@ -15,6 +15,7 @@ This file is the canonical home of the verification commands. Run them from `and
 | Device journeys / benchmarks | Does it work on real framework/hardware? | `src/androidTest`, `benchmark` | yes |
 
 Real `hc` tests use an isolated session (`--session flocket-test-<random>` or `HC_SESSION`), stop it in teardown, and never touch the developer's default session.
+On macOS, start the `hc` child with `TMPDIR=/tmp`: the default per-user `TMPDIR` makes the core's socket path longer than the 103-byte Unix socket limit and `hc connect` fails (`RealCoreIntegrationTest` passes it through `ProcessTransport(environment = ...)`).
 
 ## Commands
 
