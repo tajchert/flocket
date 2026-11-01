@@ -10,4 +10,14 @@ data class DeviceKey(
     /** e.g. `ssh-ed25519`, `ecdsa-sha2-nistp256`, `ssh-rsa`. */
     val keyType: String,
     val createdAtMs: Long,
-)
+) {
+    /** What the user calls the key: the public key's comment, or [alias] when it has none. */
+    val label: String
+        get() =
+            publicKeyOpenSsh
+                .trim()
+                .split(Regex("\\s+"), limit = 3)
+                .getOrNull(2)
+                ?.trim()
+                ?.takeIf { it.isNotEmpty() } ?: alias
+}

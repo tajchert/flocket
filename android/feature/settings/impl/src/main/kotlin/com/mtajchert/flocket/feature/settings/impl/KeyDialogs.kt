@@ -143,7 +143,7 @@ fun DeleteKeyDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.delete_title, item.key.alias)) },
+        title = { Text(stringResource(R.string.delete_title, item.key.label)) },
         text = {
             Text(
                 if (item.usedBy.isEmpty()) {
