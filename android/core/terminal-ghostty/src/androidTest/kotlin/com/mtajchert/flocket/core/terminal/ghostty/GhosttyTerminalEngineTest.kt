@@ -305,6 +305,33 @@ class GhosttyTerminalEngineTest {
     }
 
     @Test
+    fun longCommittedTextIsEncodedWhole() {
+        // 25 UTF-8 bytes: a 16-byte native buffer used to cut it mid-sequence.
+        val family = "👨‍👩‍👧‍👦"
+        val out = engine.encodeKey(KeyInput(Key.Character, family))
+        assertEquals(family, out.decodeToString())
+        assertEquals("é", engine.encodeKey(KeyInput(Key.Character, "é")).decodeToString())
+    }
+
+    @Test
+    fun outOfRangeSizesAreRejected() {
+        assertTrue(runCatching { engine.resize(70_000, 5) }.exceptionOrNull() is IllegalArgumentException)
+        assertEquals(20, engine.cols)
+        assertTrue(runCatching { GhosttyTerminalEngine(5, 2, scrollbackLines = -1) }.isFailure)
+    }
+
+    @Test
+    fun targetResizedByCallerIsRepaintedFully() {
+        feed("top\r\nbottom")
+        val s = engine.snapshot()
+        s.resize(10, 2)
+        s.resize(20, 5) // fresh, empty arrays of the same size
+        engine.snapshot(s)
+        assertEquals("top", s.row(0))
+        assertEquals("bottom", s.row(1))
+    }
+
+    @Test
     fun throughputSmoke() {
         val line = ("\u001b[32mHello world 0123456789 abcdefghij\u001b[0m\r\n").repeat(200).toByteArray()
         val s = ScreenSnapshot(20, 5)

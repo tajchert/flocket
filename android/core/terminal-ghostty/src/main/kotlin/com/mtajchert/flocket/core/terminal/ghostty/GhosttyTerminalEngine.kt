@@ -33,12 +33,14 @@ class GhosttyTerminalEngine(
     private val header = IntArray(SnapshotHeader.SIZE)
     private var dirtyInts = IntArray(rows)
     private var lastTarget: ScreenSnapshot? = null
+    private var lastCodepoints: IntArray? = null
     private var lastTitleGeneration = 0
     private var title = ""
     private var graphemeBuf = IntArray(0)
 
     init {
-        require(cols > 0 && rows > 0) { "terminal size must be positive: ${cols}x$rows" }
+        requireValidSize(cols, rows)
+        require(scrollbackLines >= 0) { "scrollbackLines must not be negative: $scrollbackLines" }
         GhosttyNative.ensureLoaded()
         handle = GhosttyNative.nativeCreate(cols, rows, scrollbackLines)
         check(handle != 0L) { "libghostty-vt failed to allocate a terminal" }
@@ -62,7 +64,7 @@ class GhosttyTerminalEngine(
         cols: Int,
         rows: Int,
     ) {
-        require(cols > 0 && rows > 0) { "terminal size must be positive: ${cols}x$rows" }
+        requireValidSize(cols, rows)
         GhosttyNative.nativeResize(h(), cols, rows)
         this.cols = cols
         this.rows = rows
@@ -78,8 +80,9 @@ class GhosttyTerminalEngine(
         val snap = target ?: ScreenSnapshot(cols, rows)
         val sizeChanged = snap.cols != cols || snap.rows != rows
         snap.resize(cols, rows)
-        // A different or resized target has no valid previous contents: repaint everything.
-        val full = sizeChanged || snap !== lastTarget
+        // A different or resized target has no valid previous contents: repaint everything. The
+        // array identity check also catches a caller that resized the snapshot itself in between.
+        val full = sizeChanged || snap !== lastTarget || snap.codepoints !== lastCodepoints
         GhosttyNative.nativeSnapshot(
             handle,
             full,
@@ -93,6 +96,7 @@ class GhosttyTerminalEngine(
             header,
         )
         lastTarget = snap
+        lastCodepoints = snap.codepoints
         for (r in 0 until rows) snap.dirtyRows[r] = dirtyInts[r] != 0
         applyGraphemes(handle, snap)
         snap.cursorCol = header[SnapshotHeader.CURSOR_COL]
@@ -123,7 +127,10 @@ class GhosttyTerminalEngine(
         val map = snap.graphemes
         if (map.isNotEmpty()) {
             val cols = snap.cols
-            map.keys.removeAll { idx -> dirtyInts[idx / cols] != 0 }
+            map.keys.removeAll { idx ->
+                val row = idx / cols
+                row !in dirtyInts.indices || dirtyInts[row] != 0
+            }
         }
         val count = header[SnapshotHeader.GRAPHEME_INTS]
         if (count == 0) return
@@ -178,6 +185,18 @@ class GhosttyTerminalEngine(
         private const val MOD_CTRL = 2
         private const val MOD_ALT = 4
         private const val MOD_META = 8
+
+        /** libghostty sizes are uint16 and snapshot arrays hold cols*rows ints. */
+        private const val MAX_DIMENSION = 0xFFFF
+
+        private fun requireValidSize(
+            cols: Int,
+            rows: Int,
+        ) {
+            require(cols in 1..MAX_DIMENSION && rows in 1..MAX_DIMENSION && cols.toLong() * rows <= Int.MAX_VALUE) {
+                "terminal size out of range: ${cols}x$rows"
+            }
+        }
 
         init {
             // Keep the Key ordinals in sync with key_for() in flocket_ghostty.cpp.

@@ -8,6 +8,7 @@ plugins {
 android {
     ndkVersion = "30.0.16248370"
     defaultConfig {
+        consumerProguardFiles("consumer-rules.pro")
         ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
     }
     externalNativeBuild {

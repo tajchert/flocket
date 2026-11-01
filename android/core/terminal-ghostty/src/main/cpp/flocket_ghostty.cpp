@@ -31,6 +31,11 @@ struct Engine {
   int32_t title_gen = 0;
 };
 
+// Upper bound for undrained events: the remote program controls titles, OSC 52 payloads and
+// notifications, so an owner that drains rarely must not let it grow native memory without limit.
+// Events that would exceed the cap are dropped.
+constexpr size_t kMaxEventBytes = 8u << 20;
+
 void put_u32(std::vector<uint8_t>& out, uint32_t v) {
   for (int i = 0; i < 4; i++) out.push_back(static_cast<uint8_t>(v >> (8 * i)));
 }
@@ -40,7 +45,40 @@ void put_str(std::vector<uint8_t>& out, const uint8_t* p, size_t n) {
   if (n) out.insert(out.end(), p, p + n);
 }
 
-void begin_event(Engine* e, EventType t) { e->events.push_back(t); }
+// Starts an event whose strings total `payload` bytes (lengths excluded). False = dropped (cap).
+bool begin_event(Engine* e, EventType t, size_t payload = 0, size_t strings = 0) {
+  size_t need = 1 + payload + 4 * strings;
+  if (payload > kMaxEventBytes || e->events.size() + need > kMaxEventBytes) return false;
+  e->events.push_back(t);
+  return true;
+}
+
+void throw_java(JNIEnv* env, const char* cls, const char* msg) {
+  if (env->ExceptionCheck()) return;
+  jclass c = env->FindClass(cls);
+  if (c) {
+    env->ThrowNew(c, msg);
+    env->DeleteLocalRef(c);
+  }
+}
+
+// Holds a primitive array critical region; released on every path by the destructor.
+class CriticalInts {
+ public:
+  CriticalInts(JNIEnv* env, jintArray a)
+      : env_(env), a_(a), p_(static_cast<int32_t*>(env->GetPrimitiveArrayCritical(a, nullptr))) {}
+  ~CriticalInts() {
+    if (p_) env_->ReleasePrimitiveArrayCritical(a_, p_, 0);
+  }
+  CriticalInts(const CriticalInts&) = delete;
+  CriticalInts& operator=(const CriticalInts&) = delete;
+  int32_t* get() const { return p_; }
+
+ private:
+  JNIEnv* env_;
+  jintArray a_;
+  int32_t* p_;
+};
 
 // ---- libghostty callbacks (userdata = Engine*). WRITE_PTY is deliberately never installed:
 // the host core answers terminal queries, replies are dropped.
@@ -55,16 +93,14 @@ void on_title(GhosttyTerminal t, void* ud) {
   GhosttyString s{};
   if (ghostty_terminal_get(t, GHOSTTY_TERMINAL_DATA_TITLE, &s) != GHOSTTY_SUCCESS) return;
   e->title_gen++;
-  begin_event(e, kTitle);
-  put_str(e->events, s.ptr, s.len);
+  if (begin_event(e, kTitle, s.len, 1)) put_str(e->events, s.ptr, s.len);
 }
 
 void on_pwd(GhosttyTerminal t, void* ud) {
   auto* e = static_cast<Engine*>(ud);
   GhosttyString s{};
   if (ghostty_terminal_get(t, GHOSTTY_TERMINAL_DATA_PWD, &s) != GHOSTTY_SUCCESS) return;
-  begin_event(e, kPwd);
-  put_str(e->events, s.ptr, s.len);
+  if (begin_event(e, kPwd, s.len, 1)) put_str(e->events, s.ptr, s.len);
 }
 
 void on_clipboard_write(GhosttyTerminal, void* ud, const GhosttyClipboardWrite* w) {
@@ -75,10 +111,7 @@ void on_clipboard_write(GhosttyTerminal, void* ud, const GhosttyClipboardWrite* 
     if (c.mime.len >= 10 && memcmp(c.mime.ptr, "text/plain", 10) == 0) { pick = &c; break; }
     if (!pick) pick = &c;
   }
-  if (pick) {
-    begin_event(e, kClipboard);
-    put_str(e->events, pick->data.ptr, pick->data.len);
-  }
+  if (pick && begin_event(e, kClipboard, pick->data.len, 1)) put_str(e->events, pick->data.ptr, pick->data.len);
   // Acknowledge; whether the UI honors the write is decided above this layer.
   GhosttyClipboardWriteReply reply = GHOSTTY_INIT_SIZED(GhosttyClipboardWriteReply);
   reply.result = GHOSTTY_CLIPBOARD_WRITE_RESULT_SUCCESS;
@@ -88,14 +121,22 @@ void on_clipboard_write(GhosttyTerminal, void* ud, const GhosttyClipboardWrite* 
 
 void on_notification(GhosttyTerminal, void* ud, const GhosttyTerminalDesktopNotification* n) {
   auto* e = static_cast<Engine*>(ud);
-  begin_event(e, kNotification);
+  if (n->title.len > kMaxEventBytes || n->body.len > kMaxEventBytes) return;
+  if (!begin_event(e, kNotification, n->title.len + n->body.len, 2)) return;
   put_str(e->events, n->title.ptr, n->title.len);
   put_str(e->events, n->body.ptr, n->body.len);
 }
 
 Engine* H(jlong h) { return reinterpret_cast<Engine*>(h); }
 
+// libghostty sizes are uint16; Kotlin arrays hold cols*rows ints.
+bool valid_size(jint cols, jint rows) {
+  return cols > 0 && rows > 0 && cols <= 0xFFFF && rows <= 0xFFFF &&
+         static_cast<int64_t>(cols) * rows <= INT32_MAX;
+}
+
 jlong nCreate(JNIEnv*, jclass, jint cols, jint rows, jint scrollbackLines) {
+  if (!valid_size(cols, rows) || scrollbackLines < 0) return 0;
   auto* e = new Engine();
   e->cols = cols;
   e->row_count = rows;
@@ -143,15 +184,28 @@ void nFree(JNIEnv*, jclass, jlong h) {
 void nFeed(JNIEnv* env, jclass, jlong h, jbyteArray bytes, jint off, jint len) {
   Engine* e = H(h);
   if (len <= 0) return;
+  if (off < 0 || static_cast<int64_t>(off) + len > env->GetArrayLength(bytes)) {
+    throw_java(env, "java/lang/IndexOutOfBoundsException", "feed range out of bounds");
+    return;
+  }
+  // Critical region: vt_write and its callbacks never call back into JNI.
   void* p = env->GetPrimitiveArrayCritical(bytes, nullptr);
-  if (!p) return;
+  if (!p) return;  // OutOfMemoryError pending
   ghostty_terminal_vt_write(e->terminal, static_cast<const uint8_t*>(p) + off, static_cast<size_t>(len));
   env->ReleasePrimitiveArrayCritical(bytes, p, JNI_ABORT);
 }
 
-void nResize(JNIEnv*, jclass, jlong h, jint cols, jint rows) {
+void nResize(JNIEnv* env, jclass, jlong h, jint cols, jint rows) {
   Engine* e = H(h);
-  ghostty_terminal_resize(e->terminal, static_cast<uint16_t>(cols), static_cast<uint16_t>(rows), 8, 16);
+  if (!valid_size(cols, rows)) {
+    throw_java(env, "java/lang/IllegalArgumentException", "terminal size out of range");
+    return;
+  }
+  if (ghostty_terminal_resize(e->terminal, static_cast<uint16_t>(cols), static_cast<uint16_t>(rows), 8, 16) !=
+      GHOSTTY_SUCCESS) {
+    throw_java(env, "java/lang/IllegalStateException", "libghostty-vt resize failed");
+    return;
+  }
   e->cols = cols;
   e->row_count = rows;
 }
@@ -163,6 +217,15 @@ GhosttyColorRgb rgb_of(jint argb) {
 
 void nSetTheme(JNIEnv* env, jclass, jlong h, jint fg, jint bg, jint cursor, jintArray palette16) {
   Engine* e = H(h);
+  jint p16[16];
+  if (env->GetArrayLength(palette16) < 16) {
+    throw_java(env, "java/lang/IllegalArgumentException", "palette must have 16 entries");
+    return;
+  }
+  env->GetIntArrayRegion(palette16, 0, 16, p16);
+  if (env->ExceptionCheck()) return;
+  // Theme changes recolor every cell without marking rows dirty.
+  e->theme_dirty = true;
   GhosttyColorRgb c = rgb_of(fg);
   ghostty_terminal_set(e->terminal, GHOSTTY_TERMINAL_OPT_COLOR_FOREGROUND, &c);
   c = rgb_of(bg);
@@ -171,12 +234,8 @@ void nSetTheme(JNIEnv* env, jclass, jlong h, jint fg, jint bg, jint cursor, jint
   ghostty_terminal_set(e->terminal, GHOSTTY_TERMINAL_OPT_COLOR_CURSOR, &c);
   GhosttyColorRgb pal[256];
   if (ghostty_terminal_get(e->terminal, GHOSTTY_TERMINAL_DATA_COLOR_PALETTE_DEFAULT, pal) != GHOSTTY_SUCCESS) return;
-  jint p16[16];
-  env->GetIntArrayRegion(palette16, 0, 16, p16);
   for (int i = 0; i < 16; i++) pal[i] = rgb_of(p16[i]);
   ghostty_terminal_set(e->terminal, GHOSTTY_TERMINAL_OPT_COLOR_PALETTE, pal);
-  // Theme changes recolor every cell without marking rows dirty.
-  e->theme_dirty = true;
 }
 
 inline int32_t pack(GhosttyColorRgb c) {
@@ -202,7 +261,19 @@ void nSnapshot(JNIEnv* env, jclass, jlong h, jboolean full, jint cols, jint rows
                jintArray jbg, jintArray jflags, jintArray jdirty, jintArray jhdr) {
   Engine* e = H(h);
   e->graphemes.clear();
-  if (ghostty_render_state_update(e->render, e->terminal) != GHOSTTY_SUCCESS) return;
+  // Validate every array before entering the critical regions: indices below are y*cols+col with
+  // y < rows, col < cols, so cols*rows elements per cell array and rows for `dirty` suffice.
+  const int64_t cells = static_cast<int64_t>(cols) * rows;
+  if (!valid_size(cols, rows) || env->GetArrayLength(jcp) < cells || env->GetArrayLength(jfg) < cells ||
+      env->GetArrayLength(jbg) < cells || env->GetArrayLength(jflags) < cells ||
+      env->GetArrayLength(jdirty) < rows || env->GetArrayLength(jhdr) < 12) {
+    throw_java(env, "java/lang/IllegalArgumentException", "snapshot arrays smaller than cols x rows");
+    return;
+  }
+  if (ghostty_render_state_update(e->render, e->terminal) != GHOSTTY_SUCCESS) {
+    throw_java(env, "java/lang/IllegalStateException", "libghostty-vt render state update failed");
+    return;
+  }
   GhosttyRenderStateDirty dirty = GHOSTTY_RENDER_STATE_DIRTY_FALSE;
   ghostty_render_state_get(e->render, GHOSTTY_RENDER_STATE_DATA_DIRTY, &dirty);
   bool all = full || e->theme_dirty || dirty == GHOSTTY_RENDER_STATE_DIRTY_FULL;
@@ -211,12 +282,15 @@ void nSnapshot(JNIEnv* env, jclass, jlong h, jboolean full, jint cols, jint rows
   GhosttyRenderStateColors colors = GHOSTTY_INIT_SIZED(GhosttyRenderStateColors);
   ghostty_render_state_get(e->render, GHOSTTY_RENDER_STATE_DATA_COLORS, &colors);
 
-  auto* cp = static_cast<int32_t*>(env->GetPrimitiveArrayCritical(jcp, nullptr));
-  auto* fgA = static_cast<int32_t*>(env->GetPrimitiveArrayCritical(jfg, nullptr));
-  auto* bgA = static_cast<int32_t*>(env->GetPrimitiveArrayCritical(jbg, nullptr));
-  auto* flA = static_cast<int32_t*>(env->GetPrimitiveArrayCritical(jflags, nullptr));
-  auto* dirtyA = static_cast<int32_t*>(env->GetPrimitiveArrayCritical(jdirty, nullptr));
-  auto* hdr = static_cast<int32_t*>(env->GetPrimitiveArrayCritical(jhdr, nullptr));
+  // No JNI calls from here until the guards go out of scope (they release on every return path).
+  CriticalInts gcp(env, jcp), gfg(env, jfg), gbg(env, jbg), gfl(env, jflags), gdirty(env, jdirty), ghdr(env, jhdr);
+  int32_t* cp = gcp.get();
+  int32_t* fgA = gfg.get();
+  int32_t* bgA = gbg.get();
+  int32_t* flA = gfl.get();
+  int32_t* dirtyA = gdirty.get();
+  int32_t* hdr = ghdr.get();
+  if (!cp || !fgA || !bgA || !flA || !dirtyA || !hdr) return;  // OutOfMemoryError pending
 
   std::fill(dirtyA, dirtyA + rows, 0);
   ghostty_render_state_get(e->render, GHOSTTY_RENDER_STATE_DATA_ROW_ITERATOR, &e->rows);
@@ -301,9 +375,11 @@ void nSnapshot(JNIEnv* env, jclass, jlong h, jboolean full, jint cols, jint rows
 
   GhosttyRenderStateCursor cur = GHOSTTY_INIT_SIZED(GhosttyRenderStateCursor);
   ghostty_render_state_get(e->render, GHOSTTY_RENDER_STATE_DATA_CURSOR, &cur);
-  hdr[0] = cur.viewport_x;
-  hdr[1] = cur.viewport_y;
-  hdr[2] = (cur.visible && cur.viewport_has_value) ? 1 : 0;
+  // Off-viewport cursor (scrolled back): coordinates are meaningless, keep them in range for indexing.
+  const bool in_view = cur.viewport_has_value && cur.viewport_x < cols && cur.viewport_y < rows;
+  hdr[0] = in_view ? cur.viewport_x : 0;
+  hdr[1] = in_view ? cur.viewport_y : 0;
+  hdr[2] = (cur.visible && in_view) ? 1 : 0;
   switch (cur.visual_style) {
     case GHOSTTY_RENDER_STATE_CURSOR_VISUAL_STYLE_UNDERLINE: hdr[3] = 1; break;
     case GHOSTTY_RENDER_STATE_CURSOR_VISUAL_STYLE_BAR: hdr[3] = 2; break;
@@ -327,13 +403,6 @@ void nSnapshot(JNIEnv* env, jclass, jlong h, jboolean full, jint cols, jint rows
   hdr[9] = screen == GHOSTTY_TERMINAL_SCREEN_ALTERNATE ? 1 : 0;
   hdr[10] = any ? 1 : 0;
   hdr[11] = e->title_gen;
-
-  env->ReleasePrimitiveArrayCritical(jhdr, hdr, 0);
-  env->ReleasePrimitiveArrayCritical(jdirty, dirtyA, 0);
-  env->ReleasePrimitiveArrayCritical(jflags, flA, 0);
-  env->ReleasePrimitiveArrayCritical(jbg, bgA, 0);
-  env->ReleasePrimitiveArrayCritical(jfg, fgA, 0);
-  env->ReleasePrimitiveArrayCritical(jcp, cp, 0);
 }
 
 void nFetchGraphemes(JNIEnv* env, jclass, jlong h, jintArray out) {
@@ -356,10 +425,31 @@ void nScrollBottom(JNIEnv*, jclass, jlong h) {
   ghostty_terminal_scroll_viewport(H(h)->terminal, b);
 }
 
+// Returns null with an exception pending on failure (oversized or OOM).
 jbyteArray to_java(JNIEnv* env, const uint8_t* p, size_t n) {
+  if (n > static_cast<size_t>(INT32_MAX)) {
+    throw_java(env, "java/lang/OutOfMemoryError", "native result exceeds 2 GiB");
+    return nullptr;
+  }
   jbyteArray r = env->NewByteArray(static_cast<jsize>(n));
+  if (!r) return nullptr;
   if (n) env->SetByteArrayRegion(r, 0, static_cast<jsize>(n), reinterpret_cast<const jbyte*>(p));
   return r;
+}
+
+// First code point of a UTF-8 string (U+FFFD when malformed); only used to derive a physical key.
+uint32_t first_code_point(const uint8_t* s, size_t n) {
+  if (n == 0) return 0;
+  uint8_t b = s[0];
+  if (b < 0x80) return b;
+  size_t len = (b & 0xE0) == 0xC0 ? 2 : (b & 0xF0) == 0xE0 ? 3 : (b & 0xF8) == 0xF0 ? 4 : 0;
+  if (len == 0 || n < len) return 0xFFFD;
+  uint32_t cp = b & (0x7F >> len);
+  for (size_t i = 1; i < len; i++) {
+    if ((s[i] & 0xC0) != 0x80) return 0xFFFD;
+    cp = (cp << 6) | (s[i] & 0x3F);
+  }
+  return cp;
 }
 
 GhosttyKey key_for(int key, int32_t first_cp, uint32_t* unshifted) {
@@ -397,14 +487,15 @@ GhosttyKey key_for(int key, int32_t first_cp, uint32_t* unshifted) {
 // mods bits: 1 shift, 2 ctrl, 4 alt, 8 meta(super).
 jbyteArray nEncodeKey(JNIEnv* env, jclass, jlong h, jint key, jint mods, jbyteArray jtext, jint textLen) {
   Engine* e = H(h);
-  uint8_t text[16];
-  size_t tl = 0;
+  // Whole text: truncating would split UTF-8 sequences (e.g. ZWJ emoji from an IME commit).
+  std::vector<uint8_t> text;
   if (jtext && textLen > 0) {
-    tl = std::min<size_t>(static_cast<size_t>(textLen), sizeof(text));
-    env->GetByteArrayRegion(jtext, 0, static_cast<jsize>(tl), reinterpret_cast<jbyte*>(text));
+    text.resize(static_cast<size_t>(std::min(textLen, env->GetArrayLength(jtext))));
+    env->GetByteArrayRegion(jtext, 0, static_cast<jsize>(text.size()), reinterpret_cast<jbyte*>(text.data()));
+    if (env->ExceptionCheck()) return nullptr;
   }
-  // First code point (ASCII fast path is enough for physical-key derivation).
-  int32_t first = tl ? text[0] : 0;
+  const size_t tl = text.size();
+  int32_t first = static_cast<int32_t>(first_code_point(text.data(), tl));
   uint32_t unshifted = 0;
   GhosttyKey gk = key_for(key, first, &unshifted);
   GhosttyMods gm = 0;
@@ -423,15 +514,21 @@ jbyteArray nEncodeKey(JNIEnv* env, jclass, jlong h, jint key, jint mods, jbyteAr
   ghostty_key_event_set_unshifted_codepoint(e->key_event, unshifted);
   bool control_text = tl == 1 && (text[0] < 0x20 || text[0] == 0x7f);
   if (tl && !control_text && key == 0) {
-    ghostty_key_event_set_utf8(e->key_event, reinterpret_cast<const char*>(text), tl);
+    ghostty_key_event_set_utf8(e->key_event, reinterpret_cast<const char*>(text.data()), tl);
   } else {
     ghostty_key_event_set_utf8(e->key_event, nullptr, 0);
   }
-  char buf[128];
+  std::vector<char> buf(128 + tl * 2);
   size_t written = 0;
-  GhosttyResult r = ghostty_key_encoder_encode(e->key_encoder, e->key_event, buf, sizeof(buf), &written);
+  GhosttyResult r = ghostty_key_encoder_encode(e->key_encoder, e->key_event, buf.data(), buf.size(), &written);
+  if (r == GHOSTTY_OUT_OF_SPACE) {  // written = required size
+    buf.resize(written);
+    r = ghostty_key_encoder_encode(e->key_encoder, e->key_event, buf.data(), buf.size(), &written);
+  }
+  // The event borrows `text`; do not leave a dangling pointer in it.
+  ghostty_key_event_set_utf8(e->key_event, nullptr, 0);
   if (r != GHOSTTY_SUCCESS) written = 0;
-  return to_java(env, reinterpret_cast<uint8_t*>(buf), written);
+  return to_java(env, reinterpret_cast<uint8_t*>(buf.data()), written);
 }
 
 jbyteArray nEncodePaste(JNIEnv* env, jclass, jlong h, jbyteArray jtext) {
@@ -439,6 +536,7 @@ jbyteArray nEncodePaste(JNIEnv* env, jclass, jlong h, jbyteArray jtext) {
   jsize n = env->GetArrayLength(jtext);
   std::vector<char> data(static_cast<size_t>(n));
   if (n) env->GetByteArrayRegion(jtext, 0, n, reinterpret_cast<jbyte*>(data.data()));
+  if (env->ExceptionCheck()) return nullptr;
   GhosttyTerminalModeConfig m{GHOSTTY_MODE_BRACKETED_PASTE, false};
   ghostty_terminal_get(e->terminal, GHOSTTY_TERMINAL_DATA_MODE, &m);
   std::vector<char> out(static_cast<size_t>(n) + 32);
@@ -458,7 +556,7 @@ jbyteArray nDrainEvents(JNIEnv* env, jclass, jlong h) {
   Engine* e = H(h);
   if (e->events.empty()) return nullptr;
   jbyteArray r = to_java(env, e->events.data(), e->events.size());
-  e->events.clear();
+  if (r) e->events.clear();  // on OOM keep them for the next drain
   return r;
 }
 
