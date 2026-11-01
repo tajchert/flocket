@@ -10,8 +10,10 @@ graph TD
   feature_impl --> feature_api["feature:*:api (own and other features)"]
   feature_impl --> core_ui[core:ui]
   feature_impl --> core_data[core:data]
+  feature_impl --> core_terminal
   core_ui --> core_designsystem[core:designsystem]
   core_terminal[core:terminal] --> core_designsystem
+  core_terminal --> core_session
   core_ghostty[core:terminal-ghostty] --> core_terminal
   core_data --> core_session[core:session]
   core_data --> core_ssh[core:ssh]

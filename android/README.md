@@ -4,6 +4,14 @@ Native Android client for [herdr-core](../docs/reference/) (`hc`): browse the te
 
 This is a self-contained Gradle project. Protocol docs and wire fixtures live in [`../protocol`](../protocol), decisions in [`../docs/decisions`](../docs/decisions).
 
+## Features
+
+- Hosts: add over SSH with key or password auth, with host-key trust (pinned on first use, changes flagged).
+- Terminals list grouped by host, with status, filters, stale-data banners and pull to refresh.
+- New terminal on any online host.
+- Interactive terminal screen: extra keys row, soft keyboard (IME) and hardware keyboard input, automatic reconnect.
+- Settings.
+
 ## Requirements
 
 - JDK 21 (the Gradle daemon and toolchain use 21; bytecode targets 17)
@@ -26,7 +34,8 @@ All verification commands: [docs/TESTING.md](docs/TESTING.md).
 | Module | Responsibility | May depend on |
 |---|---|---|
 | `:app` | Activity, Navigation 3 host, Hilt graph | everything |
-| `:benchmark` | Startup benchmark, baseline profile | `:app` (target) |
+| `:benchmark` | Startup and terminal macrobenchmarks, baseline profile (needs a device) | `:app` (target) |
+| `:samples:terminal-playground` | Sample app to try the terminal renderer without SSH: Ghostty engine fed by an in-process fake stream (echo shell, colors, 60 Hz redraw, flood) | `:core:terminal`, `:core:terminal-ghostty`, designsystem, session |
 | `:feature:<x>:api` | Navigation keys, public contracts | `:core:model` |
 | `:feature:<x>:impl` | Screens, ViewModels | own `api`, other features' `api`, `:core:*` |
 | `:core:model` | Domain types (JVM) | none |
@@ -40,7 +49,7 @@ All verification commands: [docs/TESTING.md](docs/TESTING.md).
 | `:core:data` | Repositories, `ConnectionManager` | session, ssh, protocol, database, datastore, security, model, common |
 | `:core:designsystem` | `FlocketTheme`, components | none |
 | `:core:ui` | Shared UI on the design system | designsystem, model, common |
-| `:core:terminal` | `TerminalEngine`, Compose renderer | designsystem, model, common |
+| `:core:terminal` | `TerminalEngine`, `TerminalController`, Compose renderer, IME bridge | designsystem, session, model, common |
 | `:core:terminal-ghostty` | libghostty-vt engine (JNI) | `:core:terminal`, common |
 | `:core:testing` | Fakes and test rules | model, common |
 
