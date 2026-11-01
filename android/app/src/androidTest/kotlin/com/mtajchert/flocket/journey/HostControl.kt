@@ -105,6 +105,15 @@ class HostControl private constructor(
     fun acceptedLogins(): Int =
         run(listOf("sh", "-c", "grep -c 'Accepted publickey' \"$1/sshd.log\" || true", "sh", args.sshdDir)).toInt()
 
+    /**
+     * Runs [script] with `sh -c` on the Mac (`$1`, `$2`, ... are [scriptArgs]); returns trimmed stdout. Throws on a
+     * non-zero exit. For Mac-side helpers of individual journeys (process lookup, sshd control).
+     */
+    fun sh(
+        script: String,
+        vararg scriptArgs: String,
+    ): String = run(listOf("sh", "-c", script, "sh") + scriptArgs)
+
     private fun run(command: List<String>): String =
         runBlocking {
             val r = session.run(command)

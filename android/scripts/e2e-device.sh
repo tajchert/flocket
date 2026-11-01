@@ -217,6 +217,9 @@ cmd_journey() {
     for name in "${tests[@]}"; do
       t0="$(now)"
       device_reset
+      # A journey that stops the harness listener (SshLinkJourneyTest) restarts it in `finally`; this
+      # covers a crash before that. A no-op (~20 ms) when it is running.
+      scripts/dev-sshd.sh start "$SSHD_PORT" >/dev/null
       A shell pm clear "$APP_ID" >/dev/null
       A shell pm grant "$APP_ID" android.permission.POST_NOTIFICATIONS >/dev/null 2>&1 || true
       keyboards_off
