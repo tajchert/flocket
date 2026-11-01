@@ -155,6 +155,26 @@ class TerminalsLogicTest {
         assertTrue(state(ListControls()).local().spaces.isEmpty())
     }
 
+    @Test
+    fun `row item carries the matched agent id`() {
+        val claude =
+            SampleData.terminal(
+                address = "t1",
+                name = null,
+                argv = listOf("node", "/usr/bin/claude"),
+                status = AgentStatus.Reported(AgentState.Working, "working", app = "claude-code"),
+            )
+        val unknownApp =
+            SampleData.terminal(
+                address = "t2",
+                name = null,
+                argv = listOf("node", "/srv/mytool.js"),
+                status = AgentStatus.Reported(AgentState.Working, "working", app = "mytool"),
+            )
+        assertEquals("claude", claude.toItem(writable = true).agentId)
+        assertNull(unknownApp.toItem(writable = true).agentId)
+    }
+
     private fun terminal(
         address: String,
         state: AgentState?,

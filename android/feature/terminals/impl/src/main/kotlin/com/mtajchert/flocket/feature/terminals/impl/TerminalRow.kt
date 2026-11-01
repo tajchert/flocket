@@ -50,6 +50,7 @@ import androidx.compose.ui.unit.dp
 import com.mtajchert.flocket.core.model.AgentState
 import com.mtajchert.flocket.core.model.AgentStatus
 import com.mtajchert.flocket.core.model.BlockKind
+import com.mtajchert.flocket.core.ui.component.AgentIcon
 import com.mtajchert.flocket.core.ui.component.AgentStatusChip
 
 /** One terminal. Tap opens it; long-press or the overflow button opens the action menu. */
@@ -86,6 +87,7 @@ internal fun TerminalRow(
                 ),
             verticalAlignment = if (dense) Alignment.CenterVertically else Alignment.Top,
         ) {
+            AgentIcon(item.agentId, Modifier.padding(end = 12.dp, top = if (dense) 0.dp else 2.dp))
             if (dense) {
                 DenseBody(item, label, nowMs, place, Modifier.weight(1f))
             } else {

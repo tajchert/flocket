@@ -64,6 +64,20 @@ class TerminalTabStripModelTest {
     }
 
     @Test
+    fun `strip tab carries its target pane's agent`() {
+        val ws = workspace(tab("a", "t1"), tab("b", "t2", "t3", active = "t3"), tab("c", "t4"))
+        val records =
+            listOf(
+                record("t1", argv = "codex"),
+                record("t2", argv = "claude"),
+                record("t3", argv = "gemini"),
+                record("t4"),
+            )
+        val strip = buildTabStrip(ws, records, addr("t1"))!!
+        assertEquals(listOf("codex", "gemini", null), strip.tabs.map { it.agentId })
+    }
+
+    @Test
     fun `the open terminal is the target of its own tab even when another pane is active`() {
         val ws = workspace(tab("a", "t1", "t2", active = "t1"), tab("b", "t3"))
         val strip = buildTabStrip(ws, listOf(record("t2")), addr("t2"))!!

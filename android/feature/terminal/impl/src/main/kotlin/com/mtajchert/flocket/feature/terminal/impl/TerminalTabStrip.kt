@@ -38,6 +38,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.mtajchert.flocket.core.model.AgentState
+import com.mtajchert.flocket.core.ui.component.AgentIcon
 
 /** The whole strip is this tall, so it costs one text row on a landscape phone. */
 private val StripHeight = 40.dp
@@ -83,6 +84,8 @@ fun TerminalTabStrip(
                         tab.state,
                         tab.selected,
                         "terminal_tab",
+                        showIcon = true,
+                        agentId = tab.agentId,
                     ) { onOpen(tab.target) }
                 }
             }
@@ -113,6 +116,8 @@ private fun StripChip(
     state: AgentState?,
     selected: Boolean,
     tag: String,
+    showIcon: Boolean = false,
+    agentId: String? = null,
     onClick: () -> Unit,
 ) {
     val scheme = MaterialTheme.colorScheme
@@ -144,6 +149,7 @@ private fun StripChip(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
+                if (showIcon) AgentIcon(agentId, size = 16.dp)
                 if (state != null) StatusDot(state)
                 Text(
                     text = text,

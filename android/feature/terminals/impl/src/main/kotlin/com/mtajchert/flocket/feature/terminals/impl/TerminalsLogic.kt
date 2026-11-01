@@ -1,6 +1,7 @@
 package com.mtajchert.flocket.feature.terminals.impl
 
 import com.mtajchert.flocket.core.data.HostOverview
+import com.mtajchert.flocket.core.model.AgentCatalog
 import com.mtajchert.flocket.core.model.AgentState
 import com.mtajchert.flocket.core.model.AgentStatus
 import com.mtajchert.flocket.core.model.ConnectionState
@@ -40,6 +41,7 @@ internal fun TerminalRecord.toItem(writable: Boolean): TerminalItem {
         ref = ref,
         key = "${endpoint.hostId.value}/${endpoint.session.orEmpty()}/${address.value}",
         agentLabel = agentLabel,
+        agentId = AgentCatalog.of(this)?.id,
         name = name,
         status = status,
         headline = title.ifBlank { where.orEmpty() },

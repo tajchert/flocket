@@ -1,6 +1,7 @@
 package com.mtajchert.flocket.feature.terminal.impl
 
 import androidx.compose.runtime.Immutable
+import com.mtajchert.flocket.core.model.AgentCatalog
 import com.mtajchert.flocket.core.model.AgentState
 import com.mtajchert.flocket.core.model.AgentStatus
 import com.mtajchert.flocket.core.model.DesktopLayout
@@ -36,6 +37,8 @@ data class StripTab(
     val target: String,
     /** 1-based place in the space. */
     val number: Int = 1,
+    /** The catalog id of the agent in the [target] pane, if known. */
+    val agentId: String? = null,
 )
 
 @Immutable
@@ -82,6 +85,16 @@ fun buildTabStrip(
                 // The open terminal stays the target of its own tab, so re-tapping it is a no-op.
                 target = if (tab.key == currentTab.key) current.value else target.value,
                 number = tab.number,
+                agentId =
+                    byAddress[
+                        if (tab.key ==
+                            currentTab.key
+                        ) {
+                            current
+                        } else {
+                            target
+                        },
+                    ]?.let { AgentCatalog.of(it)?.id },
             )
         }
     // Panes matter only when there is something to switch between.
