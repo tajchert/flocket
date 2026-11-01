@@ -63,7 +63,7 @@ class WorkspaceGroupingTest {
 
     @Test
     fun `desktop layout orders spaces, tabs and panes like the document`() {
-        val terms = listOf(term("t1"), term("t2"), term("t3"), term("t4"))
+        val terms = listOf(term("t1"), term("t2"), term("t3", cwd = "/src/web"), term("t4"))
         val l =
             layout(
                 space("sp2", tab("tbA", "t3"), name = "web", folder = "/src/web"),
@@ -90,8 +90,8 @@ class WorkspaceGroupingTest {
     }
 
     @Test
-    fun `unnamed desktop spaces fall back to the folder, then Space N`() {
-        val terms = listOf(term("t1"), term("t2"), term("t3"))
+    fun `unnamed desktop spaces without a live folder fall back to the document folder, then Space N`() {
+        val terms = listOf(term("t1", cwd = ""), term("t2", cwd = ""), term("t3", cwd = ""))
         val l =
             layout(
                 space("a", tab("x", "t1"), folder = "/Users/me/code/flocket/"),
@@ -200,6 +200,56 @@ class WorkspaceGroupingTest {
     }
 
     @Test
+    fun `desktop spaces are named after their first terminal's live folder, not the stale document folder`() {
+        // Real data: the desktop space was created in kanarek-android, but its terminals all run in flocket.
+        fun live(
+            address: String,
+            start: String,
+            now: String?,
+        ) = term(
+            address,
+            cwd = start,
+        ).copy(foreground = now?.let { ForegroundProcess(1, "claude", listOf("claude"), it) })
+        val terms =
+            listOf(
+                live("t1g", "/src/flocket", "/src/flocket"),
+                live("t1j", "/src/flocket", "/src/flocket"),
+                live("t14", "/src/flocket", "/src/carom"),
+                live("t19", "/src/kanarek-android", null),
+            )
+        val l =
+            layout(
+                space("sp1", tab("a", "t1g"), tab("b", "t1j"), folder = "/src/kanarek-android"),
+                space("sp2", tab("a", "t14"), folder = "/src/flocket"),
+                space("sp3", tab("a", "t19"), folder = "/src/elsewhere"),
+                space("sp4", tab("a", "gone"), folder = "/src/empty"),
+            )
+        val w = buildWorkspace(terms, l)
+        // Foreground folder first, else the start folder (like the desktop's `where` label).
+        assertEquals(listOf("flocket", "carom", "kanarek-android"), w.spaces.map { it.name })
+        assertEquals(listOf("/src/flocket", "/src/carom", "/src/kanarek-android"), w.spaces.map { it.folder })
+    }
+
+    @Test
+    fun `folder terminals join a space by its live folder, not the stale document folder`() {
+        val terms =
+            listOf(
+                term("t1", cwd = "/src/flocket"),
+                term("t2", cwd = "/src/kanarek-android"),
+                term("t3", cwd = "/src/flocket/"),
+            )
+        val l = layout(space("sp1", tab("a", "t1"), folder = "/src/kanarek-android"))
+        val w = buildWorkspace(terms, l)
+        assertEquals(
+            listOf(
+                "desktop:sp1" to listOf("a" to listOf("t1"), "all" to listOf("t3")),
+                "folder::/src/kanarek-android" to listOf("all" to listOf("t2")),
+            ),
+            w.shape(),
+        )
+    }
+
+    @Test
     fun `folder only groups by start folder, not the foreground folder`() {
         val moved =
             term(
@@ -269,7 +319,7 @@ class WorkspaceGroupingTest {
     fun `an unplaced terminal whose folder equals a layout space folder joins the first such space`() {
         val terms =
             listOf(
-                term("t1"),
+                term("t1", cwd = "/src/api"),
                 term("t2", cwd = "/src/api"),
                 term("t3", cwd = "/src/web/"),
                 term("t4", cwd = "/src/other"),
@@ -306,7 +356,7 @@ class WorkspaceGroupingTest {
         val terms =
             listOf(
                 term("t7", cwd = "/l"),
-                term("rohan/t7", cwd = "/r"),
+                term("rohan/t7", cwd = "/r/app"),
                 term("rohan/t8", space = "ls", tab = "lt", cwd = "/r"),
                 term("rohan/t9", cwd = "/r/app"),
                 term("mordor/t7", cwd = "/r"),

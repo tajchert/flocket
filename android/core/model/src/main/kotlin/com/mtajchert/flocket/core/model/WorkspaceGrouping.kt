@@ -15,9 +15,14 @@ package com.mtajchert.flocket.core.model
  *    space joins that space (as the desktop app would show it); other label spaces follow the desktop
  *    ones in order of first appearance.
  * 3. the start folder ([TerminalRecord.cwd], not the foreground one, so rows don't jump). A terminal
- *    whose folder equals (ignoring trailing `/`) the folder of a desktop or label space of its scope
- *    joins the first such space, in one trailing implicit tab. Any other gets one
+ *    whose folder equals (ignoring trailing `/`) the shown folder of a desktop or label space of its
+ *    scope joins the first such space, in one trailing implicit tab. Any other gets one
  *    [SpaceSource.Folder] space with one implicit tab per folder, in order of first appearance.
+ *
+ * A desktop or label space shows its first terminal's live folder ([TerminalRecord.displayCwd]), like
+ * the desktop app (SPEC §9.1). The document's `folder` is only a fallback for a space with no live
+ * terminal: it is where the space was created and goes stale once its terminals run elsewhere.
+ * Unnamed spaces are named after the shown folder.
  *
  * Names may be blank (an unnamed desktop or label space without a folder, an unnamed tab): the UI
  * shows "Space [WorkspaceSpace.number]" / "Tab [WorkspaceTab.number]". Machine spaces have keys
@@ -53,6 +58,7 @@ private fun groupScope(
     keys: KeyAllocator,
 ): List<SpaceDraft> {
     val inScope = scope.mapTo(HashSet()) { it.address }
+    val records = scope.associateBy { it.address }
     val prefix = machine?.let { "$it:" }.orEmpty()
     val placed = HashSet<TerminalAddress>()
     val spaces = mutableListOf<SpaceDraft>()
@@ -110,11 +116,11 @@ private fun groupScope(
     spaces += labelSpaces.values
 
     // 3. Start folder: join the first space with that folder, else one Folder space per folder.
-    val known = spaces.toList()
+    val known = spaces.map { it to normalizedFolder(it.shownFolder(records)) }
     val folderSpaces = LinkedHashMap<String, SpaceDraft>()
     for (t in scope) {
         if (t.address in placed) continue
-        val joined = normalizedFolder(t.cwd)?.let { f -> known.firstOrNull { normalizedFolder(it.folder) == f } }
+        val joined = normalizedFolder(t.cwd)?.let { f -> known.firstOrNull { it.second == f }?.first }
         if (joined != null) {
             joined.implicitTab().panes += t.address
             continue
@@ -207,6 +213,16 @@ private class SpaceDraft(
 
     private var implicit: TabDraft? = null
 
+    /**
+     * The folder to show: for a desktop or label space its first terminal's live folder, else the
+     * stored [folder]. A [SpaceSource.Folder] space keeps its start folder (it is the grouping key).
+     */
+    fun shownFolder(records: Map<TerminalAddress, TerminalRecord>): String? {
+        if (source == SpaceSource.Folder) return folder
+        val first = tabs.firstNotNullOfOrNull { t -> t.panes.firstNotNullOfOrNull { records[it] } }
+        return first?.displayCwd?.takeIf { it.isNotBlank() } ?: folder
+    }
+
     fun build(records: Map<TerminalAddress, TerminalRecord>): WorkspaceSpace {
         val builtTabs =
             tabs.filter { it.panes.isNotEmpty() }.mapIndexed { i, t ->
@@ -219,10 +235,11 @@ private class SpaceDraft(
                     number = i + 1,
                 )
             }
+        val shown = shownFolder(records)
         return WorkspaceSpace(
             key = key,
-            name = name.ifEmpty { folderName(folder).orEmpty() },
-            folder = folder,
+            name = name.ifEmpty { folderName(shown).orEmpty() },
+            folder = shown,
             source = source,
             machine = machine,
             tabs = builtTabs,
