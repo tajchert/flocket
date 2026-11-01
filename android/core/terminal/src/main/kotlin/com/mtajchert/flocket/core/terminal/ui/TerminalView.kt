@@ -321,7 +321,9 @@ class TerminalView(
         for (r in 0 until rows) {
             if (hw) {
                 val node = rowNodes[r]!!
-                if (!rowValid[r]) {
+                // The window's renderer drops our display lists when it releases its resources
+                // (app backgrounded, trim memory): re-record those rows too.
+                if (!rowValid[r] || !node.hasDisplayList()) {
                     node.setPosition(0, r * ch, ceil(contentW).toInt(), (r + 1) * ch)
                     val rc = node.beginRecording()
                     renderer.drawRow(rc, render, r, bg, g)
@@ -352,7 +354,7 @@ class TerminalView(
     ) {
         if (hw) {
             val node = aboveNode ?: RenderNode("terminal-row-above").also { aboveNode = it }
-            if (!aboveValid) {
+            if (!aboveValid || !node.hasDisplayList()) {
                 node.setPosition(0, -ch, ceil(contentW).toInt(), 0)
                 val rc = node.beginRecording()
                 renderer.drawRow(rc, above.cells, 0, bg, aboveGrapheme)

@@ -3,12 +3,16 @@ package com.mtajchert.flocket.core.terminal
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.view.PixelCopy
 import android.view.View
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ViewModel
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -36,6 +40,8 @@ import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 
 /** Stream whose output is a channel; counts how often it is (re)collected = (re)attached. */
@@ -154,6 +160,52 @@ class TerminalSurfaceDeviceTest {
                 val bg = TerminalThemes.Dark.background
                 (0 until bmp.width / 2).any { x -> (0 until bmp.height / 10).any { y -> bmp.getPixel(x, y) != bg } }
             }
+        }
+    }
+
+    /** What is really on screen (hardware rendering, row RenderNodes), unlike [terminalBitmap]. */
+    private fun ActivityScenario<TerminalTestActivity>.screenBitmap(): Bitmap {
+        lateinit var window: android.view.Window
+        lateinit var bmp: Bitmap
+        onActivity { a ->
+            window = a.window
+            bmp = Bitmap.createBitmap(a.window.decorView.width, a.window.decorView.height, Bitmap.Config.ARGB_8888)
+        }
+        val done = CountDownLatch(1)
+        var result = -1
+        PixelCopy.request(window, bmp, { r ->
+            result = r
+            done.countDown()
+        }, Handler(Looper.getMainLooper()))
+        check(done.await(5, TimeUnit.SECONDS) && result == PixelCopy.SUCCESS) { "PixelCopy $result" }
+        return bmp
+    }
+
+    /** Text in the first row beyond its first cells (not just a cursor at 0,0). */
+    private fun Bitmap.hasFirstRowText(): Boolean {
+        val bg = TerminalThemes.Dark.background
+        return (width / 8 until width / 4).any { x -> (0 until height / 30).any { y -> getPixel(x, y) != bg } }
+    }
+
+    @Test
+    fun rowsAreRedrawnAfterTheAppComesBackFromTheBackground() {
+        ActivityScenario.launch(TerminalTestActivity::class.java).use { scenario ->
+            lateinit var vm: TerminalTestViewModel
+            scenario.onActivity { vm = it.vm }
+            // The cursor is hidden: it is drawn without display lists and its look follows focus.
+            runBlocking { vm.stream.chunks.send("\u001b[?25lfirst row\r\nsecond row".encodeToByteArray()) }
+            waitFor { runBlocking { vm.controller.screenText() }.contains("second row") }
+            waitFor { scenario.screenBitmap().hasFirstRowText() }
+            Thread.sleep(300)
+            val before = scenario.screenBitmap()
+            // Stopping releases the window's hardware resources, including the display lists of the
+            // per-row RenderNodes; nothing new arrives on the stream while we are away.
+            scenario.moveToState(Lifecycle.State.CREATED)
+            InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+            scenario.moveToState(Lifecycle.State.RESUMED)
+            InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+            Thread.sleep(300)
+            assertTrue("the same screen is drawn after returning", scenario.screenBitmap().sameAs(before))
         }
     }
 
