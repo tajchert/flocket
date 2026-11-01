@@ -112,7 +112,14 @@ fun TerminalRouteContent(
     val context = LocalContext.current
     val view = LocalView.current
     val surfaceState = remember { TerminalSurfaceState() }
-    val close by rememberUpdatedState(onClose)
+    val onCloseUpdated by rememberUpdatedState(onClose)
+
+    // Leaving for the list must not leave the soft keyboard up over it. Hide it while the terminal
+    // view is still attached (it holds the window token the IME is bound to).
+    fun close() {
+        surfaceState.hideKeyboard()
+        onCloseUpdated()
+    }
     val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
     val theme = remember(dark, state.colorScheme) { TerminalThemes.forScheme(state.colorScheme, dark) }
     val imeVisible = WindowInsets.isImeVisible
