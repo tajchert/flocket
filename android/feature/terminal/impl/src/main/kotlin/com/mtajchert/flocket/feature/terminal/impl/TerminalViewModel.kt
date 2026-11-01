@@ -26,6 +26,7 @@ import com.mtajchert.flocket.core.terminal.controller.TerminalController
 import com.mtajchert.flocket.core.ui.error.UiText
 import com.mtajchert.flocket.core.ui.error.toRenameText
 import com.mtajchert.flocket.core.ui.error.toUiError
+import com.mtajchert.flocket.core.ui.error.unreachableRenameText
 import com.mtajchert.flocket.feature.terminal.api.TerminalRoute
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedFactory
@@ -388,8 +389,7 @@ class TerminalViewModel
             placeholder: String,
         ) {
             if (!canRename(ref)) {
-                val text = AppError.ConnectionLost.toRenameText(ref, hostLabel())
-                if (text != null) send(TerminalScreenEvent.Message(text))
+                send(TerminalScreenEvent.Message(unreachableRenameText(ref, hostLabel())))
                 return
             }
             local.update { it.copy(rename = RenameUi(ref, placeholder, current)) }
@@ -403,7 +403,11 @@ class TerminalViewModel
         fun confirmRename() {
             val r = local.value.rename ?: return
             local.update { it.copy(rename = null) }
-            val s = session.value ?: return
+            val s = session.value
+            if (s == null) {
+                send(TerminalScreenEvent.Message(unreachableRenameText(r.ref, hostLabel())))
+                return
+            }
             viewModelScope.launch {
                 val failure = (s.renameInLayout(r.ref, r.text.trim()) as? AppResult.Failure)?.error ?: return@launch
                 val text = failure.toRenameText(r.ref, hostLabel())

@@ -10,8 +10,13 @@ import com.mtajchert.flocket.core.data.UserPreferences
 import com.mtajchert.flocket.core.model.BellMode
 import com.mtajchert.flocket.core.model.ClipboardWritePolicy
 import com.mtajchert.flocket.core.model.ConnectionState
+import com.mtajchert.flocket.core.model.DesktopLayout
+import com.mtajchert.flocket.core.model.DesktopSpace
+import com.mtajchert.flocket.core.model.DesktopTab
 import com.mtajchert.flocket.core.model.LayoutRef
 import com.mtajchert.flocket.core.model.Liveness
+import com.mtajchert.flocket.core.model.MachineInfo
+import com.mtajchert.flocket.core.model.MachineState
 import com.mtajchert.flocket.core.model.TerminalAddress
 import com.mtajchert.flocket.core.model.TerminalColorScheme
 import com.mtajchert.flocket.core.session.AttachRequest
@@ -562,6 +567,75 @@ class TerminalViewModelTest {
                 TerminalScreenEvent.Message(
                     UiText.Res(UiR.string.rename_error_unreachable, listOf(SampleData.studio.label)),
                 ),
+                vm.events.first(),
+            )
+        }
+
+    private fun federatedSetup(machineState: MachineState) {
+        session.update {
+            it.copy(
+                connection = ConnectionState.Online(SampleData.coreInfo),
+                terminals =
+                    listOf(
+                        SampleData.terminal(address = "rohan/t7", name = "a", argv = listOf("sh")),
+                        SampleData.terminal(address = "rohan/t8", name = "b", argv = listOf("sh")),
+                    ),
+                machines = listOf(MachineInfo("rohan", machineState, machineState.name.lowercase())),
+                machineLayouts =
+                    mapOf(
+                        "rohan" to
+                            DesktopLayout(
+                                listOf(
+                                    DesktopSpace(
+                                        "rs1",
+                                        "ops",
+                                        null,
+                                        listOf(
+                                            DesktopTab("tb1", "", listOf(TerminalAddress("t7")), null),
+                                            DesktopTab("tb2", "", listOf(TerminalAddress("t8")), null),
+                                        ),
+                                    ),
+                                ),
+                            ),
+                    ),
+            )
+        }
+    }
+
+    @Test
+    fun `a federated tab is renameable only while its machine is connected`() =
+        runTest {
+            val vm = viewModel(address = "rohan/t7")
+            backgroundScope.launch { vm.tabStrip.collect {} }
+            federatedSetup(MachineState.Connected)
+            advanceUntilIdle()
+            assertEquals(
+                listOf(LayoutRef("rohan", "rs1", "tb1"), LayoutRef("rohan", "rs1", "tb2")),
+                vm.tabStrip.value!!
+                    .tabs
+                    .map { it.layoutRef },
+            )
+            federatedSetup(MachineState.Unreachable)
+            advanceUntilIdle()
+            assertEquals(
+                listOf(null, null),
+                vm.tabStrip.value!!
+                    .tabs
+                    .map { it.layoutRef },
+            )
+        }
+
+    @Test
+    fun `rename of a federated tab with its machine unreachable names the machine`() =
+        runTest {
+            val vm = viewModel(address = "rohan/t7")
+            federatedSetup(MachineState.Unreachable)
+            advanceUntilIdle()
+            vm.requestRename(LayoutRef("rohan", "rs1", "tb1"), "old", "1")
+            assertNull(vm.uiState.value.rename)
+            assertTrue(session.calls.none { it.startsWith("rename:") })
+            assertEquals(
+                TerminalScreenEvent.Message(UiText.Res(UiR.string.rename_error_unreachable, listOf("rohan"))),
                 vm.events.first(),
             )
         }

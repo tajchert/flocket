@@ -544,10 +544,18 @@ class TerminalsViewModelTest {
             }
             assertNull(vm.dialog.value)
             assertTrue(session.calls.none { it.startsWith("rename:") })
-            // A federated space whose machine is not in the connected state is refused too.
+            // A stale host is named by its label; a federated space whose machine is not connected, by the machine.
+            vm.events.test {
+                vm.requestRename(hetzner, spaceRef, "old", "auto")
+                val host = (awaitItem() as TerminalsEvent.Info).text as UiText.Res
+                assertEquals(UiR.string.rename_error_unreachable, host.id)
+                assertEquals(listOf<Any>(SampleData.hetzner.label), host.args)
+            }
             vm.events.test {
                 vm.requestRename(studio, LayoutRef("ghost", "gs"), "old", "auto")
-                assertTrue(awaitItem() is TerminalsEvent.Info)
+                val machine = (awaitItem() as TerminalsEvent.Info).text as UiText.Res
+                assertEquals(UiR.string.rename_error_unreachable, machine.id)
+                assertEquals(listOf<Any>("ghost"), machine.args)
             }
             assertNull(vm.dialog.value)
         }

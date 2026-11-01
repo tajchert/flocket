@@ -156,7 +156,7 @@ private fun normalizedFolder(path: String?): String? = path?.trim()?.trimEnd('/'
 private const val FOLDER_TAB = "all"
 
 /** Display name for [path]: its last segment; `~` and `/` stay as they are; null when blank. */
-internal fun folderName(path: String?): String? {
+fun folderName(path: String?): String? {
     val p = path?.trim().orEmpty()
     if (p.isEmpty()) return null
     val trimmed = p.trimEnd('/', '\\')

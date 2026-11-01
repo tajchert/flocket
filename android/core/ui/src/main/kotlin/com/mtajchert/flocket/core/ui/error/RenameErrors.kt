@@ -41,3 +41,9 @@ fun AppError.toRenameText(
             null
         }
     }
+
+/** The refusal for a rename of [ref] that cannot start: names its machine when federated, else [hostLabel]. */
+fun unreachableRenameText(
+    ref: LayoutRef,
+    hostLabel: String,
+): UiText = UiText.Res(R.string.rename_error_unreachable, listOf(ref.machine ?: hostLabel))

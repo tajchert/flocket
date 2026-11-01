@@ -24,6 +24,7 @@ import com.mtajchert.flocket.core.ui.error.UiErrorAction
 import com.mtajchert.flocket.core.ui.error.UiText
 import com.mtajchert.flocket.core.ui.error.toRenameText
 import com.mtajchert.flocket.core.ui.error.toUiError
+import com.mtajchert.flocket.core.ui.error.unreachableRenameText
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
@@ -249,7 +250,7 @@ class TerminalsViewModel
 
         // ---- rename -----------------------------------------------------------------------------
 
-        /** Opens the rename dialog for a desktop space or tab; refused while the host or machine is not reachable. */
+        /** Opens the rename dialog for a desktop space or tab; refused with the unreachable message while the host or machine cannot be written. */
         fun requestRename(
             hostId: HostId,
             ref: LayoutRef,
@@ -262,7 +263,7 @@ class TerminalsViewModel
                 overview?.session?.connection is ConnectionState.Online &&
                     (ref.machine == null || machine?.state == MachineState.Connected)
             if (!reachable) {
-                send(TerminalsEvent.Info(UiText.Res(R.string.msg_read_only)))
+                send(TerminalsEvent.Info(unreachableRenameText(ref, overview?.host?.label.orEmpty())))
                 return
             }
             dialogState.value = TerminalDialog.Rename(hostId, ref, current, placeholder)

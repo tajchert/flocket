@@ -228,6 +228,16 @@ class TerminalsLogicTest {
     }
 
     @Test
+    fun `a space's automatic name is its folder's name, via the model's folderName`() {
+        val rows =
+            state(
+                ListControls(showFinished = true),
+            ).local().priority.flatMap { it.rows }.associateBy { it.item.address }
+        assertEquals("flocket", rows.getValue("t1").place.spaceAutoName)
+        assertEquals("docs", rows.getValue("t3").place.spaceAutoName)
+    }
+
+    @Test
     fun `empty priority sections are hidden`() {
         val sections = state(ListControls()).local().priority
         assertFalse(PriorityBucket.Finished in sections.map { it.bucket })
