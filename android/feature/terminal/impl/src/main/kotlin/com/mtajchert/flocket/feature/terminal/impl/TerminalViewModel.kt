@@ -39,6 +39,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
@@ -153,6 +154,17 @@ class TerminalViewModel
                             !prefs.notificationPermissionAsked && !loc.notificationAsked,
                 )
             }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), TerminalUiState(address = route.address))
+
+        /**
+         * The space's tabs and this tab's panes (null = nothing to switch between). A separate flow from
+         * [uiState], deduplicated on the built value, so status ticks and foreground polls on other
+         * terminals never recompose the terminal itself.
+         */
+        val tabStrip: StateFlow<TabStripUi?> =
+            sessionState
+                .map { st -> st?.let { buildTabStrip(it.terminals, it.desktopLayout, address) } }
+                .distinctUntilChanged()
+                .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
         init {
             viewModelScope.launch { run() }

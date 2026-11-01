@@ -2,6 +2,15 @@
 <resources>
     <!-- Top bar -->
     <string name="terminal_back">Back</string>
+    <string name="terminal_sidebar_hide">Hide sidebar</string>
+    <string name="terminal_sidebar_show">Show sidebar</string>
+    <string name="terminal_tab_format">%1$s, %2$s</string>
+    <string name="terminal_tab_state_idle">idle</string>
+    <string name="terminal_tab_state_working">working</string>
+    <string name="terminal_tab_state_done">done</string>
+    <string name="terminal_tab_state_blocked">needs input</string>
+    <string name="terminal_tab_state_error">error</string>
+    <string name="terminal_tab_state_other">status reported</string>
     <string name="terminal_subtitle_host">%1$s · %2$s</string>
     <string name="terminal_subtitle_machine">%1$s · %2$s · %3$s</string>
     <string name="terminal_action_fit">Fit to screen</string>
