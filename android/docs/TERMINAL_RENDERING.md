@@ -193,6 +193,12 @@ renderer. Physical-device numbers still need a device.
 | `TerminalFloodBenchmark.fullScreenRedraw` (htop-like, 60 Hz full redraw) | 2.6 / 5.0 / (P95 5.9) | not recorded |
 | `TerminalScrollBenchmark.flingScrollback` (3000 lines, 3 flings up and down) | 1.6 / 6.2 / 19.6 | -13.3 / -6.1 / 4.5 |
 
+**Emulator numbers drift between days, so compare A/B, never against this table alone.** On 2026-11-01 (M1.1) the
+same AVD gave P50 ≈ 7 ms for the *unchanged* pre-M1.1 build. Interleaved runs of the builds before and after smooth
+scrolling and selection overlapped within noise (flood P90 17.2-21.3 ms before vs 7.9-17.6 after; fling P90 17.2-17.5
+vs 8.0-17.0). To A/B: build both commits' `:samples:terminal-playground` and `:benchmark` `benchmarkRelease` APKs (a
+second worktree for the old commit) and alternate runs on one emulator.
+
 The flood P90 is not within the 8 ms target on the emulator. The P50 is CPU work (UI thread recording dirty rows plus
 RenderThread); the slow tail matches the emulated GPU's per-frame cost (RenderThread waits for buffers), and the htop
 redraw, which records just as many rows but mostly rects, has a P90 of 5 ms. Re-measure on a physical device before
