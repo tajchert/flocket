@@ -1,4 +1,4 @@
-// :feature:/Users/mtajchert/coding/priv/flocket/android/onboardingpi - Navigation keys and public contracts of the onboarding feature. Other modules may depend on
+// :feature:onboarding:api - Navigation keys and public contracts of the onboarding feature. Other modules may depend on
 // this module. May depend on: :core:model, Navigation 3 runtime. Never on an :impl module.
 plugins {
     id("flocket.android.library")

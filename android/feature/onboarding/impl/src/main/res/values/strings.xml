@@ -1,0 +1,56 @@
+<resources>
+    <string name="onboarding_step_of">Step %1$d of %2$d</string>
+    <string name="onboarding_back">Back</string>
+
+    <string name="welcome_title">Flocket</string>
+    <string name="welcome_tagline">Your herd of terminals, in your pocket</string>
+    <string name="welcome_point_overview_title">Every terminal at a glance</string>
+    <string name="welcome_point_overview_body">See the agents running on your machines, what they are doing, and which ones need you.</string>
+    <string name="welcome_point_answer_title">Answer from anywhere</string>
+    <string name="welcome_point_answer_body">Approve a permission or reply to an agent from your phone, then get on with your day.</string>
+    <string name="welcome_point_private_title">Private by design</string>
+    <string name="welcome_point_private_body">Everything travels over SSH to your own machines. No account, no cloud relay.</string>
+    <string name="welcome_get_started">Get started</string>
+
+    <string name="prereq_title">What you’ll need</string>
+    <string name="prereq_body">A machine running herdr-core that you can reach over SSH: a Mac, a Linux box, a Raspberry Pi or a VPS.</string>
+    <string name="prereq_link">herdr-core on GitHub</string>
+    <string name="prereq_url" translatable="false">https://github.com/herdrdev/herdr-core</string>
+    <string name="prereq_check_title">Check it’s installed</string>
+    <string name="prereq_check_body">Run this on the machine. It should print a version.</string>
+    <string name="prereq_check_command" translatable="false">hc --version</string>
+    <string name="prereq_copy">Copy command</string>
+    <string name="prereq_copied">Copied</string>
+    <string name="prereq_tip_title">Away from home?</string>
+    <string name="prereq_tip_body">Tailscale gives each machine a stable address that works over mobile data. On the same Wi-Fi, a .local name or the LAN IP address is enough.</string>
+    <string name="prereq_continue">I have one</string>
+
+    <string name="key_title">This device’s key</string>
+    <string name="key_body">Flocket signs in with an SSH key that never leaves this phone. You add its public half to your machine once.</string>
+    <string name="key_generate">Generate key</string>
+    <string name="key_generating">Generating…</string>
+    <string name="key_continue">Continue</string>
+    <string name="key_import">Import an existing key</string>
+    <string name="key_import_hide">Cancel import</string>
+    <string name="key_import_pem">Private key (PEM or OpenSSH)</string>
+    <string name="key_import_passphrase">Passphrase (if it has one)</string>
+    <string name="key_import_action">Import key</string>
+    <string name="key_use_password">Use a password instead</string>
+    <string name="key_ready">Key ready. Add it to your machine before connecting.</string>
+
+    <string name="host_title">Add your machine</string>
+    <string name="host_body">Where can Flocket reach it?</string>
+    <string name="host_save">Save and connect</string>
+
+    <string name="connect_title">Connecting to %1$s</string>
+    <string name="connect_progress">Opening a secure connection and looking for herdr-core…</string>
+    <string name="connect_success_title">Connected</string>
+    <string name="connect_success_body">Found herdr-core on %1$s. Taking you to your terminals.</string>
+    <string name="connect_success_body_unnamed">Found herdr-core. Taking you to your terminals.</string>
+    <string name="connect_edit_host">Edit host</string>
+    <string name="connect_finish_later">Finish later</string>
+    <string name="connect_password_title">Password for %1$s</string>
+    <string name="connect_password_label">Password</string>
+    <string name="connect_password_connect">Connect</string>
+    <string name="connect_install_url" translatable="false">https://github.com/herdrdev/herdr-core</string>
+</resources>
