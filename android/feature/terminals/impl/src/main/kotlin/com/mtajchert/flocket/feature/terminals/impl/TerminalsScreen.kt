@@ -3,24 +3,32 @@
 package com.mtajchert.flocket.feature.terminals.impl
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.CloudOff
 import androidx.compose.material.icons.outlined.Devices
 import androidx.compose.material.icons.outlined.Dns
+import androidx.compose.material.icons.outlined.ExpandLess
+import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.FilterListOff
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.Terminal
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -42,15 +50,20 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.mtajchert.flocket.core.model.AgentState
 import com.mtajchert.flocket.core.model.HostId
 import com.mtajchert.flocket.core.model.MachineState
 import com.mtajchert.flocket.core.ui.component.CenteredContent
@@ -60,6 +73,7 @@ import com.mtajchert.flocket.core.ui.component.ErrorBanner
 import com.mtajchert.flocket.core.ui.component.StaleDataBanner
 import com.mtajchert.flocket.core.ui.component.rememberNowMs
 import com.mtajchert.flocket.core.ui.error.UiErrorAction
+import com.mtajchert.flocket.core.ui.nav.LocalPaneLayout
 import com.mtajchert.flocket.feature.terminal.api.TerminalRoute
 
 /** Everything the screen can ask for; the route wires it to the ViewModel. Defaults keep previews and tests terse. */
@@ -90,17 +104,26 @@ fun TerminalsScreen(
     nowMs: Long = rememberNowMs(intervalMs = 30_000L),
     snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
 ) {
+    val dense = LocalPaneLayout.current.multiPane
+    val canAdd = state.emptyKind != EmptyKind.NoHosts && state.loaded
     Scaffold(
         modifier = modifier,
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(R.string.terminals_title)) },
-                actions = { if (state.emptyKind != EmptyKind.NoHosts) OptionsMenu(state, actions) },
+                actions = {
+                    if (dense && canAdd) {
+                        IconButton(onClick = actions.onNewTerminal) {
+                            Icon(Icons.Outlined.Add, contentDescription = stringResource(R.string.new_terminal))
+                        }
+                    }
+                    if (state.emptyKind != EmptyKind.NoHosts) OptionsMenu(state, actions)
+                },
             )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
         floatingActionButton = {
-            if (state.emptyKind != EmptyKind.NoHosts && state.loaded) {
+            if (canAdd && !dense) {
                 val label = stringResource(R.string.new_terminal)
                 ExtendedFloatingActionButton(
                     onClick = actions.onNewTerminal,
@@ -147,7 +170,7 @@ fun TerminalsScreen(
                     }
 
                     else -> {
-                        TerminalList(state, actions, selected, nowMs)
+                        TerminalList(state, actions, selected, nowMs, dense)
                     }
                 }
             }
@@ -218,7 +241,10 @@ private fun TerminalList(
     actions: TerminalsActions,
     selected: TerminalRoute?,
     nowMs: Long,
+    dense: Boolean,
 ) {
+    // Keys of collapsed spaces ("host/space"); saved across rotation and process death.
+    var collapsed by rememberSaveable { mutableStateOf(emptySet<String>()) }
     PullToRefreshBox(isRefreshing = state.refreshing, onRefresh = actions.onRefresh) {
         LazyColumn(
             contentPadding = PaddingValues(top = 4.dp, bottom = 96.dp),
@@ -271,16 +297,40 @@ private fun TerminalList(
                             MachineHeader(section)
                         }
                     }
-                    items(section.items.size, key = { section.items[it].key }, contentType = { "row" }) { index ->
-                        val item = section.items[index]
-                        TerminalRow(
-                            item = item,
-                            selected =
-                                selected != null && selected.hostId == item.hostId.value &&
-                                    selected.address == item.address,
-                            nowMs = nowMs,
-                            actions = actions,
-                        )
+                    section.spaces.forEach { space ->
+                        val spaceKey = "${group.hostId.value}/${section.machine.orEmpty()}/${space.key}"
+                        val isCollapsed = spaceKey in collapsed
+                        item(key = "space:$spaceKey", contentType = "space") {
+                            SpaceHeader(
+                                space,
+                                isCollapsed,
+                                dense,
+                                onToggle = {
+                                    collapsed =
+                                        if (spaceKey in collapsed) collapsed - spaceKey else collapsed + spaceKey
+                                },
+                            )
+                        }
+                        if (!isCollapsed) {
+                            space.tabs.forEach { tab ->
+                                if (space.showTabLabels) {
+                                    item(key = "tab:$spaceKey/${tab.key}", contentType = "tab") { TabLabel(tab.name) }
+                                }
+                                items(tab.items.size, key = { tab.items[it].key }, contentType = { "row" }) { index ->
+                                    val item = tab.items[index]
+                                    TerminalRow(
+                                        item = item,
+                                        selected =
+                                            selected != null && selected.hostId == item.hostId.value &&
+                                                selected.address == item.address,
+                                        nowMs = nowMs,
+                                        actions = actions,
+                                        modifier = Modifier.padding(start = 12.dp),
+                                        dense = dense,
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -340,6 +390,90 @@ private fun HostHeader(
             ConnectionStateBadge(group.connection, nowMs = nowMs)
         }
     }
+}
+
+private fun statusColor(
+    state: AgentState?,
+    scheme: ColorScheme,
+): Color =
+    when (state) {
+        null -> scheme.outline
+        AgentState.Idle -> scheme.onSurfaceVariant
+        AgentState.Working -> scheme.secondary
+        AgentState.Done -> scheme.primary
+        AgentState.Blocked -> scheme.tertiary
+        AgentState.Error -> scheme.error
+        AgentState.Other -> scheme.onSurfaceVariant
+    }
+
+@Composable
+private fun SpaceHeader(
+    space: SpaceSection,
+    collapsed: Boolean,
+    dense: Boolean,
+    onToggle: () -> Unit,
+) {
+    val scheme = MaterialTheme.colorScheme
+    val statusText =
+        stringResource(
+            when (space.topState) {
+                null -> R.string.space_status_none
+                AgentState.Idle -> R.string.space_status_idle
+                AgentState.Working -> R.string.space_status_working
+                AgentState.Done -> R.string.space_status_done
+                AgentState.Blocked -> R.string.space_status_blocked
+                AgentState.Error -> R.string.space_status_error
+                AgentState.Other -> R.string.space_status_other
+            },
+        )
+    val toggleLabel = stringResource(if (collapsed) R.string.space_expand else R.string.space_collapse, space.name)
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clickable(onClickLabel = toggleLabel, onClick = onToggle)
+            .semantics(mergeDescendants = true) { stateDescription = statusText }
+            .padding(start = 16.dp, end = 8.dp, top = if (dense) 6.dp else 10.dp, bottom = if (dense) 6.dp else 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Box(Modifier.size(10.dp).background(statusColor(space.topState, scheme), CircleShape))
+        Column(Modifier.weight(1f)) {
+            Text(
+                space.name,
+                style = MaterialTheme.typography.titleSmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (space.folderSubtitle != null) {
+                Text(
+                    space.folderSubtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    fontFamily = FontFamily.Monospace,
+                    color = scheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        Text(space.count.toString(), style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant)
+        Icon(
+            if (collapsed) Icons.Outlined.ExpandMore else Icons.Outlined.ExpandLess,
+            contentDescription = null,
+            tint = scheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun TabLabel(name: String) {
+    Text(
+        name,
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = Modifier.fillMaxWidth().padding(start = 36.dp, end = 16.dp, top = 4.dp),
+    )
 }
 
 @Composable

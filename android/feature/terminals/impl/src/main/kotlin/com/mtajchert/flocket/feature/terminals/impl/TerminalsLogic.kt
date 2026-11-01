@@ -4,6 +4,9 @@ import com.mtajchert.flocket.core.data.HostOverview
 import com.mtajchert.flocket.core.model.ConnectionState
 import com.mtajchert.flocket.core.model.Liveness
 import com.mtajchert.flocket.core.model.TerminalRecord
+import com.mtajchert.flocket.core.model.Workspace
+import com.mtajchert.flocket.core.model.buildWorkspace
+import com.mtajchert.flocket.core.session.SessionState
 import com.mtajchert.flocket.core.ui.error.toUiError
 
 private val HOME = Regex("^(/Users/[^/]+|/home/[^/]+|/root)(?=/|$)")
@@ -60,11 +63,70 @@ private fun TerminalItem.matches(controls: ListControls): Boolean =
         TerminalFilter.Finished -> isFinished
     }
 
+/**
+ * Arranges the already filtered [shown] rows as machine -> space -> tab. The host's own machine comes
+ * first. With "attention first", spaces sort by their status urgency and rows by theirs (both stable).
+ */
+internal fun buildSections(
+    shown: List<TerminalItem>,
+    workspace: Workspace,
+    session: SessionState,
+    controls: ListControls,
+): List<MachineSection> {
+    val byAddress = shown.associateBy { it.ref.address }
+    val spaces =
+        workspace.spaces.mapNotNull { space ->
+            val tabs =
+                space.tabs.mapNotNull { tab ->
+                    val rows = tab.panes.mapNotNull { byAddress[it] }
+                    if (rows.isEmpty()) {
+                        null
+                    } else {
+                        TabSection(
+                            tab.key,
+                            tab.name,
+                            if (controls.attentionFirst) rows.sortedByDescending { it.urgency } else rows,
+                        )
+                    }
+                }
+            if (tabs.isEmpty()) {
+                null
+            } else {
+                space.machine to
+                    SpaceSection(
+                        key = space.key,
+                        name = space.name,
+                        folderSubtitle =
+                            space.folder?.let(::shortenPath)?.takeIf {
+                                it.isNotBlank() &&
+                                    !it.endsWithSegment(space.name)
+                            },
+                        topState = space.topState,
+                        tabs = tabs,
+                    )
+            }
+        }
+    val ordered =
+        if (controls.attentionFirst) spaces.sortedByDescending { it.second.topState?.urgency ?: -1 } else spaces
+    return ordered
+        .groupBy({ it.first }, { it.second })
+        .entries
+        .sortedBy { if (it.key == null) 0 else 1 }
+        .map { (machine, list) ->
+            val info = machine?.let { name -> session.machines.firstOrNull { it.name == name } }
+            MachineSection(machine, info?.state, info?.rawState, list)
+        }
+}
+
+private fun String.endsWithSegment(name: String): Boolean = trimEnd('/').substringAfterLast('/') == name
+
 /** Groups by host, then by federated machine (own terminals first), filtering and sorting each section. */
 internal fun buildUiState(
     overview: List<HostOverview>,
     controls: ListControls,
     refreshing: Boolean,
+    /** How a host's terminals are grouped; tests and previews inject fixed workspaces. */
+    workspaceOf: (SessionState) -> Workspace = { buildWorkspace(it.terminals, it.desktopLayout) },
 ): TerminalsUiState {
     var totalTerminals = 0
     var hiddenFinished = 0
@@ -80,19 +142,7 @@ internal fun buildUiState(
             }
             val shown = items.filter { it.matches(controls) }
             val sections =
-                shown
-                    .groupBy { it.ref.address.machine }
-                    .entries
-                    .sortedBy { if (it.key == null) 0 else 1 }
-                    .map { (machine, list) ->
-                        val info = machine?.let { name -> session.machines.firstOrNull { it.name == name } }
-                        MachineSection(
-                            machine = machine,
-                            machineState = info?.state,
-                            machineStateRaw = info?.rawState,
-                            items = if (controls.attentionFirst) list.sortedByDescending { it.urgency } else list,
-                        )
-                    }
+                buildSections(shown, workspaceOf(session), session, controls)
             // A filter hides hosts without matches, except hosts that need the user's eye.
             if (shown.isEmpty() && online && controls.filter != TerminalFilter.All) return@mapNotNull null
             HostGroup(

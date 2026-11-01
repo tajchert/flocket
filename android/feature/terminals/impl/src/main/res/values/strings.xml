@@ -26,6 +26,15 @@
     <string name="host_terminal_count_filtered">%1$d shown · %2$d total</string>
     <string name="host_no_terminals">No terminals on this host yet.</string>
     <string name="host_no_matches">Nothing matches this filter on this host.</string>
+    <string name="space_expand">Expand %1$s</string>
+    <string name="space_collapse">Collapse %1$s</string>
+    <string name="space_status_none">No status</string>
+    <string name="space_status_idle">Idle</string>
+    <string name="space_status_working">Working</string>
+    <string name="space_status_done">Done</string>
+    <string name="space_status_blocked">Needs input</string>
+    <string name="space_status_error">Error</string>
+    <string name="space_status_other">Other status</string>
     <string name="machine_header">Machine %1$s</string>
     <string name="machine_state_connected">Connected</string>
     <string name="machine_state_connecting">Connecting</string>

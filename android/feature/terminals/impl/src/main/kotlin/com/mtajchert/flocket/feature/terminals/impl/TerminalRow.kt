@@ -55,6 +55,7 @@ internal fun TerminalRow(
     nowMs: Long,
     actions: TerminalsActions,
     modifier: Modifier = Modifier,
+    dense: Boolean = false,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     val scheme = MaterialTheme.colorScheme
@@ -68,11 +69,86 @@ internal fun TerminalRow(
             Modifier
                 .clip(MaterialTheme.shapes.large)
                 .combinedClickable(onClick = { actions.onOpen(item) }, onLongClick = { menuOpen = true })
-                .heightIn(min = 72.dp)
-                .padding(start = 16.dp, top = 10.dp, bottom = 10.dp, end = 4.dp),
-            verticalAlignment = Alignment.Top,
+                .heightIn(min = if (dense) 56.dp else 72.dp)
+                .padding(
+                    start = 16.dp,
+                    top = if (dense) 4.dp else 10.dp,
+                    bottom = if (dense) 4.dp else 10.dp,
+                    end = 4.dp,
+                ),
+            verticalAlignment = if (dense) Alignment.CenterVertically else Alignment.Top,
         ) {
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            if (dense) {
+                DenseBody(item, label, nowMs, Modifier.weight(1f))
+            } else {
+                FullBody(item, label, nowMs, Modifier.weight(1f))
+            }
+            Box {
+                IconButton(onClick = { menuOpen = true }) {
+                    Icon(Icons.Outlined.MoreVert, contentDescription = stringResource(R.string.row_actions, label))
+                }
+                RowMenu(menuOpen, { menuOpen = false }, item, actions)
+            }
+        }
+    }
+}
+
+/** Two lines: agent and name; then status chip with the headline (or folder) and the age. */
+@Composable
+private fun DenseBody(
+    item: TerminalItem,
+    label: String,
+    nowMs: Long,
+    modifier: Modifier = Modifier,
+) {
+    val scheme = MaterialTheme.colorScheme
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                label,
+                style = MaterialTheme.typography.titleSmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false),
+            )
+            if (!item.name.isNullOrBlank()) {
+                Text(
+                    item.name,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = scheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+            }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            AgentStatusChip(item.status)
+            LivenessLabel(item)
+            item.sinceMs?.let {
+                Text(
+                    DateUtils.getRelativeTimeSpanString(it, nowMs, DateUtils.MINUTE_IN_MILLIS).toString(),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = scheme.onSurfaceVariant,
+                    maxLines = 1,
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun FullBody(
+    item: TerminalItem,
+    label: String,
+    nowMs: Long,
+    modifier: Modifier = Modifier,
+) {
+    val scheme = MaterialTheme.colorScheme
+    run {
+        run {
+            Column(modifier, verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -129,12 +205,6 @@ internal fun TerminalRow(
                         )
                     }
                 }
-            }
-            Box {
-                IconButton(onClick = { menuOpen = true }) {
-                    Icon(Icons.Outlined.MoreVert, contentDescription = stringResource(R.string.row_actions, label))
-                }
-                RowMenu(menuOpen, { menuOpen = false }, item, actions)
             }
         }
     }
