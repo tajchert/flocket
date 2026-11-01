@@ -18,7 +18,7 @@ Rules that apply to every milestone (from [`AGENTS.md`](../AGENTS.md)):
 
 ---
 
-## M1.1: Finish and harden (in progress)
+## M1.1: Finish and harden (done, 2026-11-01)
 
 **Goal:** the app runs on the current herdr-core release, and the terminal's known rough
 edges are fixed.
@@ -30,7 +30,15 @@ edges are fixed.
 - Terminal: smooth pixel scrolling with fling; selection handles with the floating Copy/Paste toolbar; grapheme clustering (mode 2027), so ZWJ emoji take one cell.
 - The new-terminal sheet always prefills the per-host default folder.
 - A private GitHub repository, a CI emulator job, and release signing configured from environment variables.
+- Scrollback honours its 10,000-line cap; libghostty's default byte cap had cut it to about 1,400 rows. The cap is now 32 MB per terminal.
+- Back clears an active selection before it navigates.
+- Long-press on empty space selects nothing.
 - The physical-device pass was deferred. It moves to M1.2.
+
+Known follow-ups:
+
+- With the floating toolbar showing, two Back presses within one frame may lose the second one.
+- Emulator frame times vary from day to day, so compare builds A/B (see `android/docs/TERMINAL_RENDERING.md`).
 
 ## M1.2: Physical-device validation
 
