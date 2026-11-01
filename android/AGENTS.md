@@ -44,21 +44,20 @@ scripts/check.sh full                            # + lint, assembleDebug, assemb
 
 ## Checking a change on the emulator
 
-Use the harness instead of driving the emulator by hand. It boots its own AVD (`emulator-5580`), starts the throwaway sshd, delta-installs the debug app, onboards, and adds and trusts the host. A cold start takes about 80 s; a rerun on a running emulator takes about 5 s.
+Use the harness, not hand-driven taps. It boots its own AVD (`emulator-5580`), starts the throwaway sshd and installs the debug app; journeys are Kotlin androidTests that run against a real `hc`. Set `FLOCKET_SERIAL`, `FLOCKET_SSHD_PORT`, `FLOCKET_HC_SESSION` and `FLOCKET_E2E_DIR` to your own values when other agents share the Mac.
 
 ```bash
-scripts/e2e-device.sh up [--no-build] [--fresh]       # -> Terminals list, connected to hc session flocket-e2e
-scripts/e2e-device.sh hc run --bg --no-parent sh       # hc, always in the isolated session
-scripts/e2e-device.sh tap <text> | wait <text> | ui    # select by visible text; ui lists "x,y text desc"
-scripts/e2e-device.sh type "echo hi" --enter           # keystrokes into the open terminal
-scripts/e2e-device.sh shot [file] [px]                 # small PNG (600 px); Read it only for a visual check
-scripts/e2e-device.sh down                             # stop the hc session, sshd and the emulator
+scripts/e2e-device.sh up                       # once: emulator, sshd, debug app (cold start ~30-80 s)
+scripts/e2e-device.sh journey OnboardingJourneyTest   # check a change: build, install if changed, run
+scripts/e2e-device.sh journey --smoke          # the quick subset
+scripts/e2e-device.sh hc ls                    # core-side checks, always in the isolated session
+scripts/e2e-device.sh shot [file] [px]         # small PNG; Read it only for a visual check
+scripts/e2e-device.sh down                     # stop the hc session, sshd and the emulator
 ```
 
-- Prefer the `android` CLI over raw adb (`android install --device=…` sends only the changed parts of the APK, and `android input tap "text=/^Save$/"` selects by text, not by coordinates). Always pass `--device=$FLOCKET_SERIAL`; never touch other emulators.
-- Check results with `hc read`/`hc get` and `ui`. Use screenshots only when the question is visual.
-- `android layout` and `uiautomator dump` cannot run at the same time; stick to `android layout`.
-- Details, the safety rules and the manual journey: [docs/journeys/E2E_SMOKE.md](docs/journeys/E2E_SMOKE.md).
+- Never use Gradle `connected*` tasks for journeys: they install on every attached device. Address adb only with `-s $FLOCKET_SERIAL`; never touch other emulators.
+- Assert on the core (`hc read`, `hc get`), not on pixels.
+- Commands, isolation, timings: [docs/TESTING.md](docs/TESTING.md#device-journeys). Safety rules and the manual steps: [docs/journeys/E2E_SMOKE.md](docs/journeys/E2E_SMOKE.md).
 
 ## Screenshots
 

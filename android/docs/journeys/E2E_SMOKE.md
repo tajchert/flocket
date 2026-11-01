@@ -1,8 +1,25 @@
 # End-to-end smoke journey (emulator + real `hc` over SSH)
 
-A manual journey that runs the debug app against a real herdr-core on the developer's machine,
-through a throwaway SSH server. Use it after changes to sessions, the terminal screen, navigation
-or lifecycle handling. Unit and screenshot tests are described in [TESTING.md](../TESTING.md).
+The journey that runs the debug app against a real herdr-core on the developer's machine, through a
+throwaway SSH server. Use it after changes to sessions, the terminal screen, navigation or lifecycle
+handling. Most steps are automated as Kotlin androidTests (`:app`, package
+`com.mtajchert.flocket.journey`); this file is the index of what is automated, the safety rules, and
+the steps that stay manual. How to run them: [TESTING.md](../TESTING.md#device-journeys).
+
+| Step | Automated by | Status |
+|---|---|---|
+| 1-2 Onboarding, key, host, trust | `OnboardingJourneyTest` | automated |
+| 3-4 Live list, new terminal, typing | `TerminalJourneyTest` | automated |
+| 5 Passive open keeps size | - | planned |
+| 6a Rotation | - | planned (lifecycle journeys) |
+| 6b Fold / unfold | - | manual |
+| 6c Lock / unlock | - | manual |
+| 6d Background and return | - | planned (lifecycle journeys) |
+| 6e Network off / on | - | planned (lifecycle journeys) |
+| 6f Process death | - | planned (needs a driver outside the app process) |
+| 6g sshd link killed | - | planned (lifecycle journeys) |
+| 7 Smoothness (flood, gfxinfo) | - | manual |
+| 8 Kill, exit banner, Remove | `TerminalJourneyTest` | automated |
 
 ## Prerequisites
 
@@ -22,39 +39,17 @@ or lifecycle handling. Unit and screenshot tests are described in [TESTING.md](.
   kill only the `sshd-session` whose socket is `127.0.0.1:2222` (`lsof -nP -a -p <pid> -iTCP`), never
   sessions of the system sshd.
 
-## Harness
+## Manual setup
 
-**Fast path:** `scripts/e2e-device.sh up` does steps 1-2 below (emulator, sshd, install, onboarding,
-host, trust) in one command, then `hc`, `tap`, `type`, `ui`, `shot` and `down` drive the rest. Run
-it without arguments for usage. It disables the keyboards (Gboard reorders injected keys), hides any
-keyboard the system turns back on after a boot or `pm clear`, and grants the notification permission
-so the first-terminal prompt does not swallow input. To test that prompt itself, revoke it with
-`adb -s emulator-5580 shell pm revoke com.mtajchert.flocket.debug android.permission.POST_NOTIFICATIONS`.
+`scripts/e2e-device.sh up` boots the emulator, starts the sshd and installs the app; then use `hc`,
+`shot` and `down` (usage: run it without arguments). For the manual steps, onboard by hand: generate
+the key, copy the `ssh-ed25519 ...` line into `scripts/dev-sshd.sh authorize "<key>"`, add the host
+(`10.0.2.2`, `id -un`, Advanced: the harness port and hc session) and compare the trust dialog's
+fingerprint with `ssh-keygen -lf "$FLOCKET_SSHD_DIR/host_ed25519.pub"`. Keyboards are disabled by the
+harness (Gboard reorders keys injected by `adb shell input`). To test the notification prompt itself,
+revoke it with `adb -s <serial> shell pm revoke com.mtajchert.flocket.debug android.permission.POST_NOTIFICATIONS`.
 
-The manual equivalent:
-
-```bash
-cd android
-export FLOCKET_SSHD_DIR=/some/scratch/dir/e2e-sshd    # default: $TMPDIR/flocket-dev-sshd
-scripts/dev-sshd.sh start            # 127.0.0.1:2222, emulator reaches it at 10.0.2.2:2222
-scripts/dev-sshd.sh authorize "ssh-ed25519 AAAA… flocket-device"
-scripts/dev-sshd.sh status | stop
-ssh-keygen -lf "$FLOCKET_SSHD_DIR/host_ed25519.pub"   # fingerprint to compare in the trust dialog
-
-emulator -avd pixel -no-window -no-audio -no-boot-anim -no-snapshot-save -port 5580 &
-./gradlew :app:assembleDebug && adb -s emulator-5580 install -r app/build/outputs/apk/debug/app-debug.apk
-adb -s emulator-5580 shell am start -n com.mtajchert.flocket.debug/com.mtajchert.flocket.MainActivity
-```
-
-Drive the UI with `adb shell uiautomator dump` + `adb shell input tap/text/keyevent`, and screenshots
-with `adb exec-out screencap -p`. Disable animations (`settings put global *_animation_scale 0`).
-
-**Typing caveat:** with Gboard as the active IME, keys injected by `adb shell input` are sometimes
-reordered on the first input after a terminal opens (`echo` arrived as `eoch`/`ceho`). With the IME
-disabled (`adb shell ime disable com.google.android.inputmethod.latin/com.android.inputmethod.latin.LatinIME`)
-the same steps were always in order, so type with the IME disabled and re-enable it afterwards.
-
-## Journey and expected results
+## Journey and expected results (what the automated journeys encode)
 
 1. Fresh install: onboarding welcome, "What you'll need", device key.
 2. Generate key: the screen shows the `echo '<pubkey>' >> ~/.ssh/authorized_keys` line; copy the key
