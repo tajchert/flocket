@@ -17,11 +17,13 @@ import com.mtajchert.flocket.core.data.internal.HostSettingsRepositoryImpl
 import com.mtajchert.flocket.core.data.internal.HostTrustRepositoryImpl
 import com.mtajchert.flocket.core.data.internal.PreferencesRepositoryImpl
 import com.mtajchert.flocket.core.data.internal.ProcessLifecycleForeground
+import com.mtajchert.flocket.core.data.internal.ShareSeenRepositoryImpl
 import com.mtajchert.flocket.core.data.internal.SshHostConnector
 import com.mtajchert.flocket.core.database.HostDao
 import com.mtajchert.flocket.core.database.HostSettingsDao
 import com.mtajchert.flocket.core.database.PinnedHostKeyDao
 import com.mtajchert.flocket.core.datastore.PreferencesDataSource
+import com.mtajchert.flocket.core.datastore.ShareSeenDataSource
 import com.mtajchert.flocket.core.security.KeyVault
 import com.mtajchert.flocket.core.session.CoreSessionFactory
 import com.mtajchert.flocket.core.session.DefaultCoreSessionFactory
@@ -70,6 +72,10 @@ internal object DataModule {
     @Singleton
     fun providePreferencesRepository(source: PreferencesDataSource): PreferencesRepository =
         PreferencesRepositoryImpl(source)
+
+    @Provides
+    @Singleton
+    fun provideShareSeenRepository(source: ShareSeenDataSource): ShareSeenRepository = ShareSeenRepositoryImpl(source)
 
     @Provides
     @Singleton

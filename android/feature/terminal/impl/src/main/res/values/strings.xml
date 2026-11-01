@@ -79,4 +79,33 @@
     <string name="terminal_clipboard_written">A program copied text to your clipboard</string>
     <string name="terminal_clipboard_deny">Don\'t copy</string>
     <string name="workspace_tab_fallback">%1$d</string>
+
+    <!-- Agent shares (share/) -->
+    <string name="share_card_title_one">Shared %1$s</string>
+    <string name="share_card_title_many">Shared %1$d files</string>
+    <string name="share_card_open">Open</string>
+    <string name="share_card_dismiss">Dismiss</string>
+    <string name="share_action_shared_files">Shared files</string>
+    <string name="share_sheet_title">Shared files</string>
+    <string name="share_sheet_empty">Nothing shared yet</string>
+    <string name="share_files_count">%1$d files</string>
+    <string name="share_time_just_now">Just now</string>
+    <string name="share_viewer_close">Close</string>
+    <string name="share_viewer_back">Back to the file list</string>
+    <string name="share_viewer_path">Path</string>
+    <string name="share_viewer_machine">Machine</string>
+    <string name="share_viewer_machine_local">this host</string>
+    <string name="share_viewer_loading">Downloading…</string>
+    <string name="share_viewer_files_title">Choose a file</string>
+    <string name="share_viewer_retry">Try again</string>
+    <string name="share_viewer_text_cut">Showing the first 1 MB</string>
+    <string name="share_viewer_no_preview">No preview for this file type</string>
+    <string name="share_viewer_image_alt">Preview of %1$s</string>
+    <string name="share_viewer_size_format">%1$s · %2$s</string>
+    <string name="share_save">Save</string>
+    <string name="share_share">Share</string>
+    <string name="share_paste_path">Paste path into terminal</string>
+    <string name="share_saved">Saved</string>
+    <string name="share_save_failed">Could not save the file</string>
+    <string name="share_share_failed">Could not share the file</string>
 </resources>

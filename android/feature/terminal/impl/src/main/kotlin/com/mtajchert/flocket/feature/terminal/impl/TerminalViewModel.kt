@@ -10,6 +10,7 @@ import com.mtajchert.flocket.core.data.ApplicationScope
 import com.mtajchert.flocket.core.data.ConnectionManager
 import com.mtajchert.flocket.core.data.HostSettingsRepository
 import com.mtajchert.flocket.core.data.PreferencesRepository
+import com.mtajchert.flocket.core.data.ShareSeenRepository
 import com.mtajchert.flocket.core.model.ClipboardWritePolicy
 import com.mtajchert.flocket.core.model.ConnectionState
 import com.mtajchert.flocket.core.model.HostId
@@ -33,6 +34,7 @@ import com.mtajchert.flocket.core.ui.error.toRenameText
 import com.mtajchert.flocket.core.ui.error.toUiError
 import com.mtajchert.flocket.core.ui.error.unreachableRenameText
 import com.mtajchert.flocket.feature.terminal.api.TerminalRoute
+import com.mtajchert.flocket.feature.terminal.impl.share.ShareController
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedFactory
 import dagger.assisted.AssistedInject
@@ -87,6 +89,9 @@ class TerminalViewModel
         private val agentMarks: AgentMarks,
         controllerFactory: TerminalControllerFactory,
         @ApplicationScope private val appScope: CoroutineScope,
+        // --- agent shares (T5) ---
+        shareSeen: ShareSeenRepository,
+        // --- end agent shares ---
     ) : ViewModel() {
         @AssistedFactory
         interface Factory {
@@ -130,6 +135,19 @@ class TerminalViewModel
         )
 
         private val sessionState: Flow<SessionState?> = session.flatMapLatest { it?.state ?: flowOf(null) }
+
+        // --- agent shares (T5): all logic lives in share/ShareController ---
+        val shares: ShareController =
+            ShareController(
+                scope = viewModelScope,
+                hostId = hostId,
+                address = address,
+                shares = sessionState.map { it?.shares.orEmpty() }.distinctUntilChanged(),
+                session = { session.value },
+                seen = shareSeen,
+                pasteText = ::paste,
+            )
+        // --- end agent shares ---
 
         private val controllerState =
             combine(controller.connected, controller.isOwner, controller.title) { c, o, t -> Triple(c, o, t) }

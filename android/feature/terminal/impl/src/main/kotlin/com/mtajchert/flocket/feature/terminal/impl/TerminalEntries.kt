@@ -28,6 +28,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
@@ -51,11 +52,14 @@ import com.mtajchert.flocket.core.ui.nav.EntryProviderInstaller
 import com.mtajchert.flocket.core.ui.nav.Navigator
 import com.mtajchert.flocket.core.ui.nav.PaneRole
 import com.mtajchert.flocket.feature.terminal.api.TerminalRoute
+import com.mtajchert.flocket.feature.terminal.impl.share.ShareActions
+import com.mtajchert.flocket.feature.terminal.impl.share.ShareOverlays
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import dagger.multibindings.IntoSet
+import kotlinx.coroutines.launch
 
 /** Contributes [TerminalRoute]: the detail pane of the terminals list-detail, full screen on phones. */
 @Module
@@ -114,6 +118,7 @@ fun TerminalRouteContent(
     val header by viewModel.header.collectAsStateWithLifecycle()
     val openTerminal by rememberUpdatedState(onOpenTerminal)
     val snackbar = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val view = LocalView.current
     val surfaceState = remember { TerminalSurfaceState() }
@@ -223,8 +228,20 @@ fun TerminalRouteContent(
         NotificationPermissionPrompt(onAnswer = viewModel::onNotificationPermissionAsked)
     }
     val toggleKeyboard = { if (imeVisible) surfaceState.hideKeyboard() else surfaceState.showKeyboard() }
+    // --- agent shares (T5) ---
+    val shares by viewModel.shares.ui.collectAsStateWithLifecycle()
+    val shareActions = remember(viewModel) { ShareActions.of(viewModel.shares) }
+    ShareOverlays(
+        ui = shares,
+        actions = shareActions,
+        canPaste = state.canInteract,
+        onMessage = { text -> scope.launch { snackbar.showSnackbar(text, withDismissAction = true) } },
+    )
+    // --- end agent shares ---
     TerminalScreen(
         modifier = modifier,
+        shares = shares,
+        shareActions = shareActions,
         state = state,
         actions = actions.copy(onToggleKeyboard = toggleKeyboard),
         snackbarHostState = snackbar,

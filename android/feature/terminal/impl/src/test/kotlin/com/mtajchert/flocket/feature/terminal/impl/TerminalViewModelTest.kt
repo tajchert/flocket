@@ -31,6 +31,7 @@ import com.mtajchert.flocket.core.testing.FakeCoreSession
 import com.mtajchert.flocket.core.testing.FakeHostRepository
 import com.mtajchert.flocket.core.testing.FakeHostSettingsRepository
 import com.mtajchert.flocket.core.testing.FakePreferencesRepository
+import com.mtajchert.flocket.core.testing.FakeShareSeenRepository
 import com.mtajchert.flocket.core.testing.FakeTerminalStream
 import com.mtajchert.flocket.core.testing.MainDispatcherRule
 import com.mtajchert.flocket.core.testing.SampleData
@@ -100,6 +101,7 @@ class TerminalViewModelTest {
                     )
                 },
                 appScope = CoroutineScope(dispatcher),
+                shareSeen = FakeShareSeenRepository(),
             )
         val provided =
             ViewModelProvider.create(
@@ -399,6 +401,7 @@ class TerminalViewModelTest {
                         }, UnconfinedTestDispatcher(testScheduler))
                     },
                     CoroutineScope(UnconfinedTestDispatcher(testScheduler)),
+                    FakeShareSeenRepository(),
                 )
             backgroundScope.launch { vm.uiState.collect {} }
             advanceUntilIdle()

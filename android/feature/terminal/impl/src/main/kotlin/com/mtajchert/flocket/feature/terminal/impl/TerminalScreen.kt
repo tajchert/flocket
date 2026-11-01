@@ -39,6 +39,7 @@ import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.FitScreen
 import androidx.compose.material.icons.outlined.Fullscreen
 import androidx.compose.material.icons.outlined.FullscreenExit
+import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.HourglassEmpty
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Keyboard
@@ -106,6 +107,9 @@ import com.mtajchert.flocket.core.ui.error.asString
 import com.mtajchert.flocket.core.ui.nav.LocalPaneLayout
 import com.mtajchert.flocket.core.ui.nav.LocalSidebarToggle
 import com.mtajchert.flocket.core.ui.nav.PaneLayout
+import com.mtajchert.flocket.feature.terminal.impl.share.ShareActions
+import com.mtajchert.flocket.feature.terminal.impl.share.ShareCard
+import com.mtajchert.flocket.feature.terminal.impl.share.SharesUi
 
 /** Everything the screen can ask for. Defaults are no-ops (previews, screenshot tests). */
 @Immutable
@@ -153,6 +157,10 @@ fun TerminalScreen(
     tabStrip: TabStripUi? = null,
     header: TerminalHeaderUi = TerminalHeaderUi(),
     extraKeys: @Composable () -> Unit = {},
+    // --- agent shares (T5) ---
+    shares: SharesUi = SharesUi(),
+    shareActions: ShareActions = ShareActions(),
+    // --- end agent shares ---
     terminal: @Composable (Modifier) -> Unit,
 ) {
     val layout = LocalPaneLayout.current
@@ -162,7 +170,7 @@ fun TerminalScreen(
         tabStrip != null && tabStrip.isVisible && !fullScreen && !(layout.compactHeight && WindowInsets.isImeVisible)
     Scaffold(
         modifier = modifier,
-        topBar = { if (!fullScreen) TerminalTopBar(state, header, actions, showBack) },
+        topBar = { if (!fullScreen) TerminalTopBar(state, header, actions, showBack, shares, shareActions) },
         snackbarHost = { SnackbarHost(snackbarHostState) },
         containerColor = MaterialTheme.colorScheme.surface,
         contentWindowInsets = ScaffoldDefaults.contentWindowInsets.only(paneInsetSides(layout)),
@@ -187,6 +195,7 @@ fun TerminalScreen(
                     actions = listOf(stringResource(R.string.terminal_dismiss) to actions.onDismissFreshShell),
                 )
             }
+            shares.card?.let { ShareCard(it, shareActions) }
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 terminal(Modifier.fillMaxSize())
                 when (state.phase) {
@@ -308,6 +317,8 @@ private fun TerminalTopBar(
     header: TerminalHeaderUi,
     actions: TerminalActions,
     showBack: Boolean,
+    shares: SharesUi,
+    shareActions: ShareActions,
 ) {
     val layout = LocalPaneLayout.current
     val sidebar = LocalSidebarToggle.current
@@ -345,7 +356,7 @@ private fun TerminalTopBar(
                         Icon(Icons.Outlined.Keyboard, stringResource(R.string.terminal_action_keyboard))
                     }
                 }
-                OverflowMenu(state, actions)
+                OverflowMenu(state, actions, shares, shareActions)
             },
             colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
             windowInsets = TopAppBarDefaults.windowInsets.only(paneInsetSides(layout)),
@@ -409,6 +420,8 @@ private fun TitleBlock(
 private fun OverflowMenu(
     state: TerminalUiState,
     actions: TerminalActions,
+    shares: SharesUi,
+    shareActions: ShareActions,
 ) {
     var open by remember { mutableStateOf(false) }
     Box {
@@ -424,6 +437,12 @@ private fun OverflowMenu(
             MenuItem(Icons.Outlined.ContentCopy, R.string.terminal_action_copy, enabled = true) {
                 open = false
                 actions.onCopy()
+            }
+            if (shares.all.isNotEmpty()) {
+                MenuItem(Icons.Outlined.FolderOpen, R.string.share_action_shared_files, enabled = true) {
+                    open = false
+                    shareActions.onShowSheet()
+                }
             }
             MenuItem(Icons.Outlined.StopCircle, R.string.terminal_action_interrupt, enabled = live) {
                 open = false
