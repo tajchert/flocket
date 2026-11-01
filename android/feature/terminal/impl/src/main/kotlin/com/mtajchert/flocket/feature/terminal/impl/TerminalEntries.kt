@@ -38,6 +38,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.core.content.ContextCompat
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.mtajchert.flocket.core.model.BellMode
 import com.mtajchert.flocket.core.terminal.controller.TerminalController
 import com.mtajchert.flocket.core.terminal.engine.TerminalEngineFactory
 import com.mtajchert.flocket.core.terminal.ghostty.GhosttyTerminalEngine
@@ -106,7 +107,7 @@ fun TerminalRouteContent(
     val surfaceState = remember { TerminalSurfaceState() }
     val close by rememberUpdatedState(onClose)
     val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
-    val theme = remember(dark) { TerminalThemes.forDarkMode(dark) }
+    val theme = remember(dark, state.colorScheme) { TerminalThemes.forScheme(state.colorScheme, dark) }
     val imeVisible = WindowInsets.isImeVisible
 
     // FLAG_KEEP_SCREEN_ON while this screen is shown (from the preference).
@@ -183,6 +184,7 @@ fun TerminalRouteContent(
                 onReattach = viewModel::retryAttach,
                 onDismissFreshShell = viewModel::dismissFreshShell,
                 onClipboardAnswer = viewModel::answerClipboardRequest,
+                onClipboardAlways = viewModel::alwaysAllowClipboard,
             )
         }
     if (state.offerNotificationPermission) {
@@ -205,6 +207,7 @@ fun TerminalRouteContent(
             fontSizeSp = state.fontSizeSp,
             onFontSizeChange = viewModel::onFontSizeChange,
             onClipboardWriteRequest = viewModel::onClipboardWriteRequest,
+            bellHaptics = state.bell == BellMode.Haptic,
             // The screen draws its own reconnecting chip and connecting overlay.
             reconnectingLabel = null,
             state = surfaceState,

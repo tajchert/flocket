@@ -52,7 +52,7 @@ import com.mtajchert.flocket.core.terminal.engine.TerminalTheme
  * it) so the soft keyboard shrinks it; Owner mode resizes after the IME animation settles.
  *
  * [onClipboardWriteRequest]: a program asked to set the clipboard (OSC 52). Ask the user before
- * honoring it. [onFontSizeChange]: pinch-zoom result, persist it and pass it back as [fontSizeSp].
+ * honoring it. [bellHaptics]: vibrate on the terminal bell. [onFontSizeChange]: pinch-zoom result, persist it and pass it back as [fontSizeSp].
  */
 @Composable
 fun TerminalSurface(
@@ -62,6 +62,7 @@ fun TerminalSurface(
     fontSizeSp: Float = TerminalView.DEFAULT_FONT_SP,
     onFontSizeChange: (Float) -> Unit = {},
     onClipboardWriteRequest: (String) -> Unit = {},
+    bellHaptics: Boolean = true,
     reconnectingLabel: String? = "Reconnecting…",
     state: TerminalSurfaceState = remember { TerminalSurfaceState() },
 ) {
@@ -69,6 +70,7 @@ fun TerminalSurface(
     val haptics = LocalHapticFeedback.current
     val fontChange by rememberUpdatedState(onFontSizeChange)
     val clipboardRequest by rememberUpdatedState(onClipboardWriteRequest)
+    val bellEnabled by rememberUpdatedState(bellHaptics)
     LifecycleStartEffect(controller) {
         controller.setVisible(true)
         onStopOrDispose { controller.setVisible(false) }
@@ -76,7 +78,7 @@ fun TerminalSurface(
     LaunchedEffect(controller) {
         controller.events.collect { event ->
             when (event) {
-                TerminalEvent.Bell -> haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                TerminalEvent.Bell -> if (bellEnabled) haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                 is TerminalEvent.ClipboardWrite -> clipboardRequest(event.text)
                 else -> Unit
             }

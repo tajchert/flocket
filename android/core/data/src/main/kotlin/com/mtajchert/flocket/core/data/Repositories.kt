@@ -2,10 +2,14 @@ package com.mtajchert.flocket.core.data
 
 import com.mtajchert.flocket.core.common.result.AppResult
 import com.mtajchert.flocket.core.model.DeviceKey
+import com.mtajchert.flocket.core.model.EffectiveHostSettings
 import com.mtajchert.flocket.core.model.Host
 import com.mtajchert.flocket.core.model.HostAuth
 import com.mtajchert.flocket.core.model.HostId
+import com.mtajchert.flocket.core.model.HostSetting
+import com.mtajchert.flocket.core.model.HostSettingsOverrides
 import com.mtajchert.flocket.core.model.PinnedHostKey
+import com.mtajchert.flocket.core.model.TerminalPreferences
 import com.mtajchert.flocket.core.session.CoreSession
 import com.mtajchert.flocket.core.session.SessionState
 import kotlinx.coroutines.flow.Flow
@@ -103,6 +107,13 @@ interface ConnectionManager {
     /** The screen behind [token] detached or closed. */
     fun releaseTerminal(token: Any) = Unit
 
+    /**
+     * The user asked for this host to be connected (opened it, pulled to refresh, opened one of its terminals,
+     * tapped Connect). Needed for hosts whose `autoConnect` is off: they stay Idle until then. Idempotent;
+     * once asked, the host reconnects whenever the app returns to the foreground during this process.
+     */
+    fun connect(hostId: HostId) = Unit
+
     /** The keep-alive service ended on its own (timeout, or it could not go foreground): detach now. */
     fun keepAliveEnded() = Unit
 }
@@ -123,11 +134,8 @@ data class UserPreferences(
     val onboardingCompleted: Boolean = false,
     val theme: ThemePreference = ThemePreference.System,
     val dynamicColor: Boolean = true,
-    /** Terminal font size in sp. */
-    val terminalFontSize: Float = 13f,
-    val keepScreenOnInTerminal: Boolean = true,
-    /** Show the extra-keys row (Esc, Tab, Ctrl, arrows…) above the soft keyboard. */
-    val showExtraKeys: Boolean = true,
+    /** App-level terminal defaults; hosts may override them (see [HostSettingsRepository]). */
+    val terminal: TerminalPreferences = TerminalPreferences(),
     /** The terminal screen already asked for POST_NOTIFICATIONS once (Android 13+); never nag again. */
     val notificationPermissionAsked: Boolean = false,
     /**
@@ -136,5 +144,54 @@ data class UserPreferences(
      */
     val keepConnectedInBackground: Boolean = true,
 )
+
+/**
+ * Per-host overrides of the app's terminal defaults (Room `host_settings`) and the resulting effective
+ * settings. A host without a row simply uses the app defaults.
+ */
+interface HostSettingsRepository {
+    /** The host's raw overrides (empty when it has none). */
+    fun overrides(hostId: HostId): Flow<HostSettingsOverrides>
+
+    /** App defaults with the host's overrides applied. Emits again when either side changes. */
+    fun effective(hostId: HostId): Flow<EffectiveHostSettings>
+
+    /** Hosts that have at least one override (for the "Custom" badge). */
+    val customizedHosts: Flow<Set<HostId>>
+
+    /** Effective `autoConnect` for every host (ConnectionManager). */
+    val autoConnect: Flow<AutoConnectSettings>
+
+    suspend fun update(
+        hostId: HostId,
+        transform: (HostSettingsOverrides) -> HostSettingsOverrides,
+    ): AppResult<Unit>
+
+    /** Back to the app default for one setting. */
+    suspend fun reset(
+        hostId: HostId,
+        setting: HostSetting,
+    ): AppResult<Unit> = update(hostId) { it.cleared(setting) }
+
+    /** Drop every override of the host. */
+    suspend fun resetAll(hostId: HostId): AppResult<Unit>
+
+    /**
+     * Pinch-zoom result: writes the host's font override when it has one, else the app default
+     * (so a pinch on a host that follows the app changes it everywhere).
+     */
+    suspend fun setFontSize(
+        hostId: HostId,
+        sizeSp: Float,
+    ): AppResult<Unit>
+}
+
+/** [default] is the app-level `autoConnect`; [overrides] only holds hosts that set their own. */
+data class AutoConnectSettings(
+    val default: Boolean = true,
+    val overrides: Map<HostId, Boolean> = emptyMap(),
+) {
+    fun isEnabled(hostId: HostId): Boolean = overrides[hostId] ?: default
+}
 
 enum class ThemePreference { System, Light, Dark }

@@ -6,6 +6,7 @@ import com.mtajchert.flocket.core.common.error.AppError
 import com.mtajchert.flocket.core.common.result.AppResult
 import com.mtajchert.flocket.core.data.ConnectionManager
 import com.mtajchert.flocket.core.data.HostRepository
+import com.mtajchert.flocket.core.data.HostSettingsRepository
 import com.mtajchert.flocket.core.data.HostTrustRepository
 import com.mtajchert.flocket.core.model.ConnectionState
 import com.mtajchert.flocket.core.model.CoreInfo
@@ -59,6 +60,8 @@ data class HostDetailUiState(
     val confirmedAtMs: Long? = null,
     val pinnedKey: PinnedHostKey? = null,
     val dialog: HostDetailDialog? = null,
+    /** How many terminal settings this host overrides. */
+    val customSettings: Int = 0,
     /** Set after a successful delete; the screen navigates away. */
     val deleted: Boolean = false,
 ) {
@@ -76,6 +79,7 @@ class HostDetailViewModel
         private val connectionManager: ConnectionManager,
         private val hostRepository: HostRepository,
         private val trustRepository: HostTrustRepository,
+        hostSettings: HostSettingsRepository,
     ) : ViewModel() {
         @AssistedFactory
         interface Factory {
@@ -88,7 +92,13 @@ class HostDetailViewModel
         private val pinRefresh = MutableStateFlow(0)
 
         val uiState: StateFlow<HostDetailUiState> =
-            combine(connectionManager.overview, dialog, deleted, pinRefresh) { overview, dialog, deleted, _ ->
+            combine(
+                connectionManager.overview,
+                dialog,
+                deleted,
+                pinRefresh,
+                hostSettings.overrides(id).map { it.overridden.size },
+            ) { overview, dialog, deleted, _, custom ->
                 val entry = overview.firstOrNull { it.host.id == id }
                 if (entry == null) {
                     HostDetailUiState(loading = false, deleted = deleted, dialog = dialog)
@@ -111,10 +121,16 @@ class HostDetailViewModel
                         confirmedAtMs = session.confirmedAtMs,
                         pinnedKey = trustRepository.pinned(entry.host.hostname, entry.host.port),
                         dialog = dialog,
+                        customSettings = custom,
                         deleted = deleted,
                     )
                 }
             }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HostDetailUiState())
+
+        init {
+            // Opening a host is an explicit "connect" for hosts that don't connect on launch.
+            connectionManager.connect(id)
+        }
 
         private val current get() = uiState.value
 
@@ -156,6 +172,7 @@ class HostDetailViewModel
         }
 
         fun retry() {
+            connectionManager.connect(id)
             connectionManager.session(id)?.retryNow()
         }
 

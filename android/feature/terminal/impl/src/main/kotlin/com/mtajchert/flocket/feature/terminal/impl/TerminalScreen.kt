@@ -90,6 +90,7 @@ data class TerminalActions(
     val onReattach: () -> Unit = {},
     val onDismissFreshShell: () -> Unit = {},
     val onClipboardAnswer: (Boolean) -> Unit = {},
+    val onClipboardAlways: () -> Unit = {},
 )
 
 /**
@@ -201,6 +202,10 @@ fun TerminalScreen(
                                     .padding(8.dp),
                         )
                     }
+                    TextButton(
+                        onClick = actions.onClipboardAlways,
+                        modifier = Modifier.testTag("clipboard_always"),
+                    ) { Text(stringResource(R.string.terminal_clipboard_always)) }
                 }
             },
             confirmButton = {

@@ -3,6 +3,7 @@ package com.mtajchert.flocket.core.data.internal
 import com.mtajchert.flocket.core.common.error.AppError
 import com.mtajchert.flocket.core.common.result.AppResult
 import com.mtajchert.flocket.core.data.AppForeground
+import com.mtajchert.flocket.core.data.AutoConnectSettings
 import com.mtajchert.flocket.core.data.KeepAliveService
 import com.mtajchert.flocket.core.data.NetworkMonitor
 import com.mtajchert.flocket.core.data.NetworkState
@@ -102,6 +103,8 @@ class ConnectionManagerTest {
         hostname: String = "$id.local",
     ) = Host(HostId(id), label, hostname, 22, "me", HostAuth.Key("k"))
 
+    private val autoConnect = MutableStateFlow(AutoConnectSettings())
+
     private fun TestScope.manager() =
         ConnectionManagerImpl(
             repo,
@@ -118,6 +121,7 @@ class ConnectionManagerTest {
             backgroundScope,
             keepAlive,
             keepAliveEnabled = keepAliveSetting,
+            autoConnect = autoConnect,
         )
 
     private suspend fun setHosts(vararg h: Host) {
@@ -441,4 +445,102 @@ class ConnectionManagerTest {
 
     @Suppress("unused")
     private val unused: StateFlow<Int>? = null
+
+    // ---- auto-connect ---------------------------------------------------------------------------
+
+    @Test
+    fun `a host with auto-connect off stays idle in the foreground until connect is called`() =
+        runTest {
+            autoConnect.value = AutoConnectSettings(default = true, overrides = mapOf(HostId("b") to false))
+            val m = manager()
+            setHosts(host("a"), host("b"))
+            fg.value = true
+            runCurrent()
+            assertEquals(1, sessionOf("a").starts)
+            assertEquals(0, sessionOf("b").starts)
+            m.connect(HostId("b"))
+            assertEquals(1, sessionOf("b").starts)
+            assertEquals(1, sessionOf("a").starts)
+        }
+
+    @Test
+    fun `app default off keeps every host idle and per-host on starts only that host`() =
+        runTest {
+            autoConnect.value = AutoConnectSettings(default = false, overrides = mapOf(HostId("b") to true))
+            manager()
+            setHosts(host("a"), host("b"))
+            fg.value = true
+            runCurrent()
+            assertEquals(0, sessionOf("a").starts)
+            assertEquals(1, sessionOf("b").starts)
+        }
+
+    @Test
+    fun `turning auto-connect on while foreground starts the host`() =
+        runTest {
+            autoConnect.value = AutoConnectSettings(default = false)
+            manager()
+            setHosts(host("a"))
+            fg.value = true
+            runCurrent()
+            assertEquals(0, sessionOf("a").starts)
+            autoConnect.value = AutoConnectSettings(default = false, overrides = mapOf(HostId("a") to true))
+            runCurrent()
+            assertEquals(1, sessionOf("a").starts)
+        }
+
+    @Test
+    fun `a host connected by the user reconnects on the next foreground and connect before foreground waits`() =
+        runTest {
+            autoConnect.value = AutoConnectSettings(default = false)
+            val m = manager()
+            setHosts(host("a"), host("b"))
+            runCurrent()
+            m.connect(HostId("b")) // app not in the foreground yet: remembered, not started
+            assertEquals(0, sessionOf("b").starts)
+            fg.value = true
+            runCurrent()
+            assertEquals(1, sessionOf("b").starts)
+            assertEquals(0, sessionOf("a").starts)
+            fg.value = false
+            runCurrent()
+            fg.value = true
+            runCurrent()
+            assertEquals(2, sessionOf("b").starts)
+            assertEquals(0, sessionOf("a").starts)
+        }
+
+    @Test
+    fun `nothing starts before the auto-connect settings are known`() =
+        runTest {
+            val pending = kotlinx.coroutines.flow.MutableSharedFlow<AutoConnectSettings>()
+            val m =
+                ConnectionManagerImpl(
+                    repo,
+                    CoreSessionFactory { endpoint: CoreEndpoint, tf ->
+                        Rec(FakeCoreSession(endpoint), tf).also {
+                            sessions +=
+                                it
+                        }
+                    },
+                    connector,
+                    object : AppForeground {
+                        override val isForeground = fg
+                    },
+                    object : NetworkMonitor {
+                        override val state = net
+                    },
+                    backgroundScope,
+                    keepAlive,
+                    autoConnect = pending,
+                )
+            setHosts(host("a"))
+            fg.value = true
+            runCurrent()
+            assertEquals(0, sessionOf("a").starts)
+            pending.emit(AutoConnectSettings(default = false))
+            runCurrent()
+            assertEquals(0, sessionOf("a").starts)
+            assertTrue(m.overview.value.size == 1)
+        }
 }

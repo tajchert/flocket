@@ -12,11 +12,13 @@ import com.mtajchert.flocket.core.data.internal.DeviceKeyRepositoryImpl
 import com.mtajchert.flocket.core.data.internal.HcPathCache
 import com.mtajchert.flocket.core.data.internal.HostConnector
 import com.mtajchert.flocket.core.data.internal.HostRepositoryImpl
+import com.mtajchert.flocket.core.data.internal.HostSettingsRepositoryImpl
 import com.mtajchert.flocket.core.data.internal.HostTrustRepositoryImpl
 import com.mtajchert.flocket.core.data.internal.PreferencesRepositoryImpl
 import com.mtajchert.flocket.core.data.internal.ProcessLifecycleForeground
 import com.mtajchert.flocket.core.data.internal.SshHostConnector
 import com.mtajchert.flocket.core.database.HostDao
+import com.mtajchert.flocket.core.database.HostSettingsDao
 import com.mtajchert.flocket.core.database.PinnedHostKeyDao
 import com.mtajchert.flocket.core.datastore.PreferencesDataSource
 import com.mtajchert.flocket.core.security.KeyVault
@@ -70,6 +72,13 @@ internal object DataModule {
 
     @Provides
     @Singleton
+    fun provideHostSettingsRepository(
+        dao: HostSettingsDao,
+        preferences: PreferencesRepository,
+    ): HostSettingsRepository = HostSettingsRepositoryImpl(dao, preferences)
+
+    @Provides
+    @Singleton
     internal fun provideHostConnector(
         hosts: HostRepositoryImpl,
         trust: HostTrustRepository,
@@ -98,6 +107,7 @@ internal object DataModule {
         // Bound by :app (the Android service lives there, next to the Activity it returns to).
         keepAlive: KeepAliveService,
         preferences: PreferencesRepository,
+        hostSettings: HostSettingsRepository,
     ): ConnectionManager =
         ConnectionManagerImpl(
             hosts,
@@ -108,6 +118,7 @@ internal object DataModule {
             scope,
             keepAlive,
             keepAliveEnabled = preferences.preferences.map { it.keepConnectedInBackground },
+            autoConnect = hostSettings.autoConnect,
             logger = AndroidLogger,
         )
 

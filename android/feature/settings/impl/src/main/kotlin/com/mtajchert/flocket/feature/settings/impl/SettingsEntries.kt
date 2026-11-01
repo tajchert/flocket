@@ -20,6 +20,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mtajchert.flocket.core.ui.nav.EntryProviderInstaller
 import com.mtajchert.flocket.core.ui.nav.Navigator
+import com.mtajchert.flocket.core.ui.terminalsettings.TerminalSettingsCallbacks
 import com.mtajchert.flocket.feature.hosts.api.HostsRoute
 import com.mtajchert.flocket.feature.settings.api.LicensesRoute
 import com.mtajchert.flocket.feature.settings.api.SettingsRoute
@@ -118,9 +119,17 @@ private fun SettingsRoute(
             SettingsCallbacks(
                 onTheme = viewModel::setTheme,
                 onDynamicColor = viewModel::setDynamicColor,
-                onFontSize = viewModel::setTerminalFontSize,
-                onExtraKeys = viewModel::setShowExtraKeys,
-                onKeepScreenOn = viewModel::setKeepScreenOn,
+                terminal =
+                    TerminalSettingsCallbacks(
+                        onFontSize = viewModel::setTerminalFontSize,
+                        onColorScheme = viewModel::setColorScheme,
+                        onExtraKeys = viewModel::setShowExtraKeys,
+                        onKeepScreenOn = viewModel::setKeepScreenOn,
+                        onClipboard = viewModel::setClipboardPolicy,
+                        onBell = viewModel::setBell,
+                        onAutoConnect = viewModel::setAutoConnect,
+                        onWorkingDirectory = viewModel::setDefaultWorkingDirectory,
+                    ),
                 onKeepConnected = viewModel::setKeepConnected,
                 onGenerateKey = viewModel::requestGenerate,
                 onImportKey = { viewModel.requestImport() },

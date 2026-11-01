@@ -8,9 +8,12 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.mtajchert.flocket.core.common.error.AppError
 import com.mtajchert.flocket.core.common.result.AppResult
 import com.mtajchert.flocket.core.data.UserPreferences
+import com.mtajchert.flocket.core.model.BellMode
+import com.mtajchert.flocket.core.model.ClipboardWritePolicy
 import com.mtajchert.flocket.core.model.ConnectionState
 import com.mtajchert.flocket.core.model.Liveness
 import com.mtajchert.flocket.core.model.TerminalAddress
+import com.mtajchert.flocket.core.model.TerminalColorScheme
 import com.mtajchert.flocket.core.session.AttachRequest
 import com.mtajchert.flocket.core.session.StreamEnd
 import com.mtajchert.flocket.core.session.TerminalStream
@@ -19,6 +22,7 @@ import com.mtajchert.flocket.core.terminal.fake.FakeTerminalEngine
 import com.mtajchert.flocket.core.testing.FakeConnectionManager
 import com.mtajchert.flocket.core.testing.FakeCoreSession
 import com.mtajchert.flocket.core.testing.FakeHostRepository
+import com.mtajchert.flocket.core.testing.FakeHostSettingsRepository
 import com.mtajchert.flocket.core.testing.FakePreferencesRepository
 import com.mtajchert.flocket.core.testing.FakeTerminalStream
 import com.mtajchert.flocket.core.testing.MainDispatcherRule
@@ -34,8 +38,10 @@ import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -64,6 +70,7 @@ class TerminalViewModelTest {
         startedHere: Boolean = false,
         savedState: SavedStateHandle = SavedStateHandle(),
         preferences: FakePreferencesRepository = FakePreferencesRepository(),
+        settings: FakeHostSettingsRepository = FakeHostSettingsRepository(preferences),
         attach: (suspend (TerminalAddress, AttachRequest) -> AppResult<TerminalStream>)? = null,
     ): TerminalViewModel {
         manager.overview.value // sessions are created with the overview
@@ -75,6 +82,7 @@ class TerminalViewModelTest {
                 savedState = savedState,
                 connections = manager,
                 preferences = preferences,
+                hostSettings = settings,
                 controllerFactory = {
                     TerminalController(
                         engineFactory = { c, r -> FakeTerminalEngine(c, r) },
@@ -370,6 +378,7 @@ class TerminalViewModelTest {
                     SavedStateHandle(),
                     manager,
                     FakePreferencesRepository(),
+                    FakeHostSettingsRepository(),
                     {
                         TerminalController({ c, r -> FakeTerminalEngine(c, r) }, FakeTerminalEngine.DEFAULT_THEME, {
                             awaitCancellation()
@@ -380,5 +389,125 @@ class TerminalViewModelTest {
             backgroundScope.launch { vm.uiState.collect {} }
             advanceUntilIdle()
             assertEquals(TerminalPhase.HostMissing, vm.uiState.value.phase)
+        }
+
+    // ---- layered settings -------------------------------------------------------------------------
+
+    private val studioId = SampleData.studio.id
+
+    @Test
+    fun `screen state uses the app defaults then the host overrides`() =
+        runTest {
+            val prefs = FakePreferencesRepository()
+            val settings = FakeHostSettingsRepository(prefs)
+            val vm = viewModel(preferences = prefs, settings = settings)
+            var ui = vm.uiState.value
+            assertEquals(13f, ui.fontSizeSp)
+            assertEquals(TerminalColorScheme.FollowApp, ui.colorScheme)
+            assertEquals(BellMode.Haptic, ui.bell)
+            assertTrue(ui.showExtraKeys && ui.keepScreenOn)
+
+            prefs.update { it.copy(terminal = it.terminal.copy(fontSizeSp = 16f, showExtraKeys = false)) }
+            ui = vm.uiState.value
+            assertEquals(16f, ui.fontSizeSp)
+            assertFalse(ui.showExtraKeys)
+
+            settings.update(studioId) {
+                it.copy(
+                    fontSizeSp = 20f,
+                    colorScheme = TerminalColorScheme.SolarizedDark,
+                    showExtraKeys = true,
+                    keepScreenOn = false,
+                    bell = BellMode.Off,
+                )
+            }
+            ui = vm.uiState.value
+            assertEquals(20f, ui.fontSizeSp)
+            assertEquals(TerminalColorScheme.SolarizedDark, ui.colorScheme)
+            assertTrue(ui.showExtraKeys)
+            assertFalse(ui.keepScreenOn)
+            assertEquals(BellMode.Off, ui.bell)
+            // The app default keeps changing underneath, the override stays.
+            prefs.update { it.copy(terminal = it.terminal.copy(fontSizeSp = 9f)) }
+            assertEquals(20f, vm.uiState.value.fontSizeSp)
+        }
+
+    @Test
+    fun `opening a terminal asks the manager to connect its host`() =
+        runTest {
+            viewModel()
+            assertTrue(studioId in manager.connectRequests)
+        }
+
+    @Test
+    fun `pinch writes the host font override when it has one`() =
+        runTest {
+            val prefs = FakePreferencesRepository()
+            val settings = FakeHostSettingsRepository(prefs)
+            settings.update(studioId) { it.copy(fontSizeSp = 14f) }
+            val vm = viewModel(preferences = prefs, settings = settings)
+            vm.onFontSizeChange(18f)
+            advanceUntilIdle()
+            assertEquals(18f, settings.overridesNow.getValue(studioId).fontSizeSp)
+            assertEquals(13f, prefs.preferences.value.terminal.fontSizeSp)
+        }
+
+    @Test
+    fun `pinch writes the app default when the host follows it`() =
+        runTest {
+            val prefs = FakePreferencesRepository()
+            val settings = FakeHostSettingsRepository(prefs)
+            val vm = viewModel(preferences = prefs, settings = settings)
+            vm.onFontSizeChange(18f)
+            advanceUntilIdle()
+            assertEquals(18f, prefs.preferences.value.terminal.fontSizeSp)
+            assertTrue(settings.overridesNow.isEmpty())
+        }
+
+    @Test
+    fun `clipboard Allow copies without a dialog and Deny drops the request`() =
+        runTest {
+            val prefs = FakePreferencesRepository()
+            val settings = FakeHostSettingsRepository(prefs)
+            val vm = viewModel(preferences = prefs, settings = settings)
+            settings.update(studioId) { it.copy(clipboardWritePolicy = ClipboardWritePolicy.Allow) }
+            vm.onClipboardWriteRequest("quiet")
+            assertNull(vm.uiState.value.clipboardRequest)
+            assertEquals(TerminalScreenEvent.CopyToClipboard("quiet"), vm.events.first())
+
+            settings.update(studioId) { it.copy(clipboardWritePolicy = ClipboardWritePolicy.Deny) }
+            vm.onClipboardWriteRequest("nope")
+            assertNull(vm.uiState.value.clipboardRequest)
+            val next = withTimeoutOrNull(50) { vm.events.first() }
+            // Only the earlier note about the allowed copy may be pending, never a second copy.
+            assertTrue(next !is TerminalScreenEvent.CopyToClipboard)
+        }
+
+    @Test
+    fun `clipboard Ask from the app default shows the dialog and always-allow sets the host override`() =
+        runTest {
+            val prefs = FakePreferencesRepository()
+            val settings = FakeHostSettingsRepository(prefs)
+            val vm = viewModel(preferences = prefs, settings = settings)
+            vm.onClipboardWriteRequest("first")
+            assertEquals("first", vm.uiState.value.clipboardRequest)
+            vm.alwaysAllowClipboard()
+            assertNull(vm.uiState.value.clipboardRequest)
+            assertEquals(TerminalScreenEvent.CopyToClipboard("first"), vm.events.first())
+            assertEquals(ClipboardWritePolicy.Allow, settings.overridesNow.getValue(studioId).clipboardWritePolicy)
+            // The app default is untouched; later requests from this host no longer ask.
+            assertEquals(ClipboardWritePolicy.Ask, prefs.preferences.value.terminal.clipboardWritePolicy)
+            vm.onClipboardWriteRequest("second")
+            assertNull(vm.uiState.value.clipboardRequest)
+        }
+
+    @Test
+    fun `app level Deny applies to hosts without an override`() =
+        runTest {
+            val prefs = FakePreferencesRepository()
+            prefs.update { it.copy(terminal = it.terminal.copy(clipboardWritePolicy = ClipboardWritePolicy.Deny)) }
+            val vm = viewModel(preferences = prefs)
+            vm.onClipboardWriteRequest("x")
+            assertNull(vm.uiState.value.clipboardRequest)
         }
 }

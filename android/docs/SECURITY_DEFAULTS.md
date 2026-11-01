@@ -22,3 +22,7 @@ Flocket stores SSH credentials and pinned host keys, so the defaults are strict.
 ## Backup decision
 
 Backed up: hosts, pinned SSH host keys and preferences, so a restored device keeps its host list and trust decisions. Not backed up: `files/vault` (device keys). The vault holds ciphertext sealed by a hardware-bound Android Keystore key that cannot be restored, so backing it up would only leak useless blobs. After a restore, hosts that reference a missing key fail with an input error and the user generates or imports a key again. Passwords are never persisted.
+
+## Clipboard writes from the terminal (OSC 52)
+
+A program in a terminal can ask to set the clipboard. The effective policy decides: Ask (default, shows the text and needs a tap), Allow (copies silently, with a snackbar note) or Deny (ignored). It is an app default with an optional per-host override; the Ask dialog offers "Always allow for this host", which sets that host's override only. Reading the clipboard from a program is never supported.

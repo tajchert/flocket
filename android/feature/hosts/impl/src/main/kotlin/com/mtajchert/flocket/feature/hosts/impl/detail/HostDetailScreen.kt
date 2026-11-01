@@ -11,15 +11,20 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.Sync
+import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedCard
@@ -35,11 +40,13 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import com.mtajchert.flocket.core.model.ConnectionState
 import com.mtajchert.flocket.core.model.MachineInfo
 import com.mtajchert.flocket.core.model.MachineState
 import com.mtajchert.flocket.core.ui.component.CenteredContent
@@ -57,6 +64,8 @@ import com.mtajchert.flocket.feature.hosts.impl.R
 data class HostDetailCallbacks(
     val onBack: (() -> Unit)? = null,
     val onEdit: () -> Unit = {},
+    val onHostSettings: () -> Unit = {},
+    val onConnect: () -> Unit = {},
     val onErrorAction: (UiErrorAction) -> Unit = {},
     val onRequestForget: () -> Unit = {},
     val onRequestDelete: () -> Unit = {},
@@ -128,6 +137,9 @@ fun HostDetailScreen(
                                 fontFamily = FontFamily.Monospace,
                             )
                             ConnectionStateBadge(state.connection, nowMs = nowMs)
+                            if (state.connection is ConnectionState.Idle) {
+                                Button(onClick = callbacks.onConnect) { Text(stringResource(R.string.detail_connect)) }
+                            }
                         }
                         if (state.connection !is com.mtajchert.flocket.core.model.ConnectionState.Online &&
                             state.terminalCount > 0
@@ -135,6 +147,7 @@ fun HostDetailScreen(
                             StaleDataBanner(state.confirmedAtMs, nowMs = nowMs)
                         }
                         state.error?.let { ErrorBanner(it, onAction = callbacks.onErrorAction) }
+                        HostSettingsEntry(state.customSettings, callbacks.onHostSettings)
                         CoreSection(state)
                         if (state.machines.isNotEmpty()) MachinesSection(state.machines)
                         SecuritySection(state, callbacks.onRequestForget)
@@ -148,6 +161,30 @@ fun HostDetailScreen(
         }
     }
     DetailDialogs(state, callbacks)
+}
+
+@Composable
+private fun HostSettingsEntry(
+    customSettings: Int,
+    onClick: () -> Unit,
+) {
+    OutlinedCard(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
+        ListItem(
+            colors = ListItemDefaults.colors(containerColor = androidx.compose.ui.graphics.Color.Transparent),
+            leadingContent = { Icon(Icons.Outlined.Tune, contentDescription = null) },
+            headlineContent = { Text(stringResource(R.string.detail_host_settings)) },
+            supportingContent = {
+                Text(
+                    if (customSettings == 0) {
+                        stringResource(R.string.detail_host_settings_defaults)
+                    } else {
+                        pluralStringResource(R.plurals.detail_host_settings_custom, customSettings, customSettings)
+                    },
+                )
+            },
+            trailingContent = { Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, contentDescription = null) },
+        )
+    }
 }
 
 @Composable

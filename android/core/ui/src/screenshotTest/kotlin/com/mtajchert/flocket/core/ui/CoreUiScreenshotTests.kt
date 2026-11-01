@@ -145,3 +145,36 @@ private fun HostFormScreenshot() =
             modifier = Modifier.fillMaxWidth(),
         )
     }
+
+@Composable
+private fun SchemePreviews(schemes: List<com.mtajchert.flocket.core.model.TerminalColorScheme>) =
+    Shot {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            schemes.forEach { scheme ->
+                androidx.compose.material3.Text(
+                    scheme.name,
+                    style = androidx.compose.material3.MaterialTheme.typography.labelMedium,
+                )
+                com.mtajchert.flocket.core.ui.terminalsettings
+                    .TerminalPreview(fontSizeSp = 12f, scheme = scheme)
+            }
+        }
+    }
+
+@PreviewTest
+@PreviewComponentThemes
+@Composable
+private fun TerminalSchemePreviewsAScreenshot() =
+    SchemePreviews(
+        com.mtajchert.flocket.core.model.TerminalColorScheme.entries
+            .take(3),
+    )
+
+@PreviewTest
+@PreviewComponentThemes
+@Composable
+private fun TerminalSchemePreviewsBScreenshot() =
+    SchemePreviews(
+        com.mtajchert.flocket.core.model.TerminalColorScheme.entries
+            .drop(3),
+    )

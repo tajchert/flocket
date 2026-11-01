@@ -13,9 +13,13 @@ import com.mtajchert.flocket.core.data.ThemePreference
 import com.mtajchert.flocket.core.data.UserPreferences
 import com.mtajchert.flocket.core.database.FlocketDatabase
 import com.mtajchert.flocket.core.datastore.PreferencesDataSource
+import com.mtajchert.flocket.core.model.BellMode
+import com.mtajchert.flocket.core.model.ClipboardWritePolicy
 import com.mtajchert.flocket.core.model.DeviceKey
 import com.mtajchert.flocket.core.model.HostAuth
 import com.mtajchert.flocket.core.model.PinnedHostKey
+import com.mtajchert.flocket.core.model.TerminalColorScheme
+import com.mtajchert.flocket.core.model.TerminalPreferences
 import com.mtajchert.flocket.core.security.KeyVault
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -172,7 +176,23 @@ class RepositoriesTest {
         runBlocking {
             val repo = prefs(File(tmp.root, "p.preferences_pb"))
             assertEquals(UserPreferences(), repo.preferences.first())
-            val changed = UserPreferences(true, ThemePreference.Dark, false, 18f, false, false)
+            val changed =
+                UserPreferences(
+                    onboardingCompleted = true,
+                    theme = ThemePreference.Dark,
+                    dynamicColor = false,
+                    terminal =
+                        TerminalPreferences(
+                            fontSizeSp = 18f,
+                            colorScheme = TerminalColorScheme.SolarizedDark,
+                            showExtraKeys = false,
+                            keepScreenOn = false,
+                            clipboardWritePolicy = ClipboardWritePolicy.Deny,
+                            bell = BellMode.Off,
+                            autoConnect = false,
+                            defaultWorkingDirectory = "~/code",
+                        ),
+                )
             assertTrue(repo.update { changed } is AppResult.Success)
             assertEquals(changed, repo.preferences.first())
         }

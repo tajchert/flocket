@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.mtajchert.flocket.core.data.ConnectionManager
 import com.mtajchert.flocket.core.data.HostOverview
+import com.mtajchert.flocket.core.data.HostSettingsRepository
 import com.mtajchert.flocket.core.model.AgentState
 import com.mtajchert.flocket.core.model.AgentStatus
 import com.mtajchert.flocket.core.model.ConnectionState
@@ -12,7 +13,7 @@ import com.mtajchert.flocket.core.model.Liveness
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import javax.inject.Inject
 
@@ -31,6 +32,8 @@ data class HostItem(
     val coreName: String?,
     val coreVersion: String?,
     val counts: TerminalCounts,
+    /** The host overrides some app-level terminal defaults. */
+    val customized: Boolean = false,
 )
 
 data class UserAtHost(
@@ -48,18 +51,22 @@ class HostsViewModel
     @Inject
     constructor(
         connectionManager: ConnectionManager,
+        hostSettings: HostSettingsRepository,
     ) : ViewModel() {
         val uiState: StateFlow<HostsUiState> =
-            connectionManager.overview
-                .map { HostsUiState(it.map(::toItem)) }
-                .stateIn(
-                    viewModelScope,
-                    SharingStarted.WhileSubscribed(5_000),
-                    HostsUiState(connectionManager.overview.value.map(::toItem)),
-                )
+            combine(connectionManager.overview, hostSettings.customizedHosts) { overview, custom ->
+                HostsUiState(overview.map { toItem(it, it.host.id in custom) })
+            }.stateIn(
+                viewModelScope,
+                SharingStarted.WhileSubscribed(5_000),
+                HostsUiState(connectionManager.overview.value.map { toItem(it) }),
+            )
     }
 
-internal fun toItem(overview: HostOverview): HostItem {
+internal fun toItem(
+    overview: HostOverview,
+    customized: Boolean = false,
+): HostItem {
     val host = overview.host
     val running = overview.session.terminals.filter { it.liveness !is Liveness.Finished }
 
@@ -77,5 +84,6 @@ internal fun toItem(overview: HostOverview): HostItem {
                 count(AgentState.Working),
                 overview.session.terminals.size,
             ),
+        customized = customized,
     )
 }

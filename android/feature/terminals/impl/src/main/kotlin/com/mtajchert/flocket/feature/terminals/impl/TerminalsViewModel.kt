@@ -6,6 +6,7 @@ import com.mtajchert.flocket.core.common.error.AppError
 import com.mtajchert.flocket.core.common.result.AppResult
 import com.mtajchert.flocket.core.data.ConnectionManager
 import com.mtajchert.flocket.core.data.HostOverview
+import com.mtajchert.flocket.core.data.HostSettingsRepository
 import com.mtajchert.flocket.core.model.ConnectionState
 import com.mtajchert.flocket.core.model.CoreInfo
 import com.mtajchert.flocket.core.model.HostId
@@ -26,6 +27,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -63,6 +65,7 @@ class TerminalsViewModel
     constructor(
         private val connectionManager: ConnectionManager,
         private val lastCwd: LastCwdStore,
+        private val hostSettings: HostSettingsRepository,
     ) : ViewModel() {
         private val controls = MutableStateFlow(ListControls())
         private val refreshing = MutableStateFlow(false)
@@ -92,7 +95,11 @@ class TerminalsViewModel
                 refreshing.value = true
                 connectionManager.overview.value
                     .filter { it.session.connection !is ConnectionState.Online }
-                    .forEach { connectionManager.session(it.host.id)?.retryNow() }
+                    .forEach {
+                        // Also wakes hosts that don't connect on launch.
+                        connectionManager.connect(it.host.id)
+                        connectionManager.session(it.host.id)?.retryNow()
+                    }
                 delay(REFRESH_FEEDBACK_MS)
                 refreshing.value = false
             }
@@ -103,6 +110,7 @@ class TerminalsViewModel
             action: UiErrorAction,
         ) {
             if (action == UiErrorAction.Retry) {
+                connectionManager.connect(hostId)
                 connectionManager.session(hostId)?.retryNow()
             } else {
                 send(TerminalsEvent.OpenHost(hostId, action))
@@ -244,6 +252,20 @@ class TerminalsViewModel
                     templates = if (choice.supportsTemplates) TemplatesState.Loading else TemplatesState.Unsupported,
                     error = null,
                 )
+            }
+            if (lastCwd.get(hostId) == null) {
+                // No folder used here before: start in the host's configured default (host override or app default).
+                viewModelScope.launch {
+                    val default =
+                        hostSettings
+                            .effective(hostId)
+                            .first()
+                            .terminal.defaultWorkingDirectory
+                    // Only while the user hasn't typed their own folder yet.
+                    updateForm {
+                        if (it.hostId == hostId && it.cwd == NewTerminalForm.DEFAULT_CWD) it.copy(cwd = default) else it
+                    }
+                }
             }
             if (choice.supportsTemplates) {
                 viewModelScope.launch {

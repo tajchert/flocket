@@ -2,6 +2,7 @@ package com.mtajchert.flocket.core.data.internal
 
 import com.mtajchert.flocket.core.common.logging.Logger
 import com.mtajchert.flocket.core.data.AppForeground
+import com.mtajchert.flocket.core.data.AutoConnectSettings
 import com.mtajchert.flocket.core.data.ConnectionManager
 import com.mtajchert.flocket.core.data.HostOverview
 import com.mtajchert.flocket.core.data.HostRepository
@@ -13,6 +14,7 @@ import com.mtajchert.flocket.core.model.Host
 import com.mtajchert.flocket.core.model.HostId
 import com.mtajchert.flocket.core.session.CoreSession
 import com.mtajchert.flocket.core.session.CoreSessionFactory
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
@@ -41,6 +43,9 @@ import kotlin.coroutines.cancellation.CancellationException
  *   the platform's ~3 min `shortService` limit, so we stop before `onTimeout`). Without a terminal, or when
  *   the platform refuses the service, sessions stop at once: Android 15+ cuts a background app's network
  *   ~5 s later anyway, so waiting would only turn a clean detach into a dropped link.
+ * - Auto-connect: a host whose effective `autoConnect` is off keeps its session Idle until [connect] is called
+ *   (the user opened the host or one of its terminals, pulled to refresh, tapped Connect). Such a host then
+ *   reconnects like any other whenever the app returns to the foreground during this process.
  * - Regaining or changing the network retries sessions that are waiting in backoff.
  * - Each host's work runs in its own child job: one slow or failing host never blocks another.
  */
@@ -55,6 +60,8 @@ internal class ConnectionManagerImpl(
     private val keepAliveWindowMs: Long = KEEP_ALIVE_WINDOW_MS,
     /** The user's app-level "Keep connected in background" setting; off means detach at once. */
     keepAliveEnabled: Flow<Boolean> = flowOf(true),
+    /** Effective per-host auto-connect (app default + host overrides). */
+    autoConnect: Flow<AutoConnectSettings> = flowOf(AutoConnectSettings()),
     private val logger: Logger = Logger.None,
 ) : ConnectionManager {
     private class Entry(
@@ -70,6 +77,11 @@ internal class ConnectionManagerImpl(
     private var keepAliveRunning = false
 
     @Volatile private var keepAliveAllowed = true
+    private var autoConnectSettings = AutoConnectSettings()
+    private val settingsReady = CompletableDeferred<Unit>()
+
+    /** Hosts the user asked to connect although their auto-connect is off. */
+    private val manual = HashSet<HostId>()
     private var windowJob: Job? = null
     private var lastNetwork: NetworkState? = null
 
@@ -91,9 +103,37 @@ internal class ConnectionManagerImpl(
 
     init {
         scope.launch { hostRepository.hosts.collect { reconcile(it) } }
-        scope.launch { foreground.isForeground.distinctUntilChanged().collect { onForeground(it) } }
+        scope.launch {
+            // Don't start anything before we know which hosts opted out of auto-connect.
+            settingsReady.await()
+            foreground.isForeground.distinctUntilChanged().collect { onForeground(it) }
+        }
         scope.launch { network.state.distinctUntilChanged().collect { onNetwork(it) } }
         scope.launch { keepAliveEnabled.collect { keepAliveAllowed = it } }
+        scope.launch { autoConnect.collect { onAutoConnect(it) } }
+    }
+
+    // Callers hold [lock].
+    private fun wants(id: HostId) = autoConnectSettings.isEnabled(id) || id in manual
+
+    private fun onAutoConnect(settings: AutoConnectSettings) {
+        val toStart =
+            synchronized(lock) {
+                autoConnectSettings = settings
+                if (active) entries.filter { wants(it.key) }.values.map { it.session } else emptyList()
+            }
+        settingsReady.complete(Unit)
+        // A host that just opted in starts now; one that opted out keeps running until the next detach.
+        toStart.forEach { s -> safely("start") { s.start() } }
+    }
+
+    override fun connect(hostId: HostId) {
+        val session =
+            synchronized(lock) {
+                manual += hostId
+                if (active) entries[hostId]?.session else null
+            }
+        session?.let { s -> safely("start") { s.start() } }
     }
 
     override fun session(hostId: HostId): CoreSession? = synchronized(lock) { entries[hostId]?.session }
@@ -119,7 +159,7 @@ internal class ConnectionManagerImpl(
                 next[host.id] =
                     when {
                         prev == null -> {
-                            newEntry(host).also { if (active) toStart += it.session }
+                            newEntry(host).also { if (active && wants(host.id)) toStart += it.session }
                         }
 
                         prev.host == host -> {
@@ -128,7 +168,7 @@ internal class ConnectionManagerImpl(
 
                         needsNewSession(prev.host, host) -> {
                             toStop += prev.session
-                            newEntry(host).also { if (active) toStart += it.session }
+                            newEntry(host).also { if (active && wants(host.id)) toStart += it.session }
                         }
 
                         else -> {
@@ -140,6 +180,7 @@ internal class ConnectionManagerImpl(
                 if (id !in next) {
                     toStop += e.session
                     connector.clearPassword(id)
+                    manual -= id
                 }
             }
             entries = next
@@ -196,7 +237,7 @@ internal class ConnectionManagerImpl(
                 stopService = keepAliveRunning
                 keepAliveRunning = false
                 active = true
-                sessions = entries.values.map { it.session }
+                sessions = entries.filter { wants(it.key) }.values.map { it.session }
                 keepFor = 0
             } else {
                 stopService = false

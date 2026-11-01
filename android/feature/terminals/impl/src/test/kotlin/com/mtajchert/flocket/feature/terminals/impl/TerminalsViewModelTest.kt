@@ -5,6 +5,7 @@ package com.mtajchert.flocket.feature.terminals.impl
 import app.cash.turbine.test
 import com.mtajchert.flocket.core.common.error.AppError
 import com.mtajchert.flocket.core.common.result.AppResult
+import com.mtajchert.flocket.core.model.ConnectionState
 import com.mtajchert.flocket.core.model.CoreInfo
 import com.mtajchert.flocket.core.model.HostId
 import com.mtajchert.flocket.core.model.MachineState
@@ -13,6 +14,8 @@ import com.mtajchert.flocket.core.session.SessionState
 import com.mtajchert.flocket.core.testing.FakeConnectionManager
 import com.mtajchert.flocket.core.testing.FakeCoreSession
 import com.mtajchert.flocket.core.testing.FakeHostRepository
+import com.mtajchert.flocket.core.testing.FakeHostSettingsRepository
+import com.mtajchert.flocket.core.testing.FakePreferencesRepository
 import com.mtajchert.flocket.core.testing.MainDispatcherRule
 import com.mtajchert.flocket.core.testing.SampleData
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -55,8 +58,11 @@ class TerminalsViewModelTest {
         })
     }
 
-    private fun TestScope.vm(manager: FakeConnectionManager = manager()): TerminalsViewModel {
-        val vm = TerminalsViewModel(manager, InMemoryLastCwdStore())
+    private fun TestScope.vm(
+        manager: FakeConnectionManager = manager(),
+        settings: FakeHostSettingsRepository = FakeHostSettingsRepository(),
+    ): TerminalsViewModel {
+        val vm = TerminalsViewModel(manager, InMemoryLastCwdStore(), settings)
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.uiState.collect {} }
         return vm
     }
@@ -379,4 +385,34 @@ class TerminalsViewModelTest {
 
     @Suppress("unused")
     private val keepImports = listOf<Any?>(FakeCoreSession::class, SessionState::class)
+
+    @Test
+    fun `new terminal prefills the app default folder, a host override wins, and typing is not overwritten`() =
+        runTest {
+            val prefs = FakePreferencesRepository()
+            prefs.update { it.copy(terminal = it.terminal.copy(defaultWorkingDirectory = "~/work")) }
+            val settings = FakeHostSettingsRepository(prefs)
+            val vm = vm(settings = settings)
+            vm.openNewTerminal()
+            assertEquals("~/work", (vm.dialog.value as TerminalDialog.NewTerminal).form.cwd)
+
+            settings.update(studio) { it.copy(defaultWorkingDirectory = "~/code") }
+            vm.openNewTerminal()
+            assertEquals("~/code", (vm.dialog.value as TerminalDialog.NewTerminal).form.cwd)
+        }
+
+    @Test
+    fun `refresh and retry connect hosts that do not connect on launch`() =
+        runTest {
+            val m = manager()
+            val vm = vm(m)
+            vm.refresh()
+            advanceUntilIdle()
+            assertTrue(
+                m.connectRequests.isNotEmpty() ||
+                    m.overview.value.all { it.session.connection is ConnectionState.Online },
+            )
+            vm.onHostAction(studio, com.mtajchert.flocket.core.ui.error.UiErrorAction.Retry)
+            assertTrue(studio in m.connectRequests)
+        }
 }

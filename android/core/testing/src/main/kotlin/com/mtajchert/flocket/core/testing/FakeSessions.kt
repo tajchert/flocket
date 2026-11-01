@@ -172,6 +172,13 @@ class FakeConnectionManager(
         sessions[hostId]?.retryNow()
     }
 
+    private val connectRequested = MutableStateFlow(emptyList<HostId>())
+
+    /** Hosts passed to [connect], in order. */
+    val connectRequests: List<HostId> get() = connectRequested.value
+
+    override fun connect(hostId: HostId) = connectRequested.update { it + hostId }
+
     private val held = MutableStateFlow(emptySet<Any>())
 
     /** Tokens of terminal screens currently held for background keep-alive. */

@@ -5,6 +5,9 @@ package com.mtajchert.flocket.feature.settings.impl
 import app.cash.turbine.test
 import com.mtajchert.flocket.core.common.error.AppError
 import com.mtajchert.flocket.core.data.ThemePreference
+import com.mtajchert.flocket.core.model.BellMode
+import com.mtajchert.flocket.core.model.ClipboardWritePolicy
+import com.mtajchert.flocket.core.model.TerminalColorScheme
 import com.mtajchert.flocket.core.testing.FakeDeviceKeyRepository
 import com.mtajchert.flocket.core.testing.FakeHostRepository
 import com.mtajchert.flocket.core.testing.FakePreferencesRepository
@@ -50,10 +53,32 @@ class SettingsViewModelTest {
             val p = vm.uiState.value.preferences
             assertEquals(ThemePreference.Dark, p.theme)
             assertEquals(false, p.dynamicColor)
-            assertEquals(false, p.showExtraKeys)
-            assertEquals(false, p.keepScreenOnInTerminal)
+            assertEquals(false, p.terminal.showExtraKeys)
+            assertEquals(false, p.terminal.keepScreenOn)
             assertEquals(false, p.keepConnectedInBackground)
-            assertEquals(SettingsViewModel.MAX_FONT_SP, p.terminalFontSize)
+            assertEquals(SettingsViewModel.MAX_FONT_SP, p.terminal.fontSizeSp)
+        }
+
+    @Test
+    fun `terminal defaults are persisted and a blank folder falls back to home`() =
+        runTest {
+            val vm = vm()
+            vm.setColorScheme(TerminalColorScheme.SolarizedDark)
+            vm.setClipboardPolicy(ClipboardWritePolicy.Deny)
+            vm.setBell(BellMode.Off)
+            vm.setAutoConnect(false)
+            vm.setDefaultWorkingDirectory(" ~/code ")
+            var t = vm.uiState.value.preferences.terminal
+            assertEquals(TerminalColorScheme.SolarizedDark, t.colorScheme)
+            assertEquals(ClipboardWritePolicy.Deny, t.clipboardWritePolicy)
+            assertEquals(BellMode.Off, t.bell)
+            assertEquals(false, t.autoConnect)
+            assertEquals("~/code", t.defaultWorkingDirectory)
+            vm.setDefaultWorkingDirectory("  ")
+            t = vm.uiState.value.preferences.terminal
+            assertEquals("~", t.defaultWorkingDirectory)
+            // Everything else is untouched.
+            assertEquals(13f, t.fontSizeSp)
         }
 
     @Test

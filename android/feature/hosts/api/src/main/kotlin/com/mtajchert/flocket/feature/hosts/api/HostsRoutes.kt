@@ -18,3 +18,9 @@ data class HostDetailRoute(
 data class HostEditRoute(
     val hostId: String? = null,
 ) : NavKey
+
+/** Per-host overrides of the app's terminal defaults. Full-screen. */
+@Serializable
+data class HostSettingsRoute(
+    val hostId: String,
+) : NavKey

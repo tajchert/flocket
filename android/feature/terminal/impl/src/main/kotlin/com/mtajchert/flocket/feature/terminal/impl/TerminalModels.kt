@@ -1,7 +1,9 @@
 package com.mtajchert.flocket.feature.terminal.impl
 
 import com.mtajchert.flocket.core.model.AgentStatus
+import com.mtajchert.flocket.core.model.BellMode
 import com.mtajchert.flocket.core.model.ConnectionState
+import com.mtajchert.flocket.core.model.TerminalColorScheme
 import com.mtajchert.flocket.core.ui.error.UiError
 import com.mtajchert.flocket.core.ui.error.UiText
 
@@ -59,6 +61,8 @@ data class TerminalUiState(
     val fontSizeSp: Float = 13f,
     val showExtraKeys: Boolean = true,
     val keepScreenOn: Boolean = true,
+    val colorScheme: TerminalColorScheme = TerminalColorScheme.FollowApp,
+    val bell: BellMode = BellMode.Haptic,
     /** A program asked to set the clipboard (OSC 52): ask before copying. */
     val clipboardRequest: String? = null,
     val confirmKill: Boolean = false,

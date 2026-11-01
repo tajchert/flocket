@@ -7,6 +7,7 @@ import com.mtajchert.flocket.core.session.SessionState
 import com.mtajchert.flocket.core.testing.FakeConnectionManager
 import com.mtajchert.flocket.core.testing.FakeDeviceKeyRepository
 import com.mtajchert.flocket.core.testing.FakeHostRepository
+import com.mtajchert.flocket.core.testing.FakeHostSettingsRepository
 import com.mtajchert.flocket.core.testing.FakeHostTrustRepository
 import com.mtajchert.flocket.core.testing.MainDispatcherRule
 import com.mtajchert.flocket.core.testing.SampleData
@@ -44,7 +45,7 @@ class HostsViewModelsTest {
     @Test
     fun `list counts blocked, working and total per host`() =
         runTest {
-            val vm = HostsViewModel(manager)
+            val vm = HostsViewModel(manager, FakeHostSettingsRepository())
             val studio =
                 vm.uiState
                     .first { it.hosts.isNotEmpty() }
@@ -89,7 +90,7 @@ class HostsViewModelsTest {
     @Test
     fun `trust flow pins the key and retries the session`() =
         runTest {
-            val vm = HostDetailViewModel("pi", manager, hosts, trust)
+            val vm = HostDetailViewModel("pi", manager, hosts, trust, FakeHostSettingsRepository())
             vm.uiState.onEach { }.launchIn(CoroutineScope(UnconfinedTestDispatcher(testScheduler)))
             val error = vm.uiState.value.error
             assertTrue(error?.source is AppError.HostKeyUnknown)
@@ -109,11 +110,40 @@ class HostsViewModelsTest {
     @Test
     fun `delete removes the host and flags the screen to leave`() =
         runTest {
-            val vm = HostDetailViewModel("studio", manager, hosts, trust)
+            val vm = HostDetailViewModel("studio", manager, hosts, trust, FakeHostSettingsRepository())
             vm.uiState.onEach { }.launchIn(CoroutineScope(UnconfinedTestDispatcher(testScheduler)))
             vm.requestDelete()
             vm.delete()
             assertTrue(vm.uiState.value.deleted)
             assertTrue(hosts.hosts.value.none { it.id == SampleData.studio.id })
+        }
+
+    @Test
+    fun `list marks hosts with overrides as customized`() =
+        runTest {
+            val settings = FakeHostSettingsRepository()
+            settings.update(SampleData.studio.id) { it.copy(bell = com.mtajchert.flocket.core.model.BellMode.Off) }
+            val vm = HostsViewModel(manager, settings)
+            vm.uiState.onEach { }.launchIn(CoroutineScope(UnconfinedTestDispatcher(testScheduler)))
+            val items = vm.uiState.first { it.hosts.isNotEmpty() }.hosts
+            assertEquals(listOf(true, false, false), items.map { it.customized })
+            settings.resetAll(SampleData.studio.id)
+            assertTrue(
+                vm.uiState.value.hosts
+                    .none { it.customized },
+            )
+        }
+
+    @Test
+    fun `detail counts custom settings and connecting is requested on open and retry`() =
+        runTest {
+            val settings = FakeHostSettingsRepository()
+            settings.update(SampleData.pi.id) { it.copy(fontSizeSp = 18f, autoConnect = false) }
+            val vm = HostDetailViewModel("pi", manager, hosts, trust, settings)
+            vm.uiState.onEach { }.launchIn(CoroutineScope(UnconfinedTestDispatcher(testScheduler)))
+            assertEquals(2, vm.uiState.first { it.host != null }.customSettings)
+            assertEquals(listOf(SampleData.pi.id), manager.connectRequests)
+            vm.retry()
+            assertEquals(listOf(SampleData.pi.id, SampleData.pi.id), manager.connectRequests)
         }
 }

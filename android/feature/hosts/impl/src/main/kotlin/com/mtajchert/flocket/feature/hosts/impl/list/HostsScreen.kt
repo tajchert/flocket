@@ -2,6 +2,7 @@
 
 package com.mtajchert.flocket.feature.hosts.impl.list
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
@@ -12,6 +13,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Dns
@@ -106,6 +108,20 @@ fun HostsScreen(
     }
 }
 
+/** Small "Custom" pill: this host overrides some app-level terminal defaults. */
+@Composable
+private fun CustomBadge() {
+    Text(
+        stringResource(R.string.host_custom_badge),
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onTertiaryContainer,
+        modifier =
+            Modifier
+                .background(MaterialTheme.colorScheme.tertiaryContainer, CircleShape)
+                .padding(horizontal = 8.dp, vertical = 2.dp),
+    )
+}
+
 @Composable
 private fun HostCard(
     host: HostItem,
@@ -123,7 +139,17 @@ private fun HostCard(
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Icon(Icons.Outlined.Dns, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                 Column(Modifier.weight(1f)) {
-                    Text(host.label, style = MaterialTheme.typography.titleMedium)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Text(
+                            host.label,
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.weight(1f, fill = false),
+                        )
+                        if (host.customized) CustomBadge()
+                    }
                     Text(
                         stringResource(R.string.host_address, host.address.user, host.address.host, host.address.port),
                         style = MaterialTheme.typography.bodySmall,

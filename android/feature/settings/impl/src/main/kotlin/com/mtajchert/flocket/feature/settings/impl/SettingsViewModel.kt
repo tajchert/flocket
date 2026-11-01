@@ -9,11 +9,17 @@ import com.mtajchert.flocket.core.data.HostRepository
 import com.mtajchert.flocket.core.data.PreferencesRepository
 import com.mtajchert.flocket.core.data.ThemePreference
 import com.mtajchert.flocket.core.data.UserPreferences
+import com.mtajchert.flocket.core.model.BellMode
+import com.mtajchert.flocket.core.model.ClipboardWritePolicy
 import com.mtajchert.flocket.core.model.DeviceKey
 import com.mtajchert.flocket.core.model.HostAuth
+import com.mtajchert.flocket.core.model.TerminalColorScheme
+import com.mtajchert.flocket.core.model.TerminalPreferences
 import com.mtajchert.flocket.core.ui.error.UiError
 import com.mtajchert.flocket.core.ui.error.UiText
 import com.mtajchert.flocket.core.ui.error.toUiError
+import com.mtajchert.flocket.core.ui.terminalsettings.MAX_TERMINAL_FONT_SP
+import com.mtajchert.flocket.core.ui.terminalsettings.MIN_TERMINAL_FONT_SP
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
@@ -114,11 +120,28 @@ class SettingsViewModel
         fun setDynamicColor(enabled: Boolean) = update { it.copy(dynamicColor = enabled) }
 
         fun setTerminalFontSize(size: Float) =
-            update { it.copy(terminalFontSize = size.coerceIn(MIN_FONT_SP, MAX_FONT_SP)) }
+            updateTerminal { it.copy(fontSizeSp = size.coerceIn(MIN_FONT_SP, MAX_FONT_SP)) }
 
-        fun setShowExtraKeys(enabled: Boolean) = update { it.copy(showExtraKeys = enabled) }
+        fun setColorScheme(scheme: TerminalColorScheme) = updateTerminal { it.copy(colorScheme = scheme) }
 
-        fun setKeepScreenOn(enabled: Boolean) = update { it.copy(keepScreenOnInTerminal = enabled) }
+        fun setShowExtraKeys(enabled: Boolean) = updateTerminal { it.copy(showExtraKeys = enabled) }
+
+        fun setKeepScreenOn(enabled: Boolean) = updateTerminal { it.copy(keepScreenOn = enabled) }
+
+        fun setClipboardPolicy(policy: ClipboardWritePolicy) = updateTerminal { it.copy(clipboardWritePolicy = policy) }
+
+        fun setBell(bell: BellMode) = updateTerminal { it.copy(bell = bell) }
+
+        fun setAutoConnect(enabled: Boolean) = updateTerminal { it.copy(autoConnect = enabled) }
+
+        /** A blank folder falls back to `~` so new terminals always have a start directory. */
+        fun setDefaultWorkingDirectory(path: String) =
+            updateTerminal {
+                it.copy(defaultWorkingDirectory = path.trim().ifEmpty { TerminalPreferences.DEFAULT_WORKING_DIRECTORY })
+            }
+
+        private fun updateTerminal(transform: (TerminalPreferences) -> TerminalPreferences) =
+            update { it.copy(terminal = transform(it.terminal)) }
 
         fun setKeepConnected(enabled: Boolean) = update { it.copy(keepConnectedInBackground = enabled) }
 
@@ -255,7 +278,7 @@ class SettingsViewModel
         }
 
         companion object {
-            const val MIN_FONT_SP = 8f
-            const val MAX_FONT_SP = 24f
+            const val MIN_FONT_SP = MIN_TERMINAL_FONT_SP
+            const val MAX_FONT_SP = MAX_TERMINAL_FONT_SP
         }
     }
