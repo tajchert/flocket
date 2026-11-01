@@ -12,6 +12,7 @@ import com.mtajchert.flocket.core.model.CoreInfo
 import com.mtajchert.flocket.core.model.HostId
 import com.mtajchert.flocket.core.model.MachineState
 import com.mtajchert.flocket.core.model.TerminalAddress
+import com.mtajchert.flocket.core.model.TerminalPreferences
 import com.mtajchert.flocket.core.session.CoreSession
 import com.mtajchert.flocket.core.session.InterruptOutcome
 import com.mtajchert.flocket.core.session.RunRequest
@@ -243,28 +244,29 @@ class TerminalsViewModel
 
         fun selectHost(hostId: HostId) {
             val choice = hostChoices().firstOrNull { it.id == hostId } ?: return
+            // Fallback until the configured folder is read: last used on this host, then home.
+            val fallback = lastCwd.get(hostId) ?: NewTerminalForm.DEFAULT_CWD
             updateForm {
                 it.copy(
                     hostId = hostId,
                     machine = null,
                     source = TerminalSource.Shell,
-                    cwd = lastCwd.get(hostId) ?: NewTerminalForm.DEFAULT_CWD,
+                    cwd = fallback,
                     templates = if (choice.supportsTemplates) TemplatesState.Loading else TemplatesState.Unsupported,
                     error = null,
                 )
             }
-            if (lastCwd.get(hostId) == null) {
-                // No folder used here before: start in the host's configured default (host override or app default).
-                viewModelScope.launch {
-                    val default =
-                        hostSettings
-                            .effective(hostId)
-                            .first()
-                            .terminal.defaultWorkingDirectory
-                    // Only while the user hasn't typed their own folder yet.
-                    updateForm {
-                        if (it.hostId == hostId && it.cwd == NewTerminalForm.DEFAULT_CWD) it.copy(cwd = default) else it
-                    }
+            viewModelScope.launch {
+                val configured =
+                    hostSettings
+                        .effective(hostId)
+                        .first()
+                        .terminal.defaultWorkingDirectory
+                        .trim()
+                // The configured default folder (host override, else app default) always wins over last used;
+                // "~" is the unset value. Only while the user hasn't typed their own folder yet.
+                if (configured.isNotEmpty() && configured != TerminalPreferences.DEFAULT_WORKING_DIRECTORY) {
+                    updateForm { if (it.hostId == hostId && it.cwd == fallback) it.copy(cwd = configured) else it }
                 }
             }
             if (choice.supportsTemplates) {
