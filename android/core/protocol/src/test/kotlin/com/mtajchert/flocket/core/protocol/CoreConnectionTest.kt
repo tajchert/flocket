@@ -11,6 +11,7 @@ import com.mtajchert.flocket.core.protocol.testing.FakeRpcError
 import com.mtajchert.flocket.core.protocol.wire.FrameCodec
 import com.mtajchert.flocket.core.protocol.wire.FrameKind
 import com.mtajchert.flocket.core.protocol.wire.ProtocolException
+import com.mtajchert.flocket.core.protocol.wire.WireLimits
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -446,10 +447,36 @@ class CoreConnectionTest {
             }
             val size = got.await()
             runCurrent()
-            assertEquals("no credit while the collector is still busy", 0L, core.creditReceived(att.channel))
+            // The only credit so far is the window boost sent with the attach.
+            val boost = WireLimits.ATTACH_CREDIT_BOOST.toLong()
+            assertEquals("no credit while the collector is still busy", boost, core.creditReceived(att.channel))
             release.complete(Unit)
             runCurrent()
-            assertEquals(size.toLong(), core.creditReceived(att.channel))
+            // Batched credit is flushed at the end of the burst (nothing else queued).
+            assertEquals(boost + size, core.creditReceived(att.channel))
+        }
+
+    @Test
+    fun `credit is batched per 32 KiB or per burst, never per frame`() =
+        runTest {
+            val core = fake(backgroundScope)
+            val conn = open(core)
+            val att = conn.attach(AttachParams("t1", 80, 24))
+            val got =
+                java.util.concurrent.atomic
+                    .AtomicLong()
+            backgroundScope.launch { att.output.collect { got.addAndGet(it.size.toLong()) } }
+            runCurrent()
+            val before = core.creditReceived(att.channel)
+            val writesBefore = core.creditFrames(att.channel)
+            val firstPaint = got.get()
+            // 64 frames of 1 KiB arrive in one burst.
+            repeat(64) { core.streamOutput(att.channel, ByteArray(1024)) }
+            runCurrent()
+            assertEquals(64L * 1024, got.get() - firstPaint)
+            assertEquals("every consumed byte is credited", 64L * 1024, core.creditReceived(att.channel) - before)
+            val frames = core.creditFrames(att.channel) - writesBefore
+            assertTrue("credit was batched ($frames frames)", frames in 1..4)
         }
 
     @Test
@@ -458,10 +485,10 @@ class CoreConnectionTest {
             val core = fake(backgroundScope)
             val conn = open(core)
             val att = conn.attach(AttachParams("t1", 80, 24))
-            // Nobody collects att.output: 1 MiB of output is offered, the core may only send the window.
-            core.streamOutput(att.channel, ByteArray(1 shl 20))
+            // Nobody collects att.output: 2 MiB of output is offered, the core may only send the window.
+            core.streamOutput(att.channel, ByteArray(2 shl 20))
             runCurrent()
-            assertEquals(262_144L, core.sentOn(att.channel))
+            assertEquals((WireLimits.WINDOW + WireLimits.ATTACH_CREDIT_BOOST).toLong(), core.sentOn(att.channel))
             val list = conn.call("terminal.list", timeout = t)
             assertNotNull(list)
             assertNull(att.closeReason.value)
