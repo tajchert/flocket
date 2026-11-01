@@ -182,4 +182,21 @@ class TerminalsLogicTest {
         assertEquals(listOf(null, "rohan"), sections.map { it.machine })
         assertEquals(listOf("rohan/t7"), sections[1].items.map { it.address })
     }
+
+    @Test
+    fun `row folder is hidden when the space header already shows it`() {
+        val rows = state().local().spaces[0].items
+        assertTrue(rows.all { it.cwd.isEmpty() })
+        val other = Workspace(listOf(space("desktop:x", "Other", "/elsewhere", null, tab("1", "", "t1"))))
+        val s = buildUiState(listOf(SampleData.overview.first()), ListControls(), false) { other }
+        assertEquals(
+            "~/code/flocket",
+            s
+                .local()
+                .spaces[0]
+                .items
+                .single()
+                .cwd,
+        )
+    }
 }

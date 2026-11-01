@@ -4,6 +4,7 @@ package com.mtajchert.flocket.feature.terminals.impl
 
 import android.text.format.DateUtils
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CloudOff
 import androidx.compose.material.icons.outlined.DeleteSweep
@@ -42,8 +44,12 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.mtajchert.flocket.core.model.AgentState
+import com.mtajchert.flocket.core.model.AgentStatus
+import com.mtajchert.flocket.core.model.BlockKind
 import com.mtajchert.flocket.core.ui.component.AgentStatusChip
 
 /** One terminal. Tap opens it; long-press or the overflow button opens the action menu. */
@@ -69,7 +75,7 @@ internal fun TerminalRow(
             Modifier
                 .clip(MaterialTheme.shapes.large)
                 .combinedClickable(onClick = { actions.onOpen(item) }, onLongClick = { menuOpen = true })
-                .heightIn(min = if (dense) 56.dp else 72.dp)
+                .heightIn(min = if (dense) 48.dp else 72.dp)
                 .padding(
                     start = 16.dp,
                     top = if (dense) 4.dp else 10.dp,
@@ -84,7 +90,7 @@ internal fun TerminalRow(
                 FullBody(item, label, nowMs, Modifier.weight(1f))
             }
             Box {
-                IconButton(onClick = { menuOpen = true }) {
+                IconButton(onClick = { menuOpen = true }, modifier = if (dense) Modifier.size(40.dp) else Modifier) {
                     Icon(Icons.Outlined.MoreVert, contentDescription = stringResource(R.string.row_actions, label))
                 }
                 RowMenu(menuOpen, { menuOpen = false }, item, actions)
@@ -93,7 +99,7 @@ internal fun TerminalRow(
     }
 }
 
-/** Two lines: agent and name; then status chip with the headline (or folder) and the age. */
+/** Two compact lines: dot, agent and name; then status word and short age. */
 @Composable
 private fun DenseBody(
     item: TerminalItem,
@@ -102,11 +108,25 @@ private fun DenseBody(
     modifier: Modifier = Modifier,
 ) {
     val scheme = MaterialTheme.colorScheme
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+    val state = (item.status as? AgentStatus.Reported)?.state
+    val word = statusWord(item)
+    val age =
+        item.sinceMs?.let {
+            DateUtils
+                .getRelativeTimeSpanString(
+                    it,
+                    nowMs,
+                    DateUtils.MINUTE_IN_MILLIS,
+                    DateUtils.FORMAT_ABBREV_RELATIVE,
+                ).toString()
+        }
+    Column(modifier) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Box(Modifier.size(8.dp).background(statusColor(if (item.isFinished) null else state, scheme), CircleShape))
             Text(
                 label,
-                style = MaterialTheme.typography.titleSmall,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f, fill = false),
@@ -122,17 +142,60 @@ private fun DenseBody(
                 )
             }
         }
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            AgentStatusChip(item.status)
-            LivenessLabel(item)
-            item.sinceMs?.let {
-                Text(
-                    DateUtils.getRelativeTimeSpanString(it, nowMs, DateUtils.MINUTE_IN_MILLIS).toString(),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = scheme.onSurfaceVariant,
-                    maxLines = 1,
-                )
+        Text(
+            listOfNotNull(word, age).joinToString(" · "),
+            style = MaterialTheme.typography.labelSmall,
+            color = scheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(start = 16.dp),
+        )
+    }
+}
+
+@Composable
+private fun statusWord(item: TerminalItem): String {
+    if (item.isFinished) {
+        return when {
+            item.exitCode != null -> stringResource(R.string.row_finished_exit, item.exitCode)
+            item.signal != null -> stringResource(R.string.row_finished_signal, item.signal)
+            else -> stringResource(R.string.row_finished)
+        }
+    }
+    val status = item.status as? AgentStatus.Reported ?: return stringResource(R.string.space_status_none)
+    val progress = status.progress
+    return when (status.state) {
+        AgentState.Working -> {
+            if (progress != null) {
+                stringResource(R.string.row_working_progress, progress.coerceIn(0, 100))
+            } else {
+                stringResource(R.string.space_status_working)
             }
+        }
+
+        AgentState.Blocked -> {
+            when (status.kind) {
+                BlockKind.Permission -> stringResource(R.string.row_blocked_permission)
+                BlockKind.Question -> stringResource(R.string.row_blocked_question)
+                BlockKind.Auth -> stringResource(R.string.row_blocked_auth)
+                else -> stringResource(R.string.space_status_blocked)
+            }
+        }
+
+        AgentState.Idle -> {
+            stringResource(R.string.space_status_idle)
+        }
+
+        AgentState.Done -> {
+            stringResource(R.string.space_status_done)
+        }
+
+        AgentState.Error -> {
+            stringResource(R.string.space_status_error)
+        }
+
+        AgentState.Other -> {
+            status.rawState
         }
     }
 }

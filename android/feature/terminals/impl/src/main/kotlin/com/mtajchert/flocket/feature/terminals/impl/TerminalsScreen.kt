@@ -137,7 +137,11 @@ fun TerminalsScreen(
     ) { padding ->
         CenteredContent(Modifier.padding(padding), maxWidth = 720.dp) {
             Column {
-                if (state.loaded && state.emptyKind != EmptyKind.NoHosts) FilterRow(state.filter, actions.onFilter)
+                if (state.loaded &&
+                    state.emptyKind != EmptyKind.NoHosts
+                ) {
+                    FilterRow(state.filter, actions.onFilter, dense)
+                }
                 when (state.emptyKind) {
                     EmptyKind.NoHosts -> {
                         EmptyState(
@@ -205,13 +209,14 @@ private fun OptionsMenu(
 private fun FilterRow(
     filter: TerminalFilter,
     onFilter: (TerminalFilter) -> Unit,
+    dense: Boolean = false,
 ) {
     Row(
         Modifier
             .fillMaxWidth()
             .horizontalScroll(rememberScrollState())
             .padding(horizontal = 16.dp, vertical = 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(if (dense) 6.dp else 8.dp),
     ) {
         TerminalFilter.entries.forEach { entry ->
             FilterChip(
@@ -219,14 +224,16 @@ private fun FilterRow(
                 onClick = { onFilter(entry) },
                 label = {
                     Text(
-                        stringResource(
-                            when (entry) {
-                                TerminalFilter.All -> R.string.filter_all
-                                TerminalFilter.NeedsAttention -> R.string.filter_attention
-                                TerminalFilter.Working -> R.string.filter_working
-                                TerminalFilter.Finished -> R.string.filter_finished
-                            },
-                        ),
+                        style = if (dense) MaterialTheme.typography.labelMedium else MaterialTheme.typography.labelLarge,
+                        text =
+                            stringResource(
+                                when (entry) {
+                                    TerminalFilter.All -> R.string.filter_all
+                                    TerminalFilter.NeedsAttention -> R.string.filter_attention
+                                    TerminalFilter.Working -> R.string.filter_working
+                                    TerminalFilter.Finished -> R.string.filter_finished
+                                },
+                            ),
                     )
                 },
             )
@@ -392,7 +399,7 @@ private fun HostHeader(
     }
 }
 
-private fun statusColor(
+internal fun statusColor(
     state: AgentState?,
     scheme: ColorScheme,
 ): Color =

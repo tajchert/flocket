@@ -35,6 +35,10 @@
     <string name="space_status_blocked">Needs input</string>
     <string name="space_status_error">Error</string>
     <string name="space_status_other">Other status</string>
+    <string name="row_working_progress">Working %1$d%%</string>
+    <string name="row_blocked_permission">Needs permission</string>
+    <string name="row_blocked_question">Has a question</string>
+    <string name="row_blocked_auth">Needs sign-in</string>
     <string name="machine_header">Machine %1$s</string>
     <string name="machine_state_connected">Connected</string>
     <string name="machine_state_connecting">Connecting</string>

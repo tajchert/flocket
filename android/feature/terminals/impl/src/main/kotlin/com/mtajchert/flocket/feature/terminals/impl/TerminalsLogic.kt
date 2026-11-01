@@ -76,9 +76,21 @@ internal fun buildSections(
     val byAddress = shown.associateBy { it.ref.address }
     val spaces =
         workspace.spaces.mapNotNull { space ->
+            val subtitle =
+                space.folder?.let(::shortenPath)?.takeIf { it.isNotBlank() && !it.endsWithSegment(space.name) }
             val tabs =
                 space.tabs.mapNotNull { tab ->
-                    val rows = tab.panes.mapNotNull { byAddress[it] }
+                    // A row's folder is redundant when the space header already shows it.
+                    val rows =
+                        tab.panes.mapNotNull { byAddress[it] }.map {
+                            if (subtitle != null &&
+                                it.cwd == subtitle
+                            ) {
+                                it.copy(cwd = "")
+                            } else {
+                                it
+                            }
+                        }
                     if (rows.isEmpty()) {
                         null
                     } else {
@@ -92,18 +104,7 @@ internal fun buildSections(
             if (tabs.isEmpty()) {
                 null
             } else {
-                space.machine to
-                    SpaceSection(
-                        key = space.key,
-                        name = space.name,
-                        folderSubtitle =
-                            space.folder?.let(::shortenPath)?.takeIf {
-                                it.isNotBlank() &&
-                                    !it.endsWithSegment(space.name)
-                            },
-                        topState = space.topState,
-                        tabs = tabs,
-                    )
+                space.machine to SpaceSection(space.key, space.name, subtitle, space.topState, tabs)
             }
         }
     val ordered =
