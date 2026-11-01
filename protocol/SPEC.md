@@ -438,7 +438,7 @@ DATA on the stream channel = bytes typed into the PTY, exactly as a terminal wou
 
 ### 7.5 Size ownership (multiple viewers)
 
-- Each viewer has a size (from `attach.cols/rows` and later RESIZE). The **most recently active non-observe viewer** sets the terminal's size and display facts. "Active" = attached (unless `resumed:true`), typed (DATA), resized (RESIZE), or FOCUS gained. In 0.1.15 also FACTS; in 0.1.16 FACTS does **not** make you active (it merges fields and applies only if you are already the leader).
+- Each viewer has a size (from `attach.cols/rows` and later RESIZE). The **most recently active non-observe viewer** sets the terminal's size and display facts. "Active" = attached (unless `resumed:true`), typed (DATA), resized (RESIZE), or FOCUS gained. In 0.1.15 also FACTS; in 0.1.16 FACTS does **not** make you active [W 0.1.16: `RealCoreIntegrationTest`, passive viewer FACTS leaves 80x24] (it merges fields and applies only if you are already the leader).
 - When the leader detaches, the next most recently active viewer's size applies; with no viewers the terminal goes back to **headless size (default 200×120)** [W].
 - Size changes emit `size` events and SIGWINCH the program (agent TUIs redraw).
 - Measured sequence [W]: A attach 80×24 → B attach 120×40 (B wins) → A types (80×24) → B FOCUS 1 (120×40) → observer RESIZE (ignored) → B detaches (80×24) → A detaches (200×120).
@@ -637,7 +637,7 @@ Timeouts: reads (`get`, `list`, `doc.get`) ~15 s and retryable; `send`/`keys` �
 |---|---|---|---|
 | OpenRPC schema | — | identical except `info.version` [W: diff of `hc schema` 0.1.15 vs 0.1.16] | None. |
 | First paint / repaint | Starts `ESC[!p`… | Prefixed by `0x18` (CAN) [W]; may append a "continuation" for a half-written sequence; a viewer that attached mid-sequence is "recovering" and gets a repaint once the program reaches a clean boundary | Emulator must tolerate CAN and mid-stream repaints (it must anyway). |
-| FACTS | Replaces the whole `Display` and makes the viewer active (can take size ownership) | Merges only provided fields; does not make the viewer active; applies only if you are the leader; re-answers color queries so programs see theme changes | Send full `Display` objects to work on both. |
+| FACTS | Replaces the whole `Display` and makes the viewer active (can take size ownership) | [W] Does not make the viewer active (size unchanged after FACTS from a passive viewer); merges only provided fields; applies only if you are the leader; re-answers color queries so programs see theme changes | Send full `Display` objects to work on both. |
 | `terminal.run` no argv | Machine's own shell (macOS login shell) | `shell = [...]` in host config.toml overrides it | None. |
 | Holder reconnection | — | Core reconnects to its holder after falling behind instead of freezing terminals | Fewer `holder_lost` losses. |
 | Docs README | Says FACTS counts as activity | Same README, but 0.1.16 code no longer does | Trust code: §7.5. |
