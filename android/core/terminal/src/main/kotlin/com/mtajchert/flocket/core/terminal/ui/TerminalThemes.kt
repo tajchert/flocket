@@ -1,5 +1,6 @@
 package com.mtajchert.flocket.core.terminal.ui
 
+import com.mtajchert.flocket.core.model.TerminalColorScheme
 import com.mtajchert.flocket.core.terminal.engine.TerminalTheme
 import com.mtajchert.flocket.core.terminal.fake.FakeTerminalEngine
 
@@ -33,5 +34,87 @@ object TerminalThemes {
                 ),
         )
 
+    private val SOLARIZED_PALETTE =
+        intArrayOf(
+            0xFF073642.toInt(),
+            0xFFDC322F.toInt(),
+            0xFF859900.toInt(),
+            0xFFB58900.toInt(),
+            0xFF268BD2.toInt(),
+            0xFFD33682.toInt(),
+            0xFF2AA198.toInt(),
+            0xFFEEE8D5.toInt(),
+            0xFF002B36.toInt(),
+            0xFFCB4B16.toInt(),
+            0xFF586E75.toInt(),
+            0xFF657B83.toInt(),
+            0xFF839496.toInt(),
+            0xFF6C71C4.toInt(),
+            0xFF93A1A1.toInt(),
+            0xFFFDF6E3.toInt(),
+        )
+
+    /** Ethan Schoonover's Solarized (MIT), light variant; ANSI mapping as in the reference terminal ports. */
+    val SolarizedLight: TerminalTheme =
+        TerminalTheme(
+            foreground = 0xFF657B83.toInt(),
+            background = 0xFFFDF6E3.toInt(),
+            cursor = 0xFF586E75.toInt(),
+            palette = SOLARIZED_PALETTE,
+        )
+
+    /** Solarized dark. */
+    val SolarizedDark: TerminalTheme =
+        TerminalTheme(
+            foreground = 0xFF839496.toInt(),
+            background = 0xFF002B36.toInt(),
+            cursor = 0xFF93A1A1.toInt(),
+            palette = SOLARIZED_PALETTE,
+        )
+
+    /**
+     * Pure black with white text (21:1) and ANSI colors that all reach at least 7:1 against black
+     * (WCAG AAA), except color 0 which is black by definition.
+     */
+    val HighContrastDark: TerminalTheme =
+        TerminalTheme(
+            foreground = 0xFFFFFFFF.toInt(),
+            background = 0xFF000000.toInt(),
+            cursor = 0xFFFFFF00.toInt(),
+            palette =
+                intArrayOf(
+                    0xFF000000.toInt(),
+                    0xFFFF6B6B.toInt(),
+                    0xFF5FFF5F.toInt(),
+                    0xFFFFFF55.toInt(),
+                    0xFF8AAEFF.toInt(),
+                    0xFFFF79FF.toInt(),
+                    0xFF55FFFF.toInt(),
+                    0xFFE5E5E5.toInt(),
+                    0xFF999999.toInt(),
+                    0xFFFF8F8F.toInt(),
+                    0xFF8FFF8F.toInt(),
+                    0xFFFFFF99.toInt(),
+                    0xFFA5C0FF.toInt(),
+                    0xFFFFA5FF.toInt(),
+                    0xFF99FFFF.toInt(),
+                    0xFFFFFFFF.toInt(),
+                ),
+        )
+
     fun forDarkMode(dark: Boolean): TerminalTheme = if (dark) Dark else Light
+
+    /** The theme for a user's [scheme]; [appDark] resolves [TerminalColorScheme.FollowApp]. */
+    fun forScheme(
+        scheme: TerminalColorScheme,
+        appDark: Boolean,
+    ): TerminalTheme =
+        when (scheme) {
+            TerminalColorScheme.FollowApp -> forDarkMode(appDark)
+            TerminalColorScheme.Light -> Light
+            TerminalColorScheme.Dark -> Dark
+            TerminalColorScheme.SolarizedLight -> SolarizedLight
+            TerminalColorScheme.SolarizedDark -> SolarizedDark
+            TerminalColorScheme.HighContrastDark -> HighContrastDark
+        }
 }
