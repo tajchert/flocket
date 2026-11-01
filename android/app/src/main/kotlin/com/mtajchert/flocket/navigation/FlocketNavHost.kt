@@ -1,22 +1,17 @@
 package com.mtajchert.flocket.navigation
 
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfoV2
 import androidx.compose.material3.adaptive.layout.calculatePaneScaffoldDirective
-import androidx.compose.material3.adaptive.navigation3.ListDetailSceneStrategy
 import androidx.compose.material3.adaptive.navigation3.rememberListDetailSceneStrategy
 import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffold
 import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffoldDefaults
 import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteType
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -95,10 +90,6 @@ fun FlocketNavHost(
                 ),
             entryProvider =
                 entryProvider {
-                    // Placeholder until `feature:terminal:impl` contributes the interactive terminal screen.
-                    entry<TerminalRoute>(metadata = ListDetailSceneStrategy.detailPane()) { key ->
-                        TerminalPlaceholder(key)
-                    }
                     installers.forEach { it.install(this, navigator) }
                 },
         )
@@ -113,6 +104,8 @@ private class BackStackNavigator(
     override fun navigate(key: NavKey) {
         val last = backStack.lastOrNull()
         if (last == key) return
+        // Re-selecting the open terminal keeps its screen (and its attached stream).
+        if (key is TerminalRoute && last is TerminalRoute && key.isSameTerminal(last)) return
         // Picking another terminal in a two-pane layout swaps the detail pane instead of piling up the back stack.
         if (key is TerminalRoute && last is TerminalRoute && backStack.size > 1) backStack.removeLastOrNull()
         backStack.add(key)
@@ -132,18 +125,5 @@ private class BackStackNavigator(
     private fun replaceRoot(key: NavKey) {
         backStack.add(key)
         while (backStack.size > 1) backStack.removeAt(0)
-    }
-}
-
-@Composable
-private fun TerminalPlaceholder(
-    key: TerminalRoute,
-    modifier: Modifier = Modifier,
-) {
-    Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Text(
-            text = stringResource(R.string.placeholder_terminal, key.address),
-            style = MaterialTheme.typography.titleMedium,
-        )
     }
 }

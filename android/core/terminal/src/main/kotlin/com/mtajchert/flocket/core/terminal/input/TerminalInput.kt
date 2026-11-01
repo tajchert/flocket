@@ -106,10 +106,8 @@ object KeyEventMapper {
                 }
             }
         if (special != null) return KeyInput(special, ctrl = ctrl, alt = alt, shift = shift, meta = meta)
-        // Space goes out as the character " " (with modifiers): the Ghostty encoder only attaches
-        // text to Key.Character, so Key.Space alone would encode to nothing.
         if (event.keyCode == KeyEvent.KEYCODE_SPACE) {
-            return KeyInput(Key.Character, text = " ", ctrl = ctrl, alt = alt, shift = shift, meta = meta)
+            return KeyInput(Key.Space, ctrl = ctrl, alt = alt, shift = shift, meta = meta)
         }
         if (event.action == KeyEvent.ACTION_MULTIPLE && event.keyCode == KeyEvent.KEYCODE_UNKNOWN) {
             val chars = event.characters ?: return null

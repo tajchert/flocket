@@ -84,7 +84,26 @@ re-measured once, at gesture end; during the pinch only the canvas scale changes
 | Foreground / unlock | `setVisible(true)`: FOCUS 1 if owner and focused; the retained engine renders instantly; a fresh paint follows if the session reattached. | same |
 | Reconnect | `connected` false → overlay, passive; the same `TerminalStream` continues with a fresh first paint (fed like any output). | `a reconnect drops ownership…` |
 | Process death | Nothing survives: rebuild the controller from the `TerminalAddress` (saved state), attach passively, `bind()`. The core's first paint restores the screen; scrollback comes from `historyLines`. | by construction |
-| Screen really closed | Owner calls `controller.close()` (releases the engine) and `stream.detach()`. | `close releases the engine…` |
+| Window focus lost (dialog, notification shade, lock screen) | `TerminalView.onWindowFocusChanged` → `setFocused(false)`: FOCUS 0 only if owner. | by construction |
+| Screen really closed | Owner calls `controller.close()` (releases the engine) and `stream.detach()`. | `close releases the engine…`, `clearing the ViewModel detaches the stream` |
+
+## The terminal screen (`feature:terminal:impl`)
+
+`TerminalViewModel` (assisted with the `TerminalRoute`; the saved back stack brings it back after process death) owns
+one `TerminalController` (Ghostty engine via `TerminalControllerFactory`) and the stream:
+
+- Waits for `ConnectionManager.session(hostId)` (null until the hosts load) and for Online, then attaches with
+  `historyLines = 1000`. `AttachMode.Owner` only when `TerminalRoute.startedHere` (new-terminal flow) and only for the
+  first attach (`SavedStateHandle` flag, so a process-death restore is passive); every other attach is Passive.
+- `StreamEnd`: `ProgramEnded` → "Exited (code N)" banner (Remove/Close); `ProgramLost` or attach `unavailable` →
+  "Waiting for a new shell…", re-attach when the record is Running again, then a "fresh shell" notice; `Unknown` or
+  `not_found` → "Stream ended" with Reattach. A record that is already Finished is not attached.
+- `onCleared()` (real close or another terminal replacing the two-pane detail, never rotation): `detach()` then
+  `controller.close()` in the application scope. Covered by `TerminalRotationTest` (device, `ActivityScenario.recreate`)
+  and `TerminalViewModelTest`.
+- Screen: Fit to screen (only while passive; it resizes for every viewer), keyboard toggle, Paste, Copy screen text,
+  Interrupt, Kill (confirm); OSC 52 consent dialog; keep-screen-on, font size (pinch persisted) and extra keys from
+  `UserPreferences`; the pane takes focus when shown so hardware keyboards type immediately.
 
 ## Input
 

@@ -615,7 +615,7 @@ Timeouts: reads (`get`, `list`, `doc.get`) ~15 s and retryable; `send`/`keys` �
 16. **Detach resizes.** Attaching sets the terminal to your size (you become the active viewer); when the last viewer leaves it returns to the headless 200×120. Opening the phone can disturb a desktop user — use `observe`/`resumed` until the user interacts.
 17. **`terminal.send` / `keys` block ~3 s after human typing** and wait for quiet. Don't use short timeouts; don't auto-retry (duplicate prompts to an agent are harmful). `blocked` refusals need a user decision before `force`.
 18. **Plain-mode subscribe hijacks the connection** (later requests get no reply). Only use framed mode in the app.
-19. **`~` is not expanded** in `terminal.run` `cwd` (`"~"` ⇒ `spawn_failed: cannot start "sh"` [W 0.1.15]). Clients expand it with the host's `$HOME`; for `on: <machine>` omit `cwd` to get that machine's home.
+19. **`~` is not expanded** in `terminal.run` `cwd` (`"~"` ⇒ `spawn_failed: cannot start "sh"` [W 0.1.15]). Clients expand it with the host's `$HOME`; for `on: <machine>` omit `cwd` to get that machine's home.  Flocket works around it in `CoreSession.run` by expanding a leading `~` via `machine.exec` (`printf %s "$HOME"`, cached per core and machine).
    **`terminal.run` without `cwd` runs in the core's cwd** (where the core was started), not home. Always pass `cwd`; pass `TERM`/`COLORTERM` in `env`.
 20. **Never call `server.stop`/`server.restart`** from the app; `hc connect` auto-starts a core if none runs (so "connect" may start one).
 21. **Notifications without `id` get no reply** — always set `id` on requests.

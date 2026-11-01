@@ -279,6 +279,19 @@ class GhosttyTerminalEngineTest {
     }
 
     @Test
+    fun keySpaceAndEditingKeysWithModifiers() {
+        assertEquals(" ", key(Key.Space))
+        assertEquals("\u0000", key(Key.Space, ctrl = true))
+        assertEquals("\u001b ", key(Key.Space, alt = true))
+        assertEquals(" ", key(Key.Space, shift = true))
+        assertEquals("\u001b\r", key(Key.Enter, alt = true))
+        assertEquals("\u001b[Z", key(Key.Tab, shift = true))
+        assertEquals("\u001b\u007f", key(Key.Backspace, alt = true))
+        assertEquals("\u0008", key(Key.Backspace, ctrl = true))
+        assertEquals("\u001b\u001b", key(Key.Escape, alt = true))
+    }
+
+    @Test
     fun mode9001DoesNotAlterKeyEncoding() {
         feed("\u001b[?9001h")
         assertEquals("\u0003", key(Key.Character, "c", ctrl = true))

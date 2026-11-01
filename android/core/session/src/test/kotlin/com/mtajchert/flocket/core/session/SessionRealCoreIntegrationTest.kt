@@ -68,6 +68,33 @@ class SessionRealCoreIntegrationTest {
     }
 
     @Test
+    fun `run with tilde cwd expands to the home folder of the core host`() =
+        runBlocking {
+            withTimeout(60.seconds) {
+                val s =
+                    CoreSessionImpl(
+                        CoreEndpoint(HostId("it"), session),
+                        {
+                            AppResult.Success(
+                                ProcessTransport("hc", "connect", "--session", session, environment = env),
+                            )
+                        },
+                        scope,
+                        config = SessionConfig(backoffBase = 0.2.seconds),
+                    )
+                s.start()
+                s.awaitOnline()
+                val home = System.getenv("HOME") ?: System.getProperty("user.home")
+                val rec = s.run(RunRequest(argv = listOf("sh"), cwd = "~", name = "it-tilde")).getOrThrow()
+                assertTrue("absolute cwd: ${rec.cwd}", rec.cwd.startsWith("/"))
+                assertEquals(File(home).canonicalPath, File(rec.cwd).canonicalPath)
+                assertEquals(home, s.homeDirectory().getOrThrow())
+                s.state.first { st -> st.terminal(rec.address) != null }
+                s.stop()
+            }
+        }
+
+    @Test
     fun `run attach type, survive a dropped transport with a fresh paint, stop`() =
         runBlocking {
             withTimeout(60.seconds) {

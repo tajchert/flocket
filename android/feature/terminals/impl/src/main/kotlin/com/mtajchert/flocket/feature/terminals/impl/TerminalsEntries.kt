@@ -100,7 +100,7 @@ private fun TerminalsRoute(
                 }
 
                 is TerminalsEvent.OpenTerminal -> {
-                    navigator.navigate(TerminalRoute(event.hostId.value, event.address))
+                    navigator.navigate(TerminalRoute(event.hostId.value, event.address, startedHere = true))
                 }
 
                 is TerminalsEvent.OpenHost -> {

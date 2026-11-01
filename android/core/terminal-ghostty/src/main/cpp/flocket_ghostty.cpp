@@ -461,6 +461,7 @@ GhosttyKey key_for(int key, int32_t first_cp, uint32_t* unshifted) {
       GHOSTTY_KEY_INSERT, GHOSTTY_KEY_DELETE, GHOSTTY_KEY_F1, GHOSTTY_KEY_F2, GHOSTTY_KEY_F3, GHOSTTY_KEY_F4,
       GHOSTTY_KEY_F5, GHOSTTY_KEY_F6, GHOSTTY_KEY_F7, GHOSTTY_KEY_F8, GHOSTTY_KEY_F9, GHOSTTY_KEY_F10,
       GHOSTTY_KEY_F11, GHOSTTY_KEY_F12};
+  if (key == 5) *unshifted = ' ';  // Key.Space: the encoder needs the codepoint for Ctrl/Alt+Space
   if (key > 0 && key < static_cast<int>(sizeof(kFixed) / sizeof(kFixed[0]))) return kFixed[key];
   // Key.Character (0): derive the physical key from the produced character (US layout).
   uint32_t c = static_cast<uint32_t>(first_cp);
@@ -513,7 +514,10 @@ jbyteArray nEncodeKey(JNIEnv* env, jclass, jlong h, jint key, jint mods, jbyteAr
   ghostty_key_event_set_composing(e->key_event, false);
   ghostty_key_event_set_unshifted_codepoint(e->key_event, unshifted);
   bool control_text = tl == 1 && (text[0] < 0x20 || text[0] == 0x7f);
-  if (tl && !control_text && key == 0) {
+  static const uint8_t kSpace = ' ';
+  if (key == 5) {  // Key.Space always carries its text " " (Ghostty derives NUL/ESC-space from it)
+    ghostty_key_event_set_utf8(e->key_event, reinterpret_cast<const char*>(&kSpace), 1);
+  } else if (tl && !control_text && key == 0) {
     ghostty_key_event_set_utf8(e->key_event, reinterpret_cast<const char*>(text.data()), tl);
   } else {
     ghostty_key_event_set_utf8(e->key_event, nullptr, 0);

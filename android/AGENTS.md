@@ -27,7 +27,7 @@ Versions live only in `gradle/libs.versions.toml`.
 
 ## Rules
 
-- **Errors**: public APIs of `core:session`, `core:data` and repositories return `AppResult<T>` (`Success` or `Failure(AppError)`) and do not throw. `AppError` is a sealed taxonomy in `core:common`; add a case only with review. Always rethrow `CancellationException`. Low-level modules may throw typed exceptions internally and convert at the public boundary. (`AppResult`/`AppError` are implemented in `core:common` by a later task.)
+- **Errors**: public APIs of `core:session`, `core:data` and repositories return `AppResult<T>` (`Success` or `Failure(AppError)`) and do not throw. `AppError` is a sealed taxonomy in `core:common`; add a case only with review. Always rethrow `CancellationException`. Low-level modules may throw typed exceptions internally and convert at the public boundary.
 - JSON uses kotlinx.serialization with `ignoreUnknownKeys = true` and `explicitNulls = false`. Coroutines everywhere, no callbacks in public APIs.
 - Never log secrets, key material or terminal bytes. Use the `core:common` Logger facade in JVM modules.
 - Tests: JUnit4, kotlinx-coroutines-test, Turbine, backtick test names. Real `hc` only with an isolated session (`flocket-test-<random>`), skipped when `hc` is absent, always stopped in teardown. Never touch the developer's default herdr session.
@@ -48,4 +48,4 @@ Validate with `validateDebugScreenshotTest`; inspect every changed PNG before co
 
 ## More
 
-[Testing](docs/TESTING.md), [Screenshot testing](docs/SCREENSHOT_TESTING.md), [Adaptive layouts](docs/ADAPTIVE_LAYOUTS.md), [Agent setup](docs/AGENT_SETUP.md), [Releasing](docs/RELEASING.md), [Security defaults](docs/SECURITY_DEFAULTS.md), [Performance](docs/PERFORMANCE_TESTING.md), [Localization](docs/LOCALIZATION.md). Update the nearest README/AGENTS.md when conventions change.
+[Testing](docs/TESTING.md), [UI guide](docs/UI_GUIDE.md), [Terminal rendering](docs/TERMINAL_RENDERING.md), [Terminal engine](docs/TERMINAL_ENGINE.md), [Screenshot testing](docs/SCREENSHOT_TESTING.md), [Adaptive layouts](docs/ADAPTIVE_LAYOUTS.md), [Agent setup](docs/AGENT_SETUP.md), [Releasing](docs/RELEASING.md), [Security defaults](docs/SECURITY_DEFAULTS.md), [Performance](docs/PERFORMANCE_TESTING.md), [Localization](docs/LOCALIZATION.md). Update the nearest README/AGENTS.md when conventions change.

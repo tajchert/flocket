@@ -76,7 +76,9 @@ class FakeCoreSession(
     var sendHandler: suspend (TerminalAddress, String, Boolean) -> AppResult<SendReceipt> = { _, _, _ -> unsupported() }
     var interruptHandler: suspend (TerminalAddress) -> AppResult<InterruptOutcome> = { unsupported() }
     var templatesHandler: suspend () -> AppResult<List<TerminalTemplate>> = { AppResult.Success(emptyList()) }
-    val calls = mutableListOf<String>()
+    var homeHandler: suspend (String?) -> AppResult<String> = { AppResult.Success("/home/user") }
+    var attachHandler: suspend (TerminalAddress, AttachRequest) -> AppResult<TerminalStream> = { _, _ -> unsupported() }
+    val calls: MutableList<String> = java.util.Collections.synchronizedList(mutableListOf())
 
     override suspend fun run(request: RunRequest): AppResult<TerminalRecord> {
         calls += "run:${request.cwd}:${request.line}:${request.template}:${request.machine}:${request.keep}"
@@ -109,6 +111,11 @@ class FakeCoreSession(
 
     override suspend fun templates(): AppResult<List<TerminalTemplate>> = templatesHandler()
 
+    override suspend fun homeDirectory(machine: String?): AppResult<String> {
+        calls += "home:$machine"
+        return homeHandler(machine)
+    }
+
     override suspend fun readText(
         address: TerminalAddress,
         historyLines: Int,
@@ -117,7 +124,10 @@ class FakeCoreSession(
     override suspend fun attach(
         address: TerminalAddress,
         request: AttachRequest,
-    ): AppResult<TerminalStream> = unsupported()
+    ): AppResult<TerminalStream> {
+        calls += "attach:${address.value}:${request.mode}"
+        return attachHandler(address, request)
+    }
 }
 
 /**

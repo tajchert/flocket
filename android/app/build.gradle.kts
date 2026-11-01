@@ -41,6 +41,7 @@ dependencies {
     implementation(projects.feature.terminals.api)
     implementation(projects.feature.terminals.impl)
     implementation(projects.feature.terminal.api)
+    implementation(projects.feature.terminal.impl)
     implementation(projects.feature.settings.api)
     implementation(projects.feature.settings.impl)
 

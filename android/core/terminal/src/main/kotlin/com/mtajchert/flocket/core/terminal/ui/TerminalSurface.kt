@@ -16,7 +16,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -61,6 +63,7 @@ fun TerminalSurface(
     onFontSizeChange: (Float) -> Unit = {},
     onClipboardWriteRequest: (String) -> Unit = {},
     reconnectingLabel: String? = "Reconnecting…",
+    state: TerminalSurfaceState = remember { TerminalSurfaceState() },
 ) {
     val connected by controller.connected.collectAsState()
     val haptics = LocalHapticFeedback.current
@@ -81,7 +84,7 @@ fun TerminalSurface(
     }
     LaunchedEffect(controller, theme) { controller.setTheme(theme) }
     Box(modifier) {
-        TerminalAndroidView(controller, theme, fontSizeSp) { fontChange(it) }
+        TerminalAndroidView(controller, theme, fontSizeSp, state) { fontChange(it) }
         if (!connected && reconnectingLabel != null) {
             // The retained screen keeps rendering underneath; the core sends a fresh paint on reattach.
             Text(
@@ -105,9 +108,11 @@ private fun TerminalAndroidView(
     controller: TerminalController,
     theme: TerminalTheme,
     fontSizeSp: Float,
+    state: TerminalSurfaceState,
     onFontSizeChange: (Float) -> Unit,
 ) {
     val fontChange by rememberUpdatedState(onFontSizeChange)
+    DisposableEffect(state) { onDispose { state.view = null } }
     AndroidView(
         modifier = Modifier.fillMaxSize(),
         factory = { context ->
@@ -115,6 +120,7 @@ private fun TerminalAndroidView(
                 this.theme = theme
                 this.fontSizeSp = fontSizeSp
                 bind(controller)
+                state.view = this
             }
         },
         update = { view ->
@@ -122,8 +128,31 @@ private fun TerminalAndroidView(
             view.fontSizeSp = fontSizeSp
             view.onFontSizeChange = { fontChange(it) }
         },
-        onReset = { view -> view.bind(controller) },
+        onReset = { view ->
+            view.bind(controller)
+            state.view = view
+        },
     )
+}
+
+/**
+ * Imperative handle on the [TerminalSurface]'s view for screen actions (keyboard toggle, focusing
+ * the pane for a hardware keyboard). Calls are no-ops while the surface is not composed.
+ */
+@Stable
+class TerminalSurfaceState {
+    internal var view: TerminalView? = null
+
+    /** Focus the terminal (hardware keyboard input goes to it) without showing the soft keyboard. */
+    fun requestFocus(): Boolean = view?.requestFocus() ?: false
+
+    fun showKeyboard() {
+        view?.showKeyboard()
+    }
+
+    fun hideKeyboard() {
+        view?.hideKeyboard()
+    }
 }
 
 /** Renders a fixed [snapshot] with the real renderer (previews and screenshot tests). */

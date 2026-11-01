@@ -182,6 +182,18 @@ data class ReadResult(
     val why: String? = null,
 )
 
+/** `machine.exec` result (stdout/stderr are base64). */
+@Serializable
+data class ExecResult(
+    val stdout: String = "",
+    val stderr: String = "",
+    val truncated: Boolean = false,
+    @SerialName("timed_out") val timedOut: Boolean = false,
+    val ms: Long = 0,
+    val code: Int? = null,
+    val signal: String? = null,
+)
+
 @Serializable
 data class RemovedResult(
     val removed: String = "",

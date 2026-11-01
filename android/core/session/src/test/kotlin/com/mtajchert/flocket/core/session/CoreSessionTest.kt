@@ -271,6 +271,112 @@ class CoreSessionTest {
             s.stop()
         }
 
+    private fun execReply(
+        home: String,
+        code: Int? = 0,
+    ) = buildJsonObject {
+        put(
+            "stdout",
+            java.util.Base64
+                .getEncoder()
+                .encodeToString(home.toByteArray()),
+        )
+        put("stderr", "")
+        put("truncated", false)
+        put("timed_out", false)
+        put("ms", 3)
+        if (code != null) put("code", code)
+    }
+
+    private fun cwdsOf(core: FakeCore) = core.callsOf("terminal.run").map { it.params["cwd"]!!.jsonPrimitive.content }
+
+    @Test
+    fun `run expands tilde and tilde slash to the home folder and caches it`() =
+        runTest {
+            val host = hostWith("t1")
+            host.configure = { c ->
+                c.handlers["machine.exec"] = { execReply("/home/me/") }
+                c.handlers["terminal.run"] = { FakeCore.terminal("t2") }
+            }
+            val s = host.session(this)
+            s.start()
+            s.awaitOnline()
+            s.run(RunRequest(argv = listOf("sh"), cwd = "~")).getOrThrow()
+            s.run(RunRequest(argv = listOf("sh"), cwd = "~/src")).getOrThrow()
+            s.run(RunRequest(argv = listOf("sh"), cwd = "/abs")).getOrThrow()
+            assertEquals(listOf("/home/me/", "/home/me/src", "/abs"), cwdsOf(host.core))
+            val exec = host.core.callsOf("machine.exec")
+            assertEquals(1, exec.size)
+            assertEquals(
+                listOf("sh", "-c", "printf %s \"\$HOME\""),
+                exec
+                    .single()
+                    .params["argv"]!!
+                    .jsonArray
+                    .map { it.jsonPrimitive.content },
+            )
+            assertNull(exec.single().params["on"])
+            s.stop()
+        }
+
+    @Test
+    fun `absolute cwd makes no machine exec call`() =
+        runTest {
+            val host = hostWith("t1")
+            host.configure = { c -> c.handlers["terminal.run"] = { FakeCore.terminal("t2") } }
+            val s = host.session(this)
+            s.start()
+            s.awaitOnline()
+            s.run(RunRequest(argv = listOf("sh"), cwd = "/work")).getOrThrow()
+            assertTrue(host.core.callsOf("machine.exec").isEmpty())
+            s.stop()
+        }
+
+    @Test
+    fun `remote machine home is resolved on that machine and cached separately`() =
+        runTest {
+            val host = hostWith("t1")
+            host.configure = { c ->
+                c.handlers["machine.exec"] = { p ->
+                    execReply(if (p["on"] == null) "/home/local" else "/home/rohan")
+                }
+                c.handlers["terminal.run"] = { FakeCore.terminal("t2") }
+            }
+            val s = host.session(this)
+            s.start()
+            s.awaitOnline()
+            s.run(RunRequest(argv = listOf("sh"), cwd = "~/a", machine = "rohan")).getOrThrow()
+            s.run(RunRequest(argv = listOf("sh"), cwd = "~/b", machine = "rohan")).getOrThrow()
+            s.run(RunRequest(argv = listOf("sh"), cwd = "~/c")).getOrThrow()
+            assertEquals(listOf("/home/rohan/a", "/home/rohan/b", "/home/local/c"), cwdsOf(host.core))
+            val exec = host.core.callsOf("machine.exec")
+            assertEquals(2, exec.size)
+            assertEquals("rohan", exec[0].params["on"]!!.jsonPrimitive.content)
+            s.stop()
+        }
+
+    @Test
+    fun `run with unresolvable home is InvalidInput cwd and never calls terminal run`() =
+        runTest {
+            val host = hostWith("t1")
+            host.configure = { c ->
+                c.handlers["machine.exec"] = { execReply("", code = 1) }
+                c.handlers["terminal.run"] = { FakeCore.terminal("t2") }
+            }
+            val s = host.session(this)
+            s.start()
+            s.awaitOnline()
+            val e = s.run(RunRequest(argv = listOf("sh"), cwd = "~")).errorOrNull()
+            assertTrue(e is AppError.InvalidInput && e.field == "cwd")
+            host.core.errors["machine.exec"] = FakeRpcError("spawn_failed")
+            val e2 = s.run(RunRequest(argv = listOf("sh"), cwd = "~/x")).errorOrNull()
+            assertTrue(e2 is AppError.InvalidInput && e2.field == "cwd")
+            val e3 = s.run(RunRequest(argv = listOf("sh"), cwd = "~bob/x")).errorOrNull()
+            assertTrue(e3 is AppError.InvalidInput && e3.field == "cwd")
+            assertTrue(host.core.callsOf("terminal.run").isEmpty())
+            s.stop()
+        }
+
     @Test
     fun `missing optional methods are Unsupported`() =
         runTest {

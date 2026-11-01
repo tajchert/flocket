@@ -4,5 +4,4 @@
     <string name="nav_terminals">Terminals</string>
     <string name="nav_hosts">Hosts</string>
     <string name="nav_settings">Settings</string>
-    <string name="placeholder_terminal">Terminal %1$s</string>
 </resources>

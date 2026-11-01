@@ -67,6 +67,7 @@ class FakeCoreConfig(
                 "terminal.rm",
                 "terminal.label",
                 "terminal.read",
+                "machine.exec",
                 "terminal.attach",
                 "terminal.send",
                 "terminal.keys",

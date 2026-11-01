@@ -413,8 +413,20 @@ class TerminalView(
         previouslyFocusedRect: Rect?,
     ) {
         super.onFocusChanged(gainFocus, direction, previouslyFocusedRect)
-        controller?.setFocused(gainFocus)
+        controller?.setFocused(gainFocus && hasWindowFocus())
         invalidate()
+    }
+
+    /** Screen lock, a dialog or another window on top: the program sees FOCUS 0 (owner only). */
+    override fun onWindowFocusChanged(hasWindowFocus: Boolean) {
+        super.onWindowFocusChanged(hasWindowFocus)
+        controller?.setFocused(hasWindowFocus && isFocused)
+        invalidate()
+    }
+
+    /** Hide the soft keyboard (the view keeps focus, so a hardware keyboard still types). */
+    fun hideKeyboard() {
+        context.getSystemService(InputMethodManager::class.java)?.hideSoftInputFromWindow(windowToken, 0)
     }
 
     /** Focus the terminal and show the soft keyboard. */
