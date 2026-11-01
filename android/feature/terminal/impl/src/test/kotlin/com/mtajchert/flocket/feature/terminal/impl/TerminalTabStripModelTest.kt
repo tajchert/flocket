@@ -112,4 +112,54 @@ class TerminalTabStripModelTest {
         assertEquals(buildTabStrip(ws, records, addr("t1")), buildTabStrip(ws, records, addr("t1")))
         assertFalse(buildTabStrip(ws, records, addr("t1")) == buildTabStrip(ws, records, addr("t2")))
     }
+
+    private val finished = Liveness.Finished(null, 0, null, null)
+
+    @Test
+    fun `finished terminals are left out of the pane switcher, like the sidebar hides them`() {
+        val ws = workspace(tab("a", "t1", "t2", "t3", "t4"))
+        val records =
+            listOf(record("t1"), record("t2", liveness = finished), record("t3", liveness = finished), record("t4"))
+        val strip = buildTabStrip(ws, records, addr("t1"))!!
+        assertEquals(listOf("t1", "t4"), strip.panes.map { it.address })
+    }
+
+    @Test
+    fun `the open terminal stays in the switcher even when it has finished`() {
+        val ws = workspace(tab("a", "t1", "t2", "t3"))
+        val records = listOf(record("t1"), record("t2", liveness = finished), record("t3"))
+        val strip = buildTabStrip(ws, records, addr("t2"))!!
+        assertEquals(listOf("t1", "t2", "t3"), strip.panes.map { it.address })
+        assertTrue(strip.panes.first { it.address == "t2" }.selected)
+    }
+
+    @Test
+    fun `no switcher when only one pane of the tab is still running`() {
+        val ws = workspace(tab("a", "t1", "t2", "t3"))
+        val records = listOf(record("t1"), record("t2", liveness = finished), record("t3", liveness = finished))
+        assertNull(buildTabStrip(ws, records, addr("t1")))
+    }
+
+    @Test
+    fun `a tab whose terminals all finished is hidden, and targets skip finished panes`() {
+        val ws = workspace(tab("a", "t1"), tab("b", "t2"), tab("c", "t3", "t4", active = "t3"))
+        val records =
+            listOf(record("t1"), record("t2", liveness = finished), record("t3", liveness = finished), record("t4"))
+        val strip = buildTabStrip(ws, records, addr("t1"))!!
+        assertEquals(listOf("A", "C"), strip.tabs.map { it.name })
+        assertEquals("t4", strip.tabs.first { it.name == "C" }.target)
+    }
+
+    @Test
+    fun `tab numbers stay those of the full workspace`() {
+        val ws =
+            workspace(
+                tab("a", "t1").copy(name = "", number = 1),
+                tab("b", "t2").copy(name = "", number = 2),
+                tab("c", "t3").copy(name = "", number = 3),
+            )
+        val records = listOf(record("t1"), record("t2", liveness = finished), record("t3"))
+        val strip = buildTabStrip(ws, records, addr("t1"))!!
+        assertEquals(listOf(1, 3), strip.tabs.map { it.number })
+    }
 }
