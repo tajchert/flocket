@@ -37,6 +37,7 @@ class GhosttyTerminalEngine(
     private var lastTitleGeneration = 0
     private var title = ""
     private var graphemeBuf = IntArray(0)
+    private val graphemeText = StringBuilder()
 
     init {
         requireValidSize(cols, rows)
@@ -119,7 +120,11 @@ class GhosttyTerminalEngine(
         return snap
     }
 
-    /** Grapheme side channel: [cellIndex, n, cp0..] per multi-codepoint cell, for the rows just painted. */
+    /**
+     * Grapheme side channel: [cellIndex, n, cp0..] per multi-codepoint cell, for the rows just painted.
+     * Snapshotting into a reused target allocates nothing on the Kotlin side except the Strings of
+     * multi-code-point cells (and a key-set iterator while such cells exist).
+     */
     private fun applyGraphemes(
         handle: Long,
         snap: ScreenSnapshot,
@@ -127,9 +132,10 @@ class GhosttyTerminalEngine(
         val map = snap.graphemes
         if (map.isNotEmpty()) {
             val cols = snap.cols
-            map.keys.removeAll { idx ->
-                val row = idx / cols
-                row !in dirtyInts.indices || dirtyInts[row] != 0
+            val it = map.keys.iterator()
+            while (it.hasNext()) {
+                val row = it.next() / cols
+                if (row !in dirtyInts.indices || dirtyInts[row] != 0) it.remove()
             }
         }
         val count = header[SnapshotHeader.GRAPHEME_INTS]
@@ -137,7 +143,7 @@ class GhosttyTerminalEngine(
         if (graphemeBuf.size < count) graphemeBuf = IntArray(count + count / 2)
         GhosttyNative.nativeFetchGraphemes(handle, graphemeBuf)
         var i = 0
-        val sb = StringBuilder()
+        val sb = graphemeText
         while (i < count) {
             val cell = graphemeBuf[i]
             val n = graphemeBuf[i + 1]
