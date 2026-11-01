@@ -119,9 +119,11 @@ The rules below are enforced by the build where possible.
 ### Connection lifecycle
 
 - `ConnectionManager` (app-scoped) holds one `CoreSession` per active host.
-- While the app is in the foreground, sessions are kept open. When it goes to the
-  background, a grace period (60 s) starts, then the sessions detach cleanly. There is no
-  foreground service in M1, and terminals live on the host anyway.
+- While the app is in the foreground, sessions are kept open. Android 15+ blocks a
+  background app's network after about 5 s, so a plain grace timer cannot work. If a
+  terminal is open when the user leaves the app, a short `shortService` foreground service
+  (about 3 minutes) keeps the link alive ([ADR-0006](../decisions/0006-background-short-service.md)).
+  Otherwise sessions detach immediately. Terminals live on the host regardless.
 - When the app returns to the foreground or the network comes back, the app reconnects
   with jittered exponential backoff, starts a new epoch, re-runs hello, re-subscribes,
   installs a fresh snapshot and re-attaches open terminals for a fresh first paint.
@@ -202,7 +204,7 @@ and screenshots exercise the whole app without SSH.
 ## 7. Calls made by the builder (open to override)
 
 - `minSdk` **29** (Android 10), with `targetSdk` and `compileSdk` at 37. The template used 26.
-- No foreground service in M1. A 60 s background grace period, then the session detaches.
+- Background: a short foreground service while a terminal is open (ADR-0006, decided by the owner after the e2e journey).
 - Phone-side resize is opt-in, as above.
 - Spotless + ktlint formatting, plus Android Lint and a build-time module-boundary check. No
   detekt yet.
