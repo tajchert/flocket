@@ -17,6 +17,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.FileProvider
@@ -77,6 +78,7 @@ private fun ShareViewerDialog(
     onMessage: (String) -> Unit,
 ) {
     val context = LocalContext.current
+    val resources = LocalResources.current
     val scope = rememberCoroutineScope()
     val message by rememberUpdatedState(onMessage)
     val file = viewer.file
@@ -135,7 +137,7 @@ private fun ShareViewerDialog(
         rememberLauncherForActivityResult(remember(mime) { ActivityResultContracts.CreateDocument(mime) }) { uri ->
             val bytes = loaded?.bytes
             if (uri != null && bytes == null) {
-                message(context.getString(R.string.share_save_failed))
+                message(resources.getString(R.string.share_save_failed))
             } else if (uri != null && bytes != null) {
                 scope.launch {
                     val ok =
@@ -147,7 +149,7 @@ private fun ShareViewerDialog(
                                 false
                             }
                         }
-                    message(context.getString(if (ok) R.string.share_saved else R.string.share_save_failed))
+                    message(resources.getString(if (ok) R.string.share_saved else R.string.share_save_failed))
                 }
             }
         }
@@ -179,7 +181,7 @@ private fun ShareViewerDialog(
                         } catch (e: CancellationException) {
                             throw e
                         } catch (_: Exception) {
-                            message(context.getString(R.string.share_share_failed))
+                            message(resources.getString(R.string.share_share_failed))
                         }
                     }
                 }
