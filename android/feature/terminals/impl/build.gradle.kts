@@ -3,3 +3,15 @@
 plugins {
     id("flocket.android.feature")
 }
+
+dependencies {
+    implementation(projects.core.data)
+    implementation(projects.core.session)
+    implementation(projects.feature.terminal.api)
+    implementation(projects.feature.hosts.api)
+    implementation(projects.feature.onboarding.api)
+    testImplementation(projects.core.testing)
+    screenshotTestImplementation(projects.core.testing)
+    screenshotTestImplementation(projects.core.designsystem)
+    screenshotTestImplementation(projects.core.ui)
+}
