@@ -1,12 +1,15 @@
-// :core:testing - Shared test fakes and rules (MainDispatcherRule, fake repositories). Test-only; used via
-// testImplementation. May depend on: :core:model, :core:common.
+// :core:testing - Shared test fakes, SampleData and rules (MainDispatcherRule, fake repositories). Used via
+// testImplementation / screenshotTestImplementation / a debug-only demo binding in :app.
+// May depend on: :core:data (contracts), :core:model, :core:common, :core:session.
 plugins {
     id("flocket.android.library")
 }
 
 dependencies {
-    implementation(projects.core.model)
-    implementation(projects.core.common)
+    api(projects.core.data)
+    api(projects.core.model)
+    api(projects.core.common)
+    api(projects.core.session)
     api(libs.kotlinx.coroutines.test)
     api(libs.junit)
     api(libs.turbine)
