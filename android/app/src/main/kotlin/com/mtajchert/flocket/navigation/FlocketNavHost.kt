@@ -81,9 +81,10 @@ fun FlocketNavHost(
     // Focus mode (Ruling 7): the terminal takes the full width. Process death resets it (saveable survives
     // config changes and fold/unfold only). It means nothing on single-pane windows or off a terminal.
     var focusRequested by rememberSaveable { mutableStateOf(false) }
-    val focusMode = focusRequested && multiPane && current is TerminalRoute
-    LaunchedEffect(multiPane, current is TerminalRoute) {
-        if (!multiPane || current !is TerminalRoute) focusRequested = false
+    val onTerminal = current is TerminalRoute
+    val focusMode = isFocusMode(focusRequested, multiPane, onTerminal)
+    LaunchedEffect(multiPane, onTerminal) {
+        if (shouldResetFocus(multiPane, onTerminal)) focusRequested = false
     }
     val directive = if (focusMode) baseDirective.copy(maxHorizontalPartitions = 1) else baseDirective
     val listDetailStrategy = rememberListDetailSceneStrategy<NavKey>(directive = directive)
@@ -122,7 +123,7 @@ fun FlocketNavHost(
             NavDisplay(
                 backStack = backStack,
                 // Back leaves focus mode (restores the sidebar) before it pops anything.
-                onBack = { if (focusRequested) focusRequested = false else navigator.back() },
+                onBack = { if (backLeavesFocus(focusRequested)) focusRequested = false else navigator.back() },
                 sceneStrategies = listOf(listDetailStrategy),
                 // Overriding the decorators replaces the defaults, so the saveable-state one is listed too.
                 entryDecorators =
@@ -154,6 +155,22 @@ internal fun navigationSuiteType(
     } else {
         NavigationSuiteScaffoldDefaults.calculateFromAdaptiveInfo(adaptiveInfo)
     }
+
+/** Focus mode (hidden sidebar) only exists on a multi-pane window with a terminal on top. */
+internal fun isFocusMode(
+    requested: Boolean,
+    multiPane: Boolean,
+    onTerminal: Boolean,
+): Boolean = requested && multiPane && onTerminal
+
+/** The saved focus request is dropped when focus mode can no longer apply. */
+internal fun shouldResetFocus(
+    multiPane: Boolean,
+    onTerminal: Boolean,
+): Boolean = !multiPane || !onTerminal
+
+/** Back leaves focus mode (restoring the sidebar, keeping the terminal) before it pops the stack. */
+internal fun backLeavesFocus(focusRequested: Boolean): Boolean = focusRequested
 
 private val SidebarWidth = 280.dp
 private val SidebarWidthExpanded = 300.dp

@@ -7,7 +7,10 @@ import com.mtajchert.flocket.core.common.time.Clock
 import com.mtajchert.flocket.core.model.ConnectionState
 import com.mtajchert.flocket.core.model.CoreEndpoint
 import com.mtajchert.flocket.core.model.CoreInfo
+import com.mtajchert.flocket.core.model.DesktopLayout
 import com.mtajchert.flocket.core.model.Liveness
+import com.mtajchert.flocket.core.model.MachineInfo
+import com.mtajchert.flocket.core.model.MachineState
 import com.mtajchert.flocket.core.model.TerminalAddress
 import com.mtajchert.flocket.core.model.TerminalRecord
 import com.mtajchert.flocket.core.model.TerminalTemplate
@@ -84,9 +87,17 @@ class CoreSessionImpl(
     ) {
         val info: CoreInfo get() = conn.info
 
-        /** `herdr-app` read coalescing ([refreshLayout]); guarded by [layoutLock]. */
-        var layoutFetching = false
-        var layoutDirty = false
+        /** `herdr-app` reads per machine ([refreshLayout]; key null = local); guarded by [readLock]. */
+        val layoutReads = HashMap<String?, Coalesced>()
+
+        /** `machine.list` re-reads ([relistMachines]); guarded by [readLock]. */
+        val machineReads = Coalesced()
+    }
+
+    /** One coalesced read on one link: at most one in flight, plus one more if triggered meanwhile. */
+    private class Coalesced {
+        var running = false
+        var dirty = false
     }
 
     private val stateFlow = MutableStateFlow(SessionState(endpoint))
@@ -110,8 +121,8 @@ class CoreSessionImpl(
     @Volatile
     private var parkOnExit = false
 
-    /** Guards [Link.layoutFetching] / [Link.layoutDirty]; never held across suspension. */
-    private val layoutLock = Any()
+    /** Guards [Link.layoutReads] and [Link.machineReads]; never held across suspension. */
+    private val readLock = Any()
 
     private val connectionOptions = ConnectionOptions(clock = clock, logger = logger)
 
@@ -233,6 +244,7 @@ class CoreSessionImpl(
                         core = c.info,
                         terminals = snap.terminals,
                         machines = machines ?: it.machines,
+                        machineLayouts = machines?.let { m -> it.machineLayouts.onlyFor(m) } ?: it.machineLayouts,
                         confirmedAtMs = clock.nowMillis(),
                     )
                 }
@@ -240,6 +252,7 @@ class CoreSessionImpl(
             online = l
             publishSizes()
             refreshLayout(l)
+            refreshMachineLayouts(l)
             logger.info(
                 TAG,
             ) { "${endpoint.hostId.value}: online (core ${c.info.version}, ${sub.terminals.size} terminals)" }
@@ -311,55 +324,119 @@ class CoreSessionImpl(
         }
 
     /**
-     * Re-read the local `herdr-app` document on [l] (SPEC §9: after subscribing, `missed` and its
-     * `doc` events). At most one read per link is in flight; triggers during it cause exactly one
-     * more read afterwards. A failed read keeps the last layout; so does a disconnect (the state is
-     * then stale). A reply is applied only while [l] is still the current link.
+     * Re-read the `herdr-app` document of [machine] (null = local) on [l] (SPEC §9: after subscribing,
+     * `missed` and its `doc` events). Per machine, at most one read per link is in flight; triggers
+     * during it cause exactly one more read afterwards. Machines are read independently, so a slow
+     * machine never delays the local document or another machine. A failed read keeps the last
+     * layout; so does a disconnect (the state is then stale). A reply is applied only while [l] is
+     * still the current link and, for a remote one, while [machine] is still listed.
      */
-    private fun refreshLayout(l: Link) {
-        synchronized(layoutLock) {
-            if (l.layoutFetching) {
-                l.layoutDirty = true
+    private fun refreshLayout(
+        l: Link,
+        machine: String? = null,
+    ) {
+        val slot = synchronized(readLock) { l.layoutReads.getOrPut(machine) { Coalesced() } }
+        coalesced(l, slot) { fetchLayout(l, machine) }
+    }
+
+    /**
+     * Runs [read] on [l] unless [slot] is already running; a trigger during a run causes exactly one
+     * more run afterwards (while [l] is still the current link).
+     */
+    private fun coalesced(
+        l: Link,
+        slot: Coalesced,
+        read: suspend () -> Unit,
+    ) {
+        synchronized(readLock) {
+            if (slot.running) {
+                slot.dirty = true
                 return
             }
-            l.layoutFetching = true
-            l.layoutDirty = false
+            slot.running = true
+            slot.dirty = false
         }
         scope.launch {
             var released = false
             try {
                 while (!released) {
-                    fetchLayout(l)
+                    read()
                     // Check and release in one step, so a trigger arriving now is never lost.
-                    synchronized(layoutLock) {
-                        if (l.layoutDirty && link.get() === l) {
-                            l.layoutDirty = false
+                    synchronized(readLock) {
+                        if (slot.dirty && link.get() === l) {
+                            slot.dirty = false
                         } else {
-                            l.layoutFetching = false
+                            slot.running = false
                             released = true
                         }
                     }
                 }
             } finally {
-                if (!released) synchronized(layoutLock) { l.layoutFetching = false }
+                if (!released) synchronized(readLock) { slot.running = false }
             }
         }
     }
 
-    private suspend fun fetchLayout(l: Link) {
+    /**
+     * Re-read `machine.list` on [l], then every connected machine's layout (SPEC §10). Coalesced per
+     * link. If the list cannot be read, the last one is used for the layouts.
+     */
+    private fun relistMachines(l: Link) {
+        if (!l.info.supports(CoreInfo.MACHINE_LIST)) return
+        coalesced(l, l.machineReads) {
+            fetchMachines(l.conn)?.let { applyMachines(l, it) }
+            refreshMachineLayouts(l)
+        }
+    }
+
+    /** Re-read the `herdr-app` document of every listed machine that is connected (SPEC §8.5, §9.1). */
+    private fun refreshMachineLayouts(l: Link) {
+        stateFlow.value.machines
+            .filter { it.state == MachineState.Connected }
+            .forEach { refreshLayout(l, it.name) }
+    }
+
+    /** Publish a fresh machine list read on [l]: drop layouts of machines that left it, read connected ones. */
+    private fun applyMachines(
+        l: Link,
+        machines: List<MachineInfo>,
+    ) {
+        synchronized(reduceLock) {
+            if (link.get() !== l) return
+            stateFlow.update { it.copy(machines = machines, machineLayouts = it.machineLayouts.onlyFor(machines)) }
+        }
+    }
+
+    private suspend fun fetchLayout(
+        l: Link,
+        machine: String?,
+    ) {
         val reply =
             try {
-                l.conn.docGet(HerdrAppLayoutParser.DOCUMENT, timeout = config.readTimeout)
+                l.conn.docGet(HerdrAppLayoutParser.DOCUMENT, on = machine, timeout = config.readTimeout)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                logger.debug(TAG) { "doc.get ${HerdrAppLayoutParser.DOCUMENT} failed: ${e.javaClass.simpleName}" }
+                // Remote: machine_unknown / unavailable / needs_update / timeout. Not a user-visible error.
+                val kind = (e as? RpcException)?.kind ?: e.javaClass.simpleName
+                val where = if (machine == null) "" else " (remote)"
+                logger.debug(TAG) { "doc.get ${HerdrAppLayoutParser.DOCUMENT}$where failed: $kind" }
                 return
             }
         // Absent or deleted (`value: null`) means no layout. A version going backwards is trusted (SPEC §9).
         val layout = HerdrAppLayoutParser.parse(reply.value)
         synchronized(reduceLock) {
-            if (link.get() === l) stateFlow.update { it.copy(desktopLayout = layout) }
+            if (link.get() !== l) return
+            if (machine == null) {
+                stateFlow.update { it.copy(desktopLayout = layout) }
+            } else {
+                // A machine removed (machine.rm / rename) while this read was in flight must not come back.
+                if (stateFlow.value.machines.none { it.name == machine }) return
+                stateFlow.update {
+                    val m = if (layout == null) it.machineLayouts - machine else it.machineLayouts + (machine to layout)
+                    it.copy(machineLayouts = m)
+                }
+            }
         }
     }
 
@@ -416,6 +493,7 @@ class CoreSessionImpl(
             }
             publishSizes()
             refreshLayout(l)
+            refreshMachineLayouts(l)
         }
     }
 
@@ -425,12 +503,14 @@ class CoreSessionImpl(
         n: CoreNotification,
     ): Boolean {
         val effect: ReduceEffect?
+        val relist: Boolean
         synchronized(reduceLock) {
             if (link.get() !== l) return false // stale epoch: drop
             val before = stateFlow.value
             val r = reducer.reduce(ReducerState(before.terminals, lastSeq), n, clock.nowMillis())
             lastSeq = r.state.lastSeq
             effect = r.effect
+            relist = effect == null && machinesMayHaveChanged(n, before, r.state.terminals)
             if (r.state.terminals !== before.terminals) {
                 stateFlow.update {
                     it.copy(
@@ -448,6 +528,7 @@ class CoreSessionImpl(
             }
         }
         publishSizes()
+        if (relist) relistMachines(l)
         when (effect) {
             is ReduceEffect.Resync -> {
                 logger.warn(TAG, { "desync: ${effect.reason}" })
@@ -455,18 +536,18 @@ class CoreSessionImpl(
             }
 
             ReduceEffect.SnapshotReplaced -> {
-                refreshLayout(l) // a snapshot carries no documents (SPEC §8.5)
-                if (l.info.supports(CoreInfo.MACHINE_LIST)) {
-                    scope.launch {
-                        val m = fetchMachines(l.conn) ?: return@launch
-                        if (link.get() === l) stateFlow.update { it.copy(machines = m) }
-                    }
-                }
+                // A snapshot carries no documents; a remote machine (re)connecting also sends `missed`, so
+                // re-list machines and re-read every connected machine's document (SPEC §8.5, §10).
+                refreshLayout(l)
+                relistMachines(l)
             }
 
             is ReduceEffect.DocChanged -> {
-                // Remote machines' layouts are not shown yet: only the local herdr-app document.
-                if (effect.name == HerdrAppLayoutParser.DOCUMENT && effect.machine == null) refreshLayout(l)
+                if (effect.name == HerdrAppLayoutParser.DOCUMENT) {
+                    val listed = effect.machine == null || state.value.machines.any { it.name == effect.machine }
+                    // An unlisted machine (added or renamed without a `missed`) is read once the re-list knows it.
+                    if (listed) refreshLayout(l, effect.machine) else relistMachines(l)
+                }
             }
 
             null -> {
@@ -474,6 +555,26 @@ class CoreSessionImpl(
             }
         }
         return false
+    }
+
+    /**
+     * hc sends no `missed` for `machine.rename` / `machine.rm` (SPEC §10), only `removed` / `created` under the
+     * machine prefix. A terminal of an unlisted machine appearing, or a listed machine's last terminal going,
+     * means `machine.list` may have changed.
+     */
+    private fun machinesMayHaveChanged(
+        n: CoreNotification,
+        before: SessionState,
+        after: List<TerminalRecord>,
+    ): Boolean {
+        if (n !is CoreNotification.Event || after === before.terminals) return false
+        val machine = n.terminal?.let { TerminalAddress(it).machine } ?: return false
+        val listed = before.machines.any { it.name == machine }
+        return when (n.type) {
+            "created" -> !listed
+            "removed" -> listed && after.none { it.address.machine == machine }
+            else -> false
+        }
     }
 
     private fun publishSizes() {
@@ -848,6 +949,12 @@ class CoreSessionImpl(
         val RUN_ENV: Map<String, String> =
             mapOf("TERM" to "xterm-256color", "COLORTERM" to "truecolor", "TERM_PROGRAM" to "Flocket")
     }
+}
+
+/** Layouts of machines still in [machines] only (a removed or renamed machine loses its entry). */
+private fun Map<String, DesktopLayout>.onlyFor(machines: List<MachineInfo>): Map<String, DesktopLayout> {
+    val names = machines.mapTo(HashSet()) { it.name }
+    return if (keys.all { it in names }) this else filterKeys { it in names }
 }
 
 /** Builds sessions; one per endpoint. Convenience for DI in core:data. */

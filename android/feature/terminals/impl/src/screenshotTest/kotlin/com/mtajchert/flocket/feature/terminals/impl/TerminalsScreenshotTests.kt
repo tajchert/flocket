@@ -64,7 +64,7 @@ private fun tab(
     name: String,
     vararg panes: String,
     top: AgentState? = null,
-) = WorkspaceTab(key, name, panes.map(::TerminalAddress), null, top)
+) = WorkspaceTab(key, name, panes.map(::TerminalAddress), null, top, 1)
 
 private fun space(
     key: String,
@@ -73,7 +73,7 @@ private fun space(
     source: SpaceSource,
     top: AgentState?,
     vararg tabs: WorkspaceTab,
-) = WorkspaceSpace(key, name, folder, source, null, tabs.toList(), top)
+) = WorkspaceSpace(key, name, folder, source, null, tabs.toList(), top, 1)
 
 /** Studio terminals as the desktop app lays them out: a space with two tabs, a one-tab space, a loose one. */
 private val desktopWorkspace =
@@ -104,6 +104,7 @@ private val desktopWorkspace =
                 "rohan",
                 listOf(tab("all", "", "rohan/t7", top = AgentState.Error)),
                 AgentState.Error,
+                9,
             ),
         ),
     )
@@ -194,6 +195,21 @@ private fun TerminalsDenseDesktopLayoutScreenshot() =
         Dense {
             TerminalsScreen(
                 stateFor(desktopWorkspace),
+                TerminalsActions(),
+                selected = TerminalRoute("studio", "t2"),
+                nowMs = NOW,
+            )
+        }
+    }
+
+@PreviewTest
+@PreviewSidebar
+@Composable
+private fun TerminalsDenseFilteredScreenshot() =
+    Shot {
+        Dense {
+            TerminalsScreen(
+                stateFor(desktopWorkspace, ListControls(filter = TerminalFilter.Working)),
                 TerminalsActions(),
                 selected = TerminalRoute("studio", "t2"),
                 nowMs = NOW,

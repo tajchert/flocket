@@ -98,13 +98,14 @@ internal fun buildSections(
                             tab.key,
                             tab.name,
                             if (controls.attentionFirst) rows.sortedByDescending { it.urgency } else rows,
+                            tab.number,
                         )
                     }
                 }
             if (tabs.isEmpty()) {
                 null
             } else {
-                space.machine to SpaceSection(space.key, space.name, subtitle, space.topState, tabs)
+                space.machine to SpaceSection(space.key, space.name, subtitle, space.topState, tabs, space.number)
             }
         }
     val ordered =
@@ -127,7 +128,7 @@ internal fun buildUiState(
     controls: ListControls,
     refreshing: Boolean,
     /** How a host's terminals are grouped; tests and previews inject fixed workspaces. */
-    workspaceOf: (SessionState) -> Workspace = { buildWorkspace(it.terminals, it.desktopLayout) },
+    workspaceOf: (SessionState) -> Workspace = { buildWorkspace(it.terminals, it.desktopLayout, it.machineLayouts) },
 ): TerminalsUiState {
     var totalTerminals = 0
     var hiddenFinished = 0
