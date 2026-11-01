@@ -113,9 +113,9 @@ class WorkspaceGroupingTest {
             )
         val w = buildWorkspace(terms, l)
         assertEquals(listOf("desktop:sp" to listOf("live" to listOf("t2", "t1"))), w.shape())
-        // Numbers follow the final position: empty tabs are dropped first.
+        // Numbers follow the desktop: the place in the document, hidden tabs included.
         assertEquals("", w.spaces[0].tabs[0].name)
-        assertEquals(1, w.spaces[0].tabs[0].number)
+        assertEquals(3, w.spaces[0].tabs[0].number)
         assertEquals(1, w.spaces[0].number)
         // The active pane pointed at a vanished terminal: unknown.
         assertNull(w.spaces[0].tabs[0].activePane)
@@ -542,6 +542,50 @@ class WorkspaceGroupingTest {
                 .single()
         assertEquals(a("t1", "t2"), tab.panes)
         assertEquals(LayoutRef(null, "sp1", "tb1"), tab.layoutRef)
+    }
+
+    @Test
+    fun `a document tab with no live terminal keeps the numbers of the tabs after it`() {
+        val terms = listOf(term("t1"), term("t2"))
+        val w = buildWorkspace(terms, layout(space("sp", tab("a", "t1"), tab("b", "t8"), tab("c", "t2"))))
+        assertEquals(
+            listOf(1, 3),
+            w.spaces
+                .single()
+                .tabs
+                .map { it.number },
+        )
+        val w2 = buildWorkspace(terms, layout(space("sp", tab("gone", "t8"), tab("b", "t1"), tab("c", "t2"))))
+        assertEquals(
+            listOf(2, 3),
+            w2.spaces
+                .single()
+                .tabs
+                .map { it.number },
+        )
+    }
+
+    @Test
+    fun `label and implicit tabs are numbered after the document tabs`() {
+        val terms =
+            listOf(
+                term("t1", cwd = "/work"),
+                term("t2"),
+                term("t3", space = "sp", tab = "lbl"),
+                term("t4", cwd = "/work"),
+            )
+        val w = buildWorkspace(terms, layout(space("sp", tab("a", "t1"), tab("b", "t2"), folder = "/work")))
+        val tabs = w.spaces.single().tabs
+        assertEquals(listOf("a", "b", "lbl", "all"), tabs.map { it.key })
+        assertEquals(listOf(1, 2, 3, 4), tabs.map { it.number })
+    }
+
+    @Test
+    fun `only desktop spaces carry a given name`() {
+        val terms = listOf(term("t1"), term("t2", space = "lbl"), term("t3", cwd = "/work/proj"))
+        val w = buildWorkspace(terms, layout(space("sp", tab("a", "t1"), name = "api")))
+        assertEquals(listOf("api", "", ""), w.spaces.map { it.givenName })
+        assertEquals(listOf(SpaceSource.Desktop, SpaceSource.Labels, SpaceSource.Folder), w.spaces.map { it.source })
     }
 
     @Test

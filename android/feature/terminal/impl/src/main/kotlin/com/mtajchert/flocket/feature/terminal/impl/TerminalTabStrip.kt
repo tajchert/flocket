@@ -157,7 +157,7 @@ private fun StripChip(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                if (showIcon) AgentIcon(agentId, size = 16.dp)
+                if (showIcon) AgentIcon(agentId, size = 16.dp, contentDescription = null)
                 if (state != null) StatusDot(state)
                 Text(
                     text = text,

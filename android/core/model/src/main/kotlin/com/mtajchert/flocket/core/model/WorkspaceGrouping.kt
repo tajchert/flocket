@@ -25,7 +25,7 @@ package com.mtajchert.flocket.core.model
  * Unnamed spaces are named after the shown folder.
  *
  * Names may be blank (an unnamed desktop or label space without a folder, an unnamed tab): the UI
- * shows "Space [WorkspaceSpace.number]" / "Tab [WorkspaceTab.number]". Machine spaces have keys
+ * shows "Space [WorkspaceSpace.number]" / the tab's [WorkspaceTab.number]. Machine spaces have keys
  * prefixed with the machine and carry [WorkspaceSpace.machine]. Pure and deterministic.
  */
 fun buildWorkspace(
@@ -77,10 +77,12 @@ private fun groupScope(
             )
         // A blank or repeated document id cannot be addressed, so it gets no ref.
         space.hasDocumentId = ds.id.isNotBlank() && seenSpaceIds.add(ds.id)
+        space.documentTabCount = ds.tabs.size
         val seenTabIds = HashSet<String>()
         ds.tabs.forEachIndexed { ti, dt ->
             val tab = space.tab(dt.id.ifBlank { "#$ti" }, dt.name.trim())
             if (dt.id.isNotBlank() && seenTabIds.add(dt.id)) tab.documentTabId = dt.id
+            if (tab.documentNumber == null) tab.documentNumber = ti + 1
             for (local in dt.panes) {
                 if (local.isRemote) continue
                 val p = if (machine == null) local else TerminalAddress("$machine/${local.value}")
@@ -154,7 +156,7 @@ private fun normalizedFolder(path: String?): String? = path?.trim()?.trimEnd('/'
 private const val FOLDER_TAB = "all"
 
 /** Display name for [path]: its last segment; `~` and `/` stay as they are; null when blank. */
-internal fun folderName(path: String?): String? {
+fun folderName(path: String?): String? {
     val p = path?.trim().orEmpty()
     if (p.isEmpty()) return null
     val trimmed = p.trimEnd('/', '\\')
@@ -189,6 +191,9 @@ private class TabDraft(
 
     /** Set only for a tab that came from a usable `herdr-app` tab id. */
     var documentTabId: String? = null
+
+    /** 1-based place in the document's tab list (counting every document tab), null for others. */
+    var documentNumber: Int? = null
 }
 
 private class SpaceDraft(
@@ -203,6 +208,9 @@ private class SpaceDraft(
 
     /** True only for a desktop space whose [id] is non-blank and first in its scope. */
     var hasDocumentId = false
+
+    /** How many tabs the document lists for this space; other tabs are numbered after them. */
+    var documentTabCount = 0
     private val tabKeys = KeyAllocator()
     private val byId = HashMap<String, TabDraft>()
 
@@ -235,15 +243,16 @@ private class SpaceDraft(
     }
 
     fun build(records: Map<TerminalAddress, TerminalRecord>): WorkspaceSpace {
+        var extra = documentTabCount
         val builtTabs =
-            tabs.filter { it.panes.isNotEmpty() }.mapIndexed { i, t ->
+            tabs.filter { it.panes.isNotEmpty() }.map { t ->
                 WorkspaceTab(
                     key = t.key,
                     name = t.name,
                     panes = t.panes.toList(),
                     activePane = t.activePane,
                     topState = t.panes.mapNotNull { records[it] }.topState(),
-                    number = i + 1,
+                    number = t.documentNumber ?: ++extra,
                     layoutRef =
                         t.documentTabId
                             ?.takeIf { hasDocumentId }
@@ -261,7 +270,7 @@ private class SpaceDraft(
             topState = builtTabs.flatMap { it.panes }.mapNotNull { records[it] }.topState(),
             number = 0,
             layoutRef = if (hasDocumentId) LayoutRef(machine, id) else null,
-            givenName = name,
+            givenName = if (source == SpaceSource.Desktop) name else "",
         )
     }
 }

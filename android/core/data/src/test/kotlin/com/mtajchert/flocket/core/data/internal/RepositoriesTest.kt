@@ -202,10 +202,20 @@ class RepositoriesTest {
     @Test
     fun `unknown stored list sort falls back to priority`() =
         runBlocking {
-            val repo = prefs(File(tmp.root, "s.preferences_pb"))
+            val source =
+                PreferencesDataSource(
+                    PreferenceDataStoreFactory.create(
+                        corruptionHandler = ReplaceFileCorruptionHandler { emptyPreferences() },
+                        scope = scope,
+                        produceFile = { File(tmp.root, "s.preferences_pb") },
+                    ),
+                )
+            val repo = PreferencesRepositoryImpl(source)
             repo.update { it.copy(terminalSort = TerminalSort.Grouped) }
             assertEquals(TerminalSort.Grouped, repo.preferences.first().terminalSort)
-            assertEquals(TerminalSort.Priority, enumOrDefault("Sideways", TerminalSort.Priority))
+            // A value the app does not know (an older or newer build wrote it) reads back as Priority.
+            source.update { it.copy(terminalListSort = "Sideways") }
+            assertEquals(TerminalSort.Priority, repo.preferences.first().terminalSort)
         }
 
     @Test

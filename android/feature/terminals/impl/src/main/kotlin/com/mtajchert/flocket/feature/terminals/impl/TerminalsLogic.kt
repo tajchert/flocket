@@ -13,6 +13,7 @@ import com.mtajchert.flocket.core.model.TerminalSort
 import com.mtajchert.flocket.core.model.Workspace
 import com.mtajchert.flocket.core.model.WorkspaceSpace
 import com.mtajchert.flocket.core.model.buildWorkspace
+import com.mtajchert.flocket.core.model.folderName
 import com.mtajchert.flocket.core.session.SessionState
 import com.mtajchert.flocket.core.ui.error.toUiError
 
@@ -206,8 +207,8 @@ private fun Workspace.rowPlaces(canRename: (String?) -> Boolean): Map<TerminalAd
     return places
 }
 
-/** The name the desktop shows for an unnamed space: its folder's last segment. */
-private fun WorkspaceSpace.autoName(): String = folder?.trimEnd('/')?.substringAfterLast('/').orEmpty()
+/** The name the desktop shows for an unnamed space: its shown folder's name (blank = "Space N"). */
+private fun WorkspaceSpace.autoName(): String = folderName(folder).orEmpty()
 
 private fun String.endsWithSegment(name: String): Boolean = trimEnd('/').substringAfterLast('/') == name
 

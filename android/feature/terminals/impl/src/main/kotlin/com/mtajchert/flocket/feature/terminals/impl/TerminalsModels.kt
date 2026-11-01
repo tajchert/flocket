@@ -143,7 +143,7 @@ data class TabSection(
     val key: String,
     val name: String,
     val items: List<TerminalItem>,
-    /** 1-based place in its space; names the tab "Tab N" when [name] is blank. */
+    /** 1-based place in its space; shown as the number itself when [name] is blank. */
     val number: Int = 1,
     val layoutRef: LayoutRef? = null,
     val canRename: Boolean = false,

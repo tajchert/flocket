@@ -5,6 +5,7 @@ package com.mtajchert.flocket.feature.terminals.impl
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -62,9 +63,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.onLongClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontFamily
@@ -625,6 +628,7 @@ private fun TabLabel(
     name: String,
     onRename: (() -> Unit)? = null,
 ) {
+    val renameLabel = stringResource(CoreUiR.string.menu_rename_tab)
     Text(
         name,
         style = MaterialTheme.typography.labelMedium,
@@ -636,11 +640,15 @@ private fun TabLabel(
                 .fillMaxWidth()
                 .then(
                     if (onRename != null) {
-                        Modifier.combinedClickable(
-                            onClick = {},
-                            onLongClickLabel = stringResource(CoreUiR.string.menu_rename_tab),
-                            onLongClick = onRename,
-                        )
+                        // Long press only: a no-op click would show TalkBack a "double tap to activate".
+                        Modifier
+                            .pointerInput(onRename) { detectTapGestures(onLongPress = { onRename() }) }
+                            .semantics {
+                                onLongClick(label = renameLabel) {
+                                    onRename()
+                                    true
+                                }
+                            }
                     } else {
                         Modifier
                     },

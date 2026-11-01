@@ -107,7 +107,7 @@ data class WorkspaceTab(
     val panes: List<TerminalAddress>,
     val activePane: TerminalAddress?,
     val topState: AgentState?,
-    /** 1-based position among the space's (non-empty) tabs. */
+    /** 1-based desktop tab number: place in the document tab list; other tabs follow its count. */
     val number: Int,
     /** The document tab this is, when it has a usable id; null for implicit and label-only tabs. */
     val layoutRef: LayoutRef? = null,

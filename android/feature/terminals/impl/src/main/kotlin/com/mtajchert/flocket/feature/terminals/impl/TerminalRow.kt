@@ -92,7 +92,11 @@ internal fun TerminalRow(
                 ),
             verticalAlignment = if (dense) Alignment.CenterVertically else Alignment.Top,
         ) {
-            AgentIcon(item.agentId, Modifier.padding(end = 12.dp, top = if (dense) 0.dp else 2.dp))
+            AgentIcon(
+                item.agentId,
+                Modifier.padding(end = 12.dp, top = if (dense) 0.dp else 2.dp),
+                contentDescription = null,
+            )
             if (dense) {
                 DenseBody(item, label, nowMs, place, Modifier.weight(1f))
             } else {
