@@ -28,6 +28,9 @@ switches, and process-death restores.
   foregrounded, screen unlocked) takes the size again. *(Amended 2026-11-01: tap and return
   added, because Herdr desktop can take the size without its user doing anything, e.g. a
   same-size RESIZE or an automatic terminal reply sent as DATA.)*
+  *(Amended 2026-11-02: a configuration change (rotation, fold/unfold) is not coming back to
+  the screen. A passive phone keeps the other viewer's size across it; an owner still refits
+  to the new grid.)*
 - `AttachMode.Passive` and `Observe` remain available in `core:session` and `core:terminal`.
 
 ## Consequences

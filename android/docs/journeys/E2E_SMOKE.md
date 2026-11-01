@@ -11,7 +11,7 @@ the steps that stay manual. How to run them: [TESTING.md](../TESTING.md#device-j
 | 1-2 Onboarding, key, host, trust | `OnboardingJourneyTest` | automated |
 | 3-4 Live list, new terminal, typing | `TerminalJourneyTest` | automated |
 | 5 Passive open keeps size | - | planned |
-| 6a Rotation | - | planned (lifecycle journeys) |
+| 6a Rotation (passive keeps the other viewer's size, owner follows the grid) | `RotationJourneyTest` | automated |
 | 6b Fold / unfold | - | manual |
 | 6c Lock / unlock | - | manual |
 | 6d Background and return | - | planned (lifecycle journeys) |

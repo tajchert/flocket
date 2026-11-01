@@ -6,7 +6,6 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.ClassRule
-import org.junit.Ignore
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -45,16 +44,11 @@ class RotationJourneyTest {
     }
 
     /**
-     * Expected (E2E_SMOKE 6a, and ADR-0007 lists only key, tap, chip and return as reclaiming the size): a
-     * passive phone keeps the other viewer's size across a rotation. Observed (hc 0.1.16, API 36, 2026-11-02):
-     * the Mac viewer holds t18 at 100x40, the phone is passive; after `setOrientationLeft` `hc get` says 79x11
-     * (the phone's landscape grid) within 1.5 s, with no reconnect (one `CoreSession: online` in logcat, no
-     * new `Accepted publickey`). Cause: `TerminalSurface` calls `TerminalController.setVisible(false/true)` on
-     * the activity's stop/start, which a configuration change also goes through, and `setVisible` treats the
-     * second call as "came back" and reclaims the size (`reclaimIfTaken`). Either rotation should not count as
-     * coming back, or ADR-0007 should say it does (then flip this assertion).
+     * A passive phone keeps the other viewer's size across a rotation: a configuration change is not coming back
+     * to the screen (ADR-0007, amended 2026-11-02). Regression: `TerminalSurface` reported the activity's
+     * stop/start on rotation as a return and `TerminalController.setVisible` reclaimed the size (the Mac viewer's
+     * 100x40 became the phone's 79x11 landscape grid); the surface now passes `isChangingConfigurations`.
      */
-    @Ignore("bug: rotation reclaims the size from another viewer (setVisible treats a config change as a return)")
     @Test
     fun passiveTerminalKeepsTheOtherViewersSize() {
         val address = journey.host.runShell(SHELL_NAME)
