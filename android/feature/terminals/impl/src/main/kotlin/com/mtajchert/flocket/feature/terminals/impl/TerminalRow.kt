@@ -4,6 +4,7 @@ package com.mtajchert.flocket.feature.terminals.impl
 
 import android.text.format.DateUtils
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CloudOff
 import androidx.compose.material.icons.outlined.DeleteSweep
@@ -42,8 +44,12 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.mtajchert.flocket.core.model.AgentState
+import com.mtajchert.flocket.core.model.AgentStatus
+import com.mtajchert.flocket.core.model.BlockKind
 import com.mtajchert.flocket.core.ui.component.AgentStatusChip
 
 /** One terminal. Tap opens it; long-press or the overflow button opens the action menu. */
@@ -55,6 +61,7 @@ internal fun TerminalRow(
     nowMs: Long,
     actions: TerminalsActions,
     modifier: Modifier = Modifier,
+    dense: Boolean = false,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     val scheme = MaterialTheme.colorScheme
@@ -68,11 +75,143 @@ internal fun TerminalRow(
             Modifier
                 .clip(MaterialTheme.shapes.large)
                 .combinedClickable(onClick = { actions.onOpen(item) }, onLongClick = { menuOpen = true })
-                .heightIn(min = 72.dp)
-                .padding(start = 16.dp, top = 10.dp, bottom = 10.dp, end = 4.dp),
-            verticalAlignment = Alignment.Top,
+                .heightIn(min = if (dense) 48.dp else 72.dp)
+                .padding(
+                    start = 16.dp,
+                    top = if (dense) 4.dp else 10.dp,
+                    bottom = if (dense) 4.dp else 10.dp,
+                    end = 4.dp,
+                ),
+            verticalAlignment = if (dense) Alignment.CenterVertically else Alignment.Top,
         ) {
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            if (dense) {
+                DenseBody(item, label, nowMs, Modifier.weight(1f))
+            } else {
+                FullBody(item, label, nowMs, Modifier.weight(1f))
+            }
+            Box {
+                IconButton(onClick = { menuOpen = true }, modifier = if (dense) Modifier.size(40.dp) else Modifier) {
+                    Icon(Icons.Outlined.MoreVert, contentDescription = stringResource(R.string.row_actions, label))
+                }
+                RowMenu(menuOpen, { menuOpen = false }, item, actions)
+            }
+        }
+    }
+}
+
+/** Two compact lines: dot, agent and name; then status word and short age. */
+@Composable
+private fun DenseBody(
+    item: TerminalItem,
+    label: String,
+    nowMs: Long,
+    modifier: Modifier = Modifier,
+) {
+    val scheme = MaterialTheme.colorScheme
+    val state = (item.status as? AgentStatus.Reported)?.state
+    val word = statusWord(item)
+    val age =
+        item.sinceMs?.let {
+            DateUtils
+                .getRelativeTimeSpanString(
+                    it,
+                    nowMs,
+                    DateUtils.MINUTE_IN_MILLIS,
+                    DateUtils.FORMAT_ABBREV_RELATIVE,
+                ).toString()
+        }
+    Column(modifier) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Box(Modifier.size(8.dp).background(statusColor(if (item.isFinished) null else state, scheme), CircleShape))
+            Text(
+                label,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false),
+            )
+            if (!item.name.isNullOrBlank()) {
+                Text(
+                    item.name,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = scheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+            }
+        }
+        Text(
+            listOfNotNull(word, age).joinToString(" · "),
+            style = MaterialTheme.typography.labelSmall,
+            color = scheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(start = 16.dp),
+        )
+    }
+}
+
+@Composable
+private fun statusWord(item: TerminalItem): String {
+    if (item.isFinished) {
+        return when {
+            item.exitCode != null -> stringResource(R.string.row_finished_exit, item.exitCode)
+            item.signal != null -> stringResource(R.string.row_finished_signal, item.signal)
+            else -> stringResource(R.string.row_finished)
+        }
+    }
+    val status = item.status as? AgentStatus.Reported ?: return stringResource(R.string.space_status_none)
+    val progress = status.progress
+    return when (status.state) {
+        AgentState.Working -> {
+            if (progress != null) {
+                stringResource(R.string.row_working_progress, progress.coerceIn(0, 100))
+            } else {
+                stringResource(R.string.space_status_working)
+            }
+        }
+
+        AgentState.Blocked -> {
+            when (status.kind) {
+                BlockKind.Permission -> stringResource(R.string.row_blocked_permission)
+                BlockKind.Question -> stringResource(R.string.row_blocked_question)
+                BlockKind.Auth -> stringResource(R.string.row_blocked_auth)
+                else -> stringResource(R.string.space_status_blocked)
+            }
+        }
+
+        AgentState.Idle -> {
+            stringResource(R.string.space_status_idle)
+        }
+
+        AgentState.Done -> {
+            stringResource(R.string.space_status_done)
+        }
+
+        AgentState.Error -> {
+            stringResource(R.string.space_status_error)
+        }
+
+        AgentState.Other -> {
+            status.rawState
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun FullBody(
+    item: TerminalItem,
+    label: String,
+    nowMs: Long,
+    modifier: Modifier = Modifier,
+) {
+    val scheme = MaterialTheme.colorScheme
+    run {
+        run {
+            Column(modifier, verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -129,12 +268,6 @@ internal fun TerminalRow(
                         )
                     }
                 }
-            }
-            Box {
-                IconButton(onClick = { menuOpen = true }) {
-                    Icon(Icons.Outlined.MoreVert, contentDescription = stringResource(R.string.row_actions, label))
-                }
-                RowMenu(menuOpen, { menuOpen = false }, item, actions)
             }
         }
     }
