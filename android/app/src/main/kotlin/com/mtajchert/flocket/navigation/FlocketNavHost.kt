@@ -4,6 +4,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi
+import androidx.compose.material3.adaptive.WindowAdaptiveInfo
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfoV2
 import androidx.compose.material3.adaptive.layout.calculatePaneScaffoldDirective
 import androidx.compose.material3.adaptive.navigation3.rememberListDetailSceneStrategy
@@ -97,7 +98,7 @@ fun FlocketNavHost(
         if (current.isFullScreen(singlePane = !multiPane, focusMode = focusMode, compactHeight = compactHeight)) {
             NavigationSuiteType.None
         } else {
-            NavigationSuiteScaffoldDefaults.calculateFromAdaptiveInfo(adaptiveInfo)
+            navigationSuiteType(adaptiveInfo, multiPane = multiPane, compactHeight = compactHeight)
         }
 
     CompositionLocalProvider(
@@ -137,6 +138,22 @@ fun FlocketNavHost(
         }
     }
 }
+
+/**
+ * The default picks a bottom bar for compact-height windows, which on a landscape phone eats a quarter
+ * of the height the list and terminal need. A wide, short window gets the rail instead.
+ */
+@OptIn(ExperimentalMaterial3AdaptiveApi::class)
+internal fun navigationSuiteType(
+    adaptiveInfo: WindowAdaptiveInfo,
+    multiPane: Boolean,
+    compactHeight: Boolean,
+): NavigationSuiteType =
+    if (multiPane && compactHeight) {
+        NavigationSuiteType.NavigationRail
+    } else {
+        NavigationSuiteScaffoldDefaults.calculateFromAdaptiveInfo(adaptiveInfo)
+    }
 
 private val SidebarWidth = 280.dp
 private val SidebarWidthExpanded = 300.dp

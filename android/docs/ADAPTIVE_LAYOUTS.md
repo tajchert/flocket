@@ -16,6 +16,8 @@ Compact width shows the terminal list, then the terminal on its own full screen.
 - On multi-pane windows the terminal top bar's navigation icon toggles the sidebar ("Hide sidebar" / "Show sidebar"); single-pane keeps the back arrow.
 - Focus mode (hidden sidebar) swaps the directive for `maxHorizontalPartitions = 1`. It is `rememberSaveable` (survives rotation and fold, not process death), resets when the window becomes single-pane or the top route is not a terminal, and Back leaves it before popping the stack.
 - The navigation rail/bar is hidden while a terminal is on top when the window is single-pane, in focus mode, or compact height (`isFullScreen`).
+- A wide but short window (a landscape phone) gets the rail, not the default bottom bar, so the list keeps its height (`navigationSuiteType`).
+- A pane beside the visible sidebar pads only its top, bottom and end insets: the start cutout and nav bar belong to the sidebar.
 - Rotation, fold and unfold keep the terminal's `TerminalViewModel` (attach, engine state); only the surface is re-created.
 - Manual check (no Robolectric nav-host test: `:app` has no Compose test setup): on a tablet or unfolded emulator open a terminal, hide the sidebar, press Back (sidebar returns, terminal stays), rotate and fold in focus mode.
 

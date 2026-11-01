@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -16,6 +17,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -47,6 +49,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.PlainTooltip
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.ScaffoldDefaults
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
@@ -79,6 +82,7 @@ import com.mtajchert.flocket.core.ui.component.ConnectionStateBadge
 import com.mtajchert.flocket.core.ui.error.asString
 import com.mtajchert.flocket.core.ui.nav.LocalPaneLayout
 import com.mtajchert.flocket.core.ui.nav.LocalSidebarToggle
+import com.mtajchert.flocket.core.ui.nav.PaneLayout
 
 /** Everything the screen can ask for. Defaults are no-ops (previews, screenshot tests). */
 @Immutable
@@ -126,6 +130,7 @@ fun TerminalScreen(
         topBar = { TerminalTopBar(state, actions, showBack) },
         snackbarHost = { SnackbarHost(snackbarHostState) },
         containerColor = MaterialTheme.colorScheme.surface,
+        contentWindowInsets = ScaffoldDefaults.contentWindowInsets.only(paneInsetSides(layout)),
     ) { inner ->
         Column(
             Modifier
@@ -311,6 +316,7 @@ private fun TerminalTopBar(
             OverflowMenu(state, actions)
         },
         colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+        windowInsets = TopAppBarDefaults.windowInsets.only(paneInsetSides(layout)),
     )
 }
 
@@ -543,3 +549,14 @@ private const val CLIPBOARD_PREVIEW_CHARS = 2_000
 
 /** herdr-core's `reason` for a terminal ended by `terminal.kill`. */
 private const val REASON_KILLED = "killed"
+
+/**
+ * Window-inset sides this pane touches. Beside a visible sidebar the pane's start edge is not the
+ * window's, so it must not pad for the start cutout or nav bar (the sidebar already does).
+ */
+private fun paneInsetSides(layout: PaneLayout): WindowInsetsSides =
+    if (layout.multiPane && layout.sidebarVisible) {
+        WindowInsetsSides.Top + WindowInsetsSides.Bottom + WindowInsetsSides.End
+    } else {
+        WindowInsetsSides.Horizontal + WindowInsetsSides.Vertical
+    }
