@@ -95,4 +95,12 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
 
     testImplementation(libs.junit)
+
+    // Device journeys (src/androidTest/.../journey): the real app against a real hc over the throwaway sshd.
+    // Every journey is skipped without its instrumentation arguments, so a plain connected run passes; run them
+    // through the harness (`scripts/e2e-device.sh journey`), never with Gradle connected* tasks.
+    androidTestImplementation(platform(libs.androidx.compose.bom))
+    androidTestImplementation(libs.bundles.testing.android)
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.androidx.test.uiautomator)
 }
