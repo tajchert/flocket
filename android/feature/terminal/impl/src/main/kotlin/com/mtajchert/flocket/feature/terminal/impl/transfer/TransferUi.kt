@@ -15,6 +15,7 @@ import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -28,10 +29,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
+import com.mtajchert.flocket.core.common.error.AppError
 import com.mtajchert.flocket.core.ui.error.asString
 import com.mtajchert.flocket.feature.terminal.impl.R
 import com.mtajchert.flocket.feature.terminal.impl.StateBanner
@@ -96,14 +99,14 @@ fun PasteChooserContent(
 
 @Composable
 private fun ChooserRow(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    icon: ImageVector,
     label: Int,
     tag: String,
     onClick: () -> Unit,
 ) {
     ListItem(
         headlineContent = { Text(stringResource(label)) },
-        leadingContent = { androidx.compose.material3.Icon(icon, contentDescription = null) },
+        leadingContent = { Icon(icon, contentDescription = null) },
         modifier = Modifier.clickable(onClick = onClick).testTag(tag),
     )
 }
@@ -158,10 +161,10 @@ fun TransferStrip(
                         phase.error.message.asString(),
                     ),
                 actions =
-                    listOf(
-                        stringResource(R.string.terminal_dismiss) to onDismiss,
-                        stringResource(R.string.terminal_retry) to onRetry,
-                    ),
+                    buildList {
+                        add(stringResource(R.string.terminal_dismiss) to onDismiss)
+                        if (phase.error.source.isTransient()) add(stringResource(R.string.terminal_retry) to onRetry)
+                    },
                 error = true,
             )
         }
@@ -171,6 +174,10 @@ fun TransferStrip(
         }
     }
 }
+
+/** Worth a manual Retry: the link, not the file or the request, was the problem. */
+private fun AppError?.isTransient() =
+    this is AppError.ConnectionLost || this is AppError.Timeout || this is AppError.Unreachable
 
 /**
  * "Send file to folder": the folder is read-only (where the terminal's program is now), the name is editable.
@@ -186,7 +193,7 @@ fun SendToFolderDialog(
     var name by remember(state.name) { mutableStateOf(state.name) }
     val phase = state.phase
     val busy = phase is TransferPhase.Reading || phase is TransferPhase.Uploading
-    val warnExists = state.exists && name.trim() == state.name
+    val warnExists = (state.exists || state.checkFailed) && name.trim() == state.name
     val validName = name.isNotBlank() && '/' !in name
     AlertDialog(
         onDismissRequest = { if (!busy) onDismiss() },
@@ -250,7 +257,10 @@ fun SendToFolderDialog(
 
                     warnExists -> {
                         Text(
-                            stringResource(R.string.transfer_send_exists, state.name),
+                            stringResource(
+                                if (state.exists) R.string.transfer_send_exists else R.string.transfer_send_unchecked,
+                                state.name,
+                            ),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.error,
                         )

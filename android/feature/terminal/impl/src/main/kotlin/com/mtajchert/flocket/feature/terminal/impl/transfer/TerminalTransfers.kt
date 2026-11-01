@@ -6,6 +6,7 @@ import com.mtajchert.flocket.core.common.result.AppResult
 import com.mtajchert.flocket.core.model.MAX_TRANSFER_BYTES
 import com.mtajchert.flocket.core.model.TerminalAddress
 import com.mtajchert.flocket.core.session.CoreSession
+import com.mtajchert.flocket.core.ui.error.UiError
 import com.mtajchert.flocket.core.ui.error.UiText
 import com.mtajchert.flocket.core.ui.error.toUiError
 import com.mtajchert.flocket.feature.terminal.impl.R
@@ -23,6 +24,9 @@ import java.time.format.DateTimeFormatter
  *
  * Uploads are mutations: never retried here. A loss after the request was written is [TransferPhase.OutcomeUnknown],
  * pastes nothing, and waits for the user's manual [retry]. Everything is refused while the session is stale.
+ *
+ * Known limitation: leaving the terminal mid-upload clears the ViewModel and cancels the upload without
+ * reporting its (possibly unknown) outcome; there is no app-level channel for it.
  */
 class TerminalTransfers(
     private val scope: CoroutineScope,
@@ -54,6 +58,12 @@ class TerminalTransfers(
 
     /** Upload a picked photo or file under its own name, then paste its path. */
     fun pasteUri(uri: Uri) = startPaste { upload(uri, fixedName = null) }
+
+    private fun busyNotice(): Boolean {
+        if (!busy) return false
+        notify(UiText.Res(R.string.transfer_busy))
+        return true
+    }
 
     /** Upload the clipboard's image as `paste-<yyyyMMdd-HHmmss>.<ext>`, then paste its path. */
     fun pasteClipboardImage(
@@ -103,7 +113,7 @@ class TerminalTransfers(
     }
 
     private fun startPaste(block: suspend () -> Unit) {
-        if (busy) return
+        if (busyNotice()) return
         retryAction = block
         job = scope.launch { block() }
     }
@@ -128,7 +138,7 @@ class TerminalTransfers(
             is AppResult.Success -> {
                 _phase.value = TransferPhase.Done(r.value.path)
                 retryAction = null
-                paste("${r.value.path} ")
+                paste("${escapeForShell(r.value.path)} ")
             }
 
             is AppResult.Failure -> {
@@ -149,7 +159,7 @@ class TerminalTransfers(
 
     /** Describe the picked file and check its target; opens the dialog. Nothing is written yet. */
     fun prepareSendToFolder(uri: Uri) {
-        if (busy) return
+        if (busyNotice()) return
         val action: suspend () -> Unit = { prepare(uri) }
         retryAction = action
         job = scope.launch { action() }
@@ -173,17 +183,26 @@ class TerminalTransfers(
                 .terminal(address)
                 ?.displayCwd
         if (folder.isNullOrEmpty()) {
-            return fail(AppError.Rpc(AppError.Rpc.NOT_FOUND, "terminal has no folder"))
+            _phase.value =
+                TransferPhase.Failed(
+                    UiError(
+                        UiText.Res(R.string.transfer_no_folder_title),
+                        UiText.Res(R.string.transfer_no_folder_message),
+                    ),
+                )
+            return
         }
-        val exists =
-            when (val r = exists(s, targetPath(folder, picked.displayName))) {
-                is AppResult.Success -> r.value
-                is AppResult.Failure -> return fail(r.error)
-            }
+        val exists = exists(s, targetPath(folder, picked.displayName))
         folderUri = uri
         retryAction = null
         _phase.value = TransferPhase.Idle
-        _sendToFolder.value = SendToFolderState(name = picked.displayName, folder = folder, exists = exists)
+        _sendToFolder.value =
+            SendToFolderState(
+                name = picked.displayName,
+                folder = folder,
+                exists = exists == true,
+                checkFailed = exists == null,
+            )
     }
 
     /**
@@ -196,7 +215,7 @@ class TerminalTransfers(
     ) {
         val state = _sendToFolder.value ?: return
         val uri = folderUri ?: return
-        if (busy) return
+        if (busyNotice()) return
         job = scope.launch { send(state, uri, name.trim(), replace) }
     }
 
@@ -208,8 +227,9 @@ class TerminalTransfers(
     ) {
         fun update(
             exists: Boolean = state.exists,
+            checkFailed: Boolean = state.checkFailed,
             phase: TransferPhase,
-        ) = _sendToFolder.update { it?.copy(name = name, exists = exists, phase = phase) }
+        ) = _sendToFolder.update { it?.copy(name = name, exists = exists, checkFailed = checkFailed, phase = phase) }
 
         fun failed(error: AppError) = update(phase = TransferPhase.Failed(error.toUiError()))
         if (name.isEmpty() || '/' in name || name == "." || name == "..") {
@@ -218,15 +238,10 @@ class TerminalTransfers(
         val s = readySession() ?: return failed(AppError.ConnectionLost)
         val target = targetPath(state.folder, name)
         if (!replace) {
-            when (val r = exists(s, target)) {
-                is AppResult.Failure -> {
-                    return failed(r.error)
-                }
-
-                is AppResult.Success -> {
-                    if (r.value) return update(exists = true, phase = TransferPhase.Idle)
-                    update(exists = false, phase = TransferPhase.Idle)
-                }
+            when (exists(s, target)) {
+                true -> return update(exists = true, checkFailed = false, phase = TransferPhase.Idle)
+                null -> return update(exists = false, checkFailed = true, phase = TransferPhase.Idle)
+                false -> update(exists = false, checkFailed = false, phase = TransferPhase.Idle)
             }
         }
         update(phase = TransferPhase.Reading)
@@ -259,8 +274,8 @@ class TerminalTransfers(
         scope.launch {
             val state = _sendToFolder.value ?: return@launch
             val s = session() ?: return@launch
-            val exists = (exists(s, targetPath(state.folder, name)) as? AppResult.Success)?.value ?: true
-            _sendToFolder.update { it?.copy(name = name, exists = exists) }
+            val exists = exists(s, targetPath(state.folder, name))
+            _sendToFolder.update { it?.copy(name = name, exists = exists == true, checkFailed = exists == null) }
         }
     }
 
@@ -303,13 +318,23 @@ class TerminalTransfers(
         }
     }
 
+    /** `test -e`: 0 = exists, 1 = absent, anything else (or a failed call) = unknown (null). */
     private suspend fun exists(
         s: CoreSession,
         path: String,
-    ): AppResult<Boolean> =
+    ): Boolean? =
         when (val r = s.exec(address.machine, listOf("test", "-e", path), mutating = false)) {
-            is AppResult.Success -> AppResult.Success(r.value.code == 0)
-            is AppResult.Failure -> AppResult.Failure(r.error)
+            is AppResult.Success -> {
+                when (r.value.code) {
+                    0 -> true
+                    1 -> false
+                    else -> null
+                }
+            }
+
+            is AppResult.Failure -> {
+                null
+            }
         }
 
     private fun TransferPhase.isActive() = this is TransferPhase.Reading || this is TransferPhase.Uploading
@@ -321,6 +346,17 @@ class TerminalTransfers(
 
     companion object {
         private val STAMP: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss")
+
+        private const val SHELL_SPECIAL = " \t\"'\\$`()&;|<>*?[]#~!"
+
+        /** Backslash-escapes characters a shell or agent prompt would split on, like a dropped path. */
+        internal fun escapeForShell(path: String): String =
+            buildString {
+                for (c in path) {
+                    if (c in SHELL_SPECIAL) append('\\')
+                    append(c)
+                }
+            }
 
         internal fun extensionFor(mime: String?): String =
             when (mime?.lowercase()) {

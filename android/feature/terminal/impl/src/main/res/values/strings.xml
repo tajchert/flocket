@@ -127,6 +127,9 @@
     <string name="transfer_send_exists">%1$s already exists in this folder.</string>
     <string name="transfer_send_replace">Replace</string>
     <string name="transfer_send_confirm">Send</string>
-    <string name="transfer_send_close">Close</string>
+    <string name="transfer_send_unchecked">Could not check whether %1$s already exists here. Replace it?</string>
+    <string name="transfer_busy">Another file is still uploading</string>
+    <string name="transfer_no_folder_title">No folder</string>
+    <string name="transfer_no_folder_message">This terminal has no known folder to send to.</string>
     <!-- END transfer -->
 </resources>

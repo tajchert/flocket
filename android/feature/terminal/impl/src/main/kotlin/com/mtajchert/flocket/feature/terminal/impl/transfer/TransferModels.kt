@@ -33,5 +33,7 @@ data class SendToFolderState(
     val name: String,
     val folder: String,
     val exists: Boolean = false,
+    /** `test -e` gave no clear answer: treated like an existing target (explicit Replace). */
+    val checkFailed: Boolean = false,
     val phase: TransferPhase = TransferPhase.Idle,
 )

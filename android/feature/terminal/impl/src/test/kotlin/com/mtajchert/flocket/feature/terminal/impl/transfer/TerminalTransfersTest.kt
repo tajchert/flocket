@@ -6,6 +6,7 @@ import com.mtajchert.flocket.core.common.error.AppError
 import com.mtajchert.flocket.core.common.result.AppResult
 import com.mtajchert.flocket.core.model.ConnectionState
 import com.mtajchert.flocket.core.model.MAX_TRANSFER_BYTES
+import com.mtajchert.flocket.core.model.PutReceipt
 import com.mtajchert.flocket.core.model.TerminalAddress
 import com.mtajchert.flocket.core.session.ExecOutcome
 import com.mtajchert.flocket.core.testing.FakeCoreSession
@@ -278,5 +279,65 @@ class TerminalTransfersTest {
             t.cancel()
             assertEquals(TransferPhase.OutcomeUnknown("a.png"), t.phase.value)
             assertTrue(pasted.isEmpty())
+        }
+
+    @Test
+    fun `unclear existence check requires an explicit replace`() =
+        runTest(UnconfinedTestDispatcher()) {
+            session.execHandler = { _, _, _ -> AppResult.Success(ExecOutcome(2, ByteArray(0), "", false)) }
+            val t = transfers()
+            t.prepareSendToFolder(png)
+            assertTrue(t.sendToFolder.value!!.checkFailed)
+            t.confirmSendToFolder("a.png", replace = false)
+            assertTrue(call.none { it.startsWith("write:") })
+            assertTrue(t.sendToFolder.value!!.checkFailed)
+            session.execHandler = { _, _, _ -> AppResult.Failure(AppError.ConnectionLost) }
+            t.confirmSendToFolder("a.png", replace = true)
+            assertEquals(1, call.count { it.startsWith("write:") })
+        }
+
+    @Test
+    fun `failed existence call is also treated as unknown`() =
+        runTest(UnconfinedTestDispatcher()) {
+            session.execHandler = { _, _, _ -> AppResult.Failure(AppError.Timeout("exec")) }
+            val t = transfers()
+            t.prepareSendToFolder(png)
+            assertTrue(t.sendToFolder.value!!.checkFailed)
+        }
+
+    @Test
+    fun `pasted path escapes what a shell would split on`() =
+        runTest(UnconfinedTestDispatcher()) {
+            val odd = Uri.parse("content://docs/odd")
+            src.add(odd, "my shot (1).png")
+            session.putHandler = { _, n, b -> AppResult.Success(PutReceipt("/files/t1/$n", b.size.toLong())) }
+            transfers().pasteUri(odd)
+            assertEquals(listOf("/files/t1/my\\ shot\\ \\(1\\).png "), pasted)
+        }
+
+    @Test
+    fun `plain path pastes unchanged`() {
+        assertEquals("/a/b-c_d.9/e.png", TerminalTransfers.escapeForShell("/a/b-c_d.9/e.png"))
+        assertEquals("a\\\$b\\`c\\;d\\#e", TerminalTransfers.escapeForShell("a\$b`c;d#e"))
+    }
+
+    @Test
+    fun `second transfer while busy tells the user and keeps the running one`() =
+        runTest(UnconfinedTestDispatcher()) {
+            val gate = CompletableDeferred<Unit>()
+            session.putHandler = { _, _, _ ->
+                gate.await()
+                AppResult.Failure(AppError.OutcomeUnknown("terminal.put"))
+            }
+            val t = transfers()
+            t.pasteUri(png)
+            t.prepareSendToFolder(png)
+            t.pasteUri(png)
+            assertEquals(2, messages.size)
+            assertNull(t.sendToFolder.value)
+            gate.complete(Unit)
+            assertEquals(TransferPhase.OutcomeUnknown("a.png"), t.phase.value)
+            t.retry()
+            assertEquals(2, call.count { it.startsWith("put:") })
         }
 }

@@ -1,5 +1,6 @@
 package com.mtajchert.flocket.feature.terminal.impl
 
+import android.net.Uri
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.viewmodel.initializer
@@ -37,6 +38,7 @@ import com.mtajchert.flocket.core.testing.MainDispatcherRule
 import com.mtajchert.flocket.core.testing.SampleData
 import com.mtajchert.flocket.core.ui.error.UiText
 import com.mtajchert.flocket.feature.terminal.api.TerminalRoute
+import com.mtajchert.flocket.feature.terminal.impl.transfer.UriSource
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.awaitCancellation
@@ -804,11 +806,11 @@ class TerminalViewModelTest {
 }
 
 /** The terminal ViewModel tests never pick a file. */
-private object NoUriSource : com.mtajchert.flocket.feature.terminal.impl.transfer.UriSource {
-    override suspend fun describe(uri: android.net.Uri) = AppResult.Failure(AppError.FileMissing(""))
+private object NoUriSource : UriSource {
+    override suspend fun describe(uri: Uri) = AppResult.Failure(AppError.FileMissing(""))
 
     override suspend fun read(
-        uri: android.net.Uri,
+        uri: Uri,
         maxBytes: Long,
     ) = AppResult.Failure(AppError.FileMissing(""))
 }
