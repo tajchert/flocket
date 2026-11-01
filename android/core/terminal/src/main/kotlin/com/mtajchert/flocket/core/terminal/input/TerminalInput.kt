@@ -203,6 +203,18 @@ class TerminalInputConnection(
         return true
     }
 
+    /**
+     * Send a pending composition now, before a key that bypasses this connection (a hardware or
+     * injected key reaching the view, an extra key). Without it the key would overtake the
+     * composed text: `echo` typed as e + [ch composing] + o arrived as `eoch`. Returns true when
+     * something was sent; the caller should then restart input so the IME drops its composition.
+     */
+    fun commitComposing(): Boolean {
+        val pending = editable?.isNotEmpty() == true
+        flush()
+        return pending
+    }
+
     private fun flush() {
         val e: Editable = editable ?: return
         if (e.isNotEmpty()) {

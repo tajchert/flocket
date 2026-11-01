@@ -98,6 +98,7 @@ class TerminalView(
 
     private val padPx = (PADDING_DP * density)
     private var composing: String? = null
+    private var inputConnection: TerminalInputConnection? = null
 
     // Layout transform (content -> view): x' = tx + x * scale.
     private var scale = 1f
@@ -376,6 +377,13 @@ class TerminalView(
         return TerminalInputConnection(this, s) { text ->
             composing = text
             invalidate()
+        }.also { inputConnection = it }
+    }
+
+    /** A key that reaches the view directly must not overtake text the IME is still composing. */
+    private fun commitComposingBeforeKey() {
+        if (inputConnection?.commitComposing() == true) {
+            context.getSystemService(InputMethodManager::class.java)?.restartInput(this)
         }
     }
 
@@ -392,6 +400,7 @@ class TerminalView(
         }
         val key = KeyEventMapper.map(event) ?: return super.onKeyDown(keyCode, event)
         clearSelection()
+        commitComposingBeforeKey()
         s.sendKey(key)
         return true
     }
@@ -403,6 +412,7 @@ class TerminalView(
     ): Boolean {
         val s = sink ?: return false
         val key = KeyEventMapper.map(event) ?: return super.onKeyMultiple(keyCode, repeatCount, event)
+        commitComposingBeforeKey()
         s.sendKey(key)
         return true
     }
