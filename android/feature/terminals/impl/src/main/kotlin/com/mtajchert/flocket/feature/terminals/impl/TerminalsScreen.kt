@@ -19,14 +19,18 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.CloudOff
 import androidx.compose.material.icons.outlined.Devices
 import androidx.compose.material.icons.outlined.Dns
 import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
+import androidx.compose.material.icons.outlined.FilterList
 import androidx.compose.material.icons.outlined.FilterListOff
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.Terminal
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.DropdownMenu
@@ -44,6 +48,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
@@ -111,7 +116,17 @@ fun TerminalsScreen(
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(R.string.terminals_title)) },
+                // Beside a terminal both top bars share one container so the status bar strip is uniform.
+                colors =
+                    if (dense) {
+                        TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
+                    } else {
+                        TopAppBarDefaults.topAppBarColors()
+                    },
                 actions = {
+                    if (dense && state.loaded && state.emptyKind != EmptyKind.NoHosts) {
+                        FilterMenu(state.filter, actions.onFilter)
+                    }
                     if (dense && canAdd) {
                         IconButton(onClick = actions.onNewTerminal) {
                             Icon(Icons.Outlined.Add, contentDescription = stringResource(R.string.new_terminal))
@@ -137,10 +152,10 @@ fun TerminalsScreen(
     ) { padding ->
         CenteredContent(Modifier.padding(padding), maxWidth = 720.dp) {
             Column {
-                if (state.loaded &&
+                if (!dense && state.loaded &&
                     state.emptyKind != EmptyKind.NoHosts
                 ) {
-                    FilterRow(state.filter, actions.onFilter, dense)
+                    FilterRow(state.filter, actions.onFilter)
                 }
                 when (state.emptyKind) {
                     EmptyKind.NoHosts -> {
@@ -205,18 +220,55 @@ private fun OptionsMenu(
     }
 }
 
+private fun TerminalFilter.label() =
+    when (this) {
+        TerminalFilter.All -> R.string.filter_all
+        TerminalFilter.NeedsAttention -> R.string.filter_attention
+        TerminalFilter.Working -> R.string.filter_working
+        TerminalFilter.Finished -> R.string.filter_finished
+    }
+
+/** Dense (sidebar) replacement for [FilterRow]: one icon, a dot while a non-default filter is active. */
+@Composable
+private fun FilterMenu(
+    filter: TerminalFilter,
+    onFilter: (TerminalFilter) -> Unit,
+) {
+    var open by remember { mutableStateOf(false) }
+    val active = filter != TerminalFilter.All
+    val description = stringResource(R.string.filters_description)
+    IconButton(onClick = { open = true }) {
+        BadgedBox(badge = { if (active) Badge() }) {
+            Icon(Icons.Outlined.FilterList, contentDescription = description)
+        }
+    }
+    DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+        TerminalFilter.entries.forEach { entry ->
+            DropdownMenuItem(
+                text = { Text(stringResource(entry.label())) },
+                onClick = {
+                    open = false
+                    onFilter(entry)
+                },
+                leadingIcon = {
+                    if (entry == filter) Icon(Icons.Outlined.Check, contentDescription = null)
+                },
+            )
+        }
+    }
+}
+
 @Composable
 private fun FilterRow(
     filter: TerminalFilter,
     onFilter: (TerminalFilter) -> Unit,
-    dense: Boolean = false,
 ) {
     Row(
         Modifier
             .fillMaxWidth()
             .horizontalScroll(rememberScrollState())
             .padding(horizontal = 16.dp, vertical = 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(if (dense) 6.dp else 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         TerminalFilter.entries.forEach { entry ->
             FilterChip(
@@ -224,16 +276,8 @@ private fun FilterRow(
                 onClick = { onFilter(entry) },
                 label = {
                     Text(
-                        style = if (dense) MaterialTheme.typography.labelMedium else MaterialTheme.typography.labelLarge,
-                        text =
-                            stringResource(
-                                when (entry) {
-                                    TerminalFilter.All -> R.string.filter_all
-                                    TerminalFilter.NeedsAttention -> R.string.filter_attention
-                                    TerminalFilter.Working -> R.string.filter_working
-                                    TerminalFilter.Finished -> R.string.filter_finished
-                                },
-                            ),
+                        style = MaterialTheme.typography.labelLarge,
+                        text = stringResource(entry.label()),
                     )
                 },
             )
@@ -321,7 +365,16 @@ private fun TerminalList(
                         if (!isCollapsed) {
                             space.tabs.forEach { tab ->
                                 if (space.showTabLabels) {
-                                    item(key = "tab:$spaceKey/${tab.key}", contentType = "tab") { TabLabel(tab.name) }
+                                    item(key = "tab:$spaceKey/${tab.key}", contentType = "tab") {
+                                        TabLabel(
+                                            tab.name.ifBlank {
+                                                stringResource(
+                                                    R.string.workspace_tab_fallback,
+                                                    tab.number,
+                                                )
+                                            },
+                                        )
+                                    }
                                 }
                                 items(tab.items.size, key = { tab.items[it].key }, contentType = { "row" }) { index ->
                                     val item = tab.items[index]
@@ -433,7 +486,8 @@ private fun SpaceHeader(
                 AgentState.Other -> R.string.space_status_other
             },
         )
-    val toggleLabel = stringResource(if (collapsed) R.string.space_expand else R.string.space_collapse, space.name)
+    val spaceName = space.name.ifBlank { stringResource(R.string.workspace_space_fallback, space.number) }
+    val toggleLabel = stringResource(if (collapsed) R.string.space_expand else R.string.space_collapse, spaceName)
     Row(
         Modifier
             .fillMaxWidth()
@@ -446,7 +500,7 @@ private fun SpaceHeader(
         Box(Modifier.size(10.dp).background(statusColor(space.topState, scheme), CircleShape))
         Column(Modifier.weight(1f)) {
             Text(
-                space.name,
+                spaceName,
                 style = MaterialTheme.typography.titleSmall,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,

@@ -18,6 +18,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -39,15 +42,24 @@ import kotlin.time.Duration.Companion.seconds
 class SessionRealCoreIntegrationTest {
     private val session = "flocket-test-" + Random.nextInt(0x10000, 0xFFFFF).toString(16)
     private val env = mapOf("HC_SESSION" to session, "TMPDIR" to "/tmp")
+
+    /** A second isolated session that plays a federated machine of [session] (added with `--via "sh -c"`). */
+    private val remoteSession = "flocket-test-r" + Random.nextInt(0x1000, 0xFFFF).toString(16)
+    private var remoteStarted = false
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val stateRoot = File(System.getProperty("user.home"), ".local/state/herdr-core")
     private lateinit var workDir: File
     private var defaultEntriesBefore: List<String>? = null
 
-    private fun hc(vararg args: String): Int =
+    private fun hc(
+        vararg args: String,
+        session: String = this.session,
+    ): Int =
         ProcessBuilder("hc", *args)
-            .apply { environment().putAll(env) }
-            .redirectErrorStream(true)
+            .apply {
+                environment().keys.removeIf { it.startsWith("HC_") } // never inherit the caller's herdr session
+                environment().putAll(env + ("HC_SESSION" to session))
+            }.redirectErrorStream(true)
             .start()
             .also { it.inputStream.readBytes() }
             .waitFor()
@@ -67,7 +79,10 @@ class SessionRealCoreIntegrationTest {
         scope.cancel()
         if (!::workDir.isInitialized) return
         runCatching { hc("server", "stop") }
-        File(stateRoot, session).takeIf { it.name.startsWith("flocket-test-") }?.deleteRecursively()
+        if (remoteStarted) runCatching { hc("server", "stop", session = remoteSession) }
+        for (name in listOf(session, remoteSession)) {
+            File(stateRoot, name).takeIf { it.name.startsWith("flocket-test-") }?.deleteRecursively()
+        }
         workDir.deleteRecursively()
         assertEquals("default session state untouched", defaultEntriesBefore, defaultEntries())
     }
@@ -196,6 +211,53 @@ class SessionRealCoreIntegrationTest {
                         .panes
                         .map { it.value },
                 )
+                writer.close()
+                s.stop()
+            }
+        }
+
+    @Test
+    fun `a federated machine's herdr-app document is read with on and refetched on its doc event`() =
+        runBlocking {
+            withTimeout(60.seconds) {
+                check(remoteSession.startsWith("flocket-test-"))
+                remoteStarted = true
+                // A "machine" reached by running its shell line locally: a second isolated core, no SSH.
+                assertEquals(0, hc("machine", "add", "--via", "sh -c", "--name", "rohan", "--session", remoteSession))
+                val remoteEnv = env + ("HC_SESSION" to remoteSession)
+                // Play rohan's desktop app: write rohan's own herdr-app on a direct connection to it.
+                val writer =
+                    CoreConnection.open(
+                        ProcessTransport("hc", "connect", "--session", remoteSession, environment = remoteEnv),
+                        scope,
+                    )
+                val doc =
+                    Json
+                        .parseToJsonElement(
+                            File(System.getProperty("flocket.fixtures.dir"), "herdr-app-layout.json")
+                                .readText(),
+                        ).jsonObject["value"]!!
+                val v1 = writer.docSet(HerdrAppLayoutParser.DOCUMENT, doc, version = 0).version
+                val s =
+                    CoreSessionImpl(
+                        CoreEndpoint(HostId("it"), session),
+                        {
+                            AppResult.Success(
+                                ProcessTransport("hc", "connect", "--session", session, environment = env),
+                            )
+                        },
+                        scope,
+                        config = SessionConfig(backoffBase = 0.2.seconds),
+                    )
+                s.start()
+                s.awaitOnline()
+                val layout = s.state.mapNotNull { it.machineLayouts["rohan"] }.first()
+                assertEquals(listOf("sp1a2b", "sp3c4d"), layout.spaces.map { it.id })
+                assertNull("the local core has no herdr-app document", s.state.value.desktopLayout)
+                // rohan's doc event reaches us with "machine":"rohan"; the session reads rohan again.
+                val oneSpace = JsonObject(mapOf("spaces" to JsonArray(listOf(doc.jsonObject["spaces"]!!.jsonArray[1]))))
+                writer.docSet(HerdrAppLayoutParser.DOCUMENT, oneSpace, version = v1)
+                s.state.first { st -> st.machineLayouts["rohan"]?.spaces?.map { it.id } == listOf("sp3c4d") }
                 writer.close()
                 s.stop()
             }

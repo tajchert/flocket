@@ -76,7 +76,14 @@ fun TerminalTabStrip(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 items(strip.tabs, key = { it.key }) { tab ->
-                    StripChip(tab.name, tab.state, tab.selected, "terminal_tab") { onOpen(tab.target) }
+                    StripChip(
+                        tab.name.ifBlank {
+                            stringResource(R.string.workspace_tab_fallback, tab.number)
+                        },
+                        tab.state,
+                        tab.selected,
+                        "terminal_tab",
+                    ) { onOpen(tab.target) }
                 }
             }
         } else {

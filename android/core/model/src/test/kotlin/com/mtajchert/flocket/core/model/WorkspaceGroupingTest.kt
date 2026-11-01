@@ -83,7 +83,8 @@ class WorkspaceGroupingTest {
         assertEquals("/src/web", w.spaces[0].folder)
         assertEquals("fix login", sp1.tabs[0].name)
         assertEquals(TerminalAddress("t1"), sp1.tabs[0].activePane)
-        assertEquals("Tab 2", sp1.tabs[1].name)
+        assertEquals("", sp1.tabs[1].name)
+        assertEquals(2, sp1.tabs[1].number)
         assertNull(sp1.machine)
         assertPartition(terms, w)
     }
@@ -97,7 +98,9 @@ class WorkspaceGroupingTest {
                 space("b", tab("x", "t2"), name = "  "),
                 space("c", tab("x", "t3"), folder = "~"),
             )
-        assertEquals(listOf("flocket", "Space 2", "~"), buildWorkspace(terms, l).spaces.map { it.name })
+        val built = buildWorkspace(terms, l).spaces
+        assertEquals(listOf("flocket", "", "~"), built.map { it.name })
+        assertEquals(listOf(1, 2, 3), built.map { it.number })
     }
 
     @Test
@@ -110,9 +113,10 @@ class WorkspaceGroupingTest {
             )
         val w = buildWorkspace(terms, l)
         assertEquals(listOf("desktop:sp" to listOf("live" to listOf("t2", "t1"))), w.shape())
-        // Unnamed tabs keep their place number from the document, like the desktop app.
-        assertEquals("Tab 3", w.spaces[0].tabs[0].name)
-        assertEquals("Space 1", w.spaces[0].name)
+        // Numbers follow the final position: empty tabs are dropped first.
+        assertEquals("", w.spaces[0].tabs[0].name)
+        assertEquals(1, w.spaces[0].tabs[0].number)
+        assertEquals(1, w.spaces[0].number)
         // The active pane pointed at a vanished terminal: unknown.
         assertNull(w.spaces[0].tabs[0].activePane)
     }
@@ -163,7 +167,7 @@ class WorkspaceGroupingTest {
             listOf("desktop:sp1" to listOf("tb" to listOf("t1", "t2"), "new" to listOf("t3"))),
             w.shape(),
         )
-        assertEquals("Tab 2", w.spaces[0].tabs[1].name)
+        assertEquals(2, w.spaces[0].tabs[1].number)
     }
 
     @Test
@@ -187,9 +191,10 @@ class WorkspaceGroupingTest {
             w.shape(),
         )
         // Label spaces have no name: the first terminal's start folder, else Space N.
-        assertEquals(listOf("beta", "alpha", "Space 3"), w.spaces.map { it.name })
+        assertEquals(listOf("beta", "alpha", ""), w.spaces.map { it.name })
+        assertEquals(listOf(1, 2, 3), w.spaces.map { it.number })
         assertEquals("/src/beta", w.spaces[0].folder)
-        assertEquals(listOf("Tab 1", "Tab 2"), w.spaces[0].tabs.map { it.name })
+        assertEquals(listOf(1, 2), w.spaces[0].tabs.map { it.number })
         assertTrue(w.spaces.all { it.source == SpaceSource.Labels })
         assertPartition(terms, w)
     }
@@ -221,26 +226,19 @@ class WorkspaceGroupingTest {
             w.shape(),
         )
         assertEquals(listOf("~", "app", "~", "app", "/"), w.spaces.map { it.name })
-        assertTrue(
-            w.spaces.all {
-                it.source == SpaceSource.Folder &&
-                    it.tabs
-                        .single()
-                        .name
-                        .isNotBlank()
-            },
-        )
+        assertTrue(w.spaces.all { it.source == SpaceSource.Folder && it.tabs.single().number == 1 })
     }
 
     @Test
     fun `an empty start folder still gets a name`() {
         val w = buildWorkspace(listOf(term("t1", cwd = "")), null)
-        assertEquals("Space 1", w.spaces.single().name)
+        assertEquals("", w.spaces.single().name)
+        assertEquals(1, w.spaces.single().number)
         assertNull(w.spaces.single().folder)
     }
 
     @Test
-    fun `federated terminals are folder-grouped per machine after local spaces, never via the layout or labels`() {
+    fun `federated terminals without a machine layout group by labels then folder, after local spaces`() {
         val terms =
             listOf(
                 term("t1", cwd = "/a"),
@@ -255,7 +253,7 @@ class WorkspaceGroupingTest {
             listOf(
                 "desktop:sp1" to listOf("-" to listOf("t2")),
                 "folder::/a" to listOf("all" to listOf("t1")),
-                "folder:rohan:/a" to listOf("all" to listOf("rohan/t7", "rohan/t8")),
+                "label:rohan:sp1" to listOf("tb" to listOf("rohan/t7"), "all" to listOf("rohan/t8")),
                 "folder:mordor:/a" to listOf("all" to listOf("mordor/t1")),
             ),
             w.shape(),
@@ -265,6 +263,83 @@ class WorkspaceGroupingTest {
         assertEquals("mordor", w.locate(TerminalAddress("mordor/t1"))!!.first.machine)
         assertNull(w.locate(TerminalAddress("t1"))!!.first.machine)
         assertPartition(terms, w)
+    }
+
+    @Test
+    fun `an unplaced terminal whose folder equals a layout space folder joins the first such space`() {
+        val terms =
+            listOf(
+                term("t1"),
+                term("t2", cwd = "/src/api"),
+                term("t3", cwd = "/src/web/"),
+                term("t4", cwd = "/src/other"),
+                term("t5", cwd = "/src/api/"),
+            )
+        val l =
+            layout(
+                space("a", tab("x", "t1"), folder = "/src/api/"),
+                space("b", tab("x", "t1"), folder = "/src/web"),
+                space("c", tab("x", "t1"), folder = "/src/api"),
+            )
+        val w = buildWorkspace(terms, l)
+        assertEquals(
+            listOf(
+                "desktop:a" to listOf("x" to listOf("t1"), "all" to listOf("t2", "t5")),
+                "desktop:b" to listOf("all" to listOf("t3")),
+                "folder::/src/other" to listOf("all" to listOf("t4")),
+            ),
+            w.shape(),
+        )
+        assertEquals(listOf(1, 2), w.spaces[0].tabs.map { it.number })
+        assertPartition(terms, w)
+    }
+
+    @Test
+    fun `folder-join also targets label spaces`() {
+        val terms = listOf(term("t1", space = "L", cwd = "/src/api"), term("t2", cwd = "/src/api"))
+        val w = buildWorkspace(terms, null)
+        assertEquals(listOf("label:L" to listOf("-" to listOf("t1"), "all" to listOf("t2"))), w.shape())
+    }
+
+    @Test
+    fun `a machine layout places that machine's terminals, mapping t7 to machine slash t7`() {
+        val terms =
+            listOf(
+                term("t7", cwd = "/l"),
+                term("rohan/t7", cwd = "/r"),
+                term("rohan/t8", space = "ls", tab = "lt", cwd = "/r"),
+                term("rohan/t9", cwd = "/r/app"),
+                term("mordor/t7", cwd = "/r"),
+            )
+        val rohan = layout(space("rs", tab("rt", "t7", "t4", active = "t7"), name = "remote", folder = "/r/app"))
+        val ghost = layout(space("g", tab("x", "t7")))
+        val w = buildWorkspace(terms, null, mapOf("rohan" to rohan, "ghost" to ghost))
+        assertEquals(
+            listOf(
+                "folder::/l" to listOf("all" to listOf("t7")),
+                "desktop:rohan:rs" to listOf("rt" to listOf("rohan/t7"), "all" to listOf("rohan/t9")),
+                "label:rohan:ls" to listOf("lt" to listOf("rohan/t8")),
+                "folder:mordor:/r" to listOf("all" to listOf("mordor/t7")),
+            ),
+            w.shape(),
+        )
+        assertEquals(listOf(null, "rohan", "rohan", "mordor"), w.spaces.map { it.machine })
+        assertEquals(TerminalAddress("rohan/t7"), w.spaces[1].tabs[0].activePane)
+        assertEquals("remote", w.spaces[1].name)
+        assertEquals(listOf(1, 2, 3, 4), w.spaces.map { it.number })
+        assertPartition(terms, w)
+    }
+
+    @Test
+    fun `a local layout never places remote terminals and a machine layout never places local ones`() {
+        val terms = listOf(term("t7"), term("rohan/t7"))
+        val local = layout(space("l", tab("x", "t7", "rohan/t7")))
+        val remote = layout(space("r", tab("y", "t7", "rohan/t7")))
+        val w = buildWorkspace(terms, local, mapOf("rohan" to remote))
+        assertEquals(
+            listOf("desktop:l" to listOf("x" to listOf("t7")), "desktop:rohan:r" to listOf("y" to listOf("rohan/t7"))),
+            w.shape(),
+        )
     }
 
     @Test
