@@ -1,0 +1,60 @@
+<resources>
+    <string name="hosts_title">Hosts</string>
+    <string name="hosts_add">Add host</string>
+    <string name="hosts_empty_title">No hosts yet</string>
+    <string name="hosts_empty_message">Add a machine running herdr-core to see and control its terminals from here.</string>
+    <string name="hosts_empty_action">Add your first host</string>
+    <string name="hosts_empty_tour">Show me how to set one up</string>
+    <string name="hosts_select_placeholder">Select a host to see its details</string>
+    <string name="host_address">%1$s@%2$s:%3$d</string>
+    <string name="host_core_info">%1$s · %2$s</string>
+    <string name="host_core_unknown">herdr-core not seen yet</string>
+    <plurals name="host_count_blocked">
+        <item quantity="one">%d blocked</item>
+        <item quantity="other">%d blocked</item>
+    </plurals>
+    <plurals name="host_count_working">
+        <item quantity="one">%d working</item>
+        <item quantity="other">%d working</item>
+    </plurals>
+    <plurals name="host_count_total">
+        <item quantity="one">%d terminal</item>
+        <item quantity="other">%d terminals</item>
+    </plurals>
+
+    <string name="edit_title_add">Add host</string>
+    <string name="edit_title_edit">Edit host</string>
+    <string name="edit_save">Save</string>
+    <string name="edit_close">Close</string>
+
+    <string name="detail_title">Host</string>
+    <string name="detail_not_found">This host no longer exists.</string>
+    <string name="detail_edit">Edit</string>
+    <string name="detail_delete">Delete host</string>
+    <string name="detail_core">herdr-core</string>
+    <string name="detail_core_name">Name</string>
+    <string name="detail_core_version">Version</string>
+    <string name="detail_core_generation">Protocol generation</string>
+    <string name="detail_core_terminals">Terminals</string>
+    <string name="detail_machines">Federated machines</string>
+    <string name="detail_machine_version">Version %1$s</string>
+    <string name="detail_security">Pinned host key</string>
+    <string name="detail_no_pinned">No key pinned yet. You’ll be asked to verify it on first connect.</string>
+    <string name="detail_forget">Forget</string>
+    <string name="detail_delete_title">Delete this host?</string>
+    <string name="detail_delete_message">“%1$s” and its pinned key are removed from this device. Terminals keep running on the machine. Device keys stay in the vault.</string>
+    <string name="detail_delete_confirm">Delete</string>
+    <string name="detail_forget_title">Forget the pinned key?</string>
+    <string name="detail_forget_message">The next connection asks you to verify the host key again. Do this only if you know why the key changed.</string>
+    <string name="detail_forget_confirm">Forget key</string>
+    <string name="detail_password_title">Password for %1$s</string>
+    <string name="detail_password_label">Password</string>
+    <string name="detail_password_connect">Connect</string>
+    <string name="machine_connected">Connected</string>
+    <string name="machine_connecting">Connecting</string>
+    <string name="machine_needs_login">Needs login</string>
+    <string name="machine_needs_update">Needs update</string>
+    <string name="machine_unreachable">Unreachable</string>
+    <string name="machine_other">Unknown state</string>
+    <string name="install_help_url" translatable="false">https://github.com/herdrdev/herdr-core</string>
+</resources>

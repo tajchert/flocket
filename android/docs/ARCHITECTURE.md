@@ -40,6 +40,17 @@ Layers, top to bottom: `:app` (navigation, DI graph, lifecycle); feature modules
 
 Public APIs of `core:session`, `core:data` and repositories return `AppResult<T>` (`Success` or `Failure(AppError)`) and do not throw; `CancellationException` is always rethrown. `AppError` is a small sealed taxonomy in `core:common` (`Unreachable`, `AuthFailed`, `HostKeyUnknown`, `HostKeyChanged`, `CoreNotFound`, `CoreIncompatible`, `Rpc(code)`, `Timeout`, `OutcomeUnknown`, `Protocol`, `Storage`); a new case needs review. `core:ui` maps each error to a string resource and a suggested action. Low-level modules convert their typed exceptions to `AppError` at their public boundary only.
 
+## Navigation
+
+One Navigation 3 back stack, owned by `:app` (`FlocketNavHost`). Features never know each other's `impl`.
+
+- `feature:x:api` exposes `@Serializable` `NavKey` routes (e.g. `HostsRoute`, `HostDetailRoute(hostId)`, `OnboardingRoute`). Other features navigate by pushing those keys.
+- `feature:x:impl` contributes its entries with a Hilt multibinding: a `@Module @InstallIn(SingletonComponent)` whose `@Provides @IntoSet` returns an `EntryProviderInstaller` (defined in `:core:ui`). The installer registers `entry<Route> { ... }` and receives a `Navigator` (`navigate`, `back`, `goHome`) instead of the back stack. List/detail roles go in entry metadata (`ListDetailSceneStrategy.listPane()` / `detailPane()`).
+- `:app` injects `Set<EntryProviderInstaller>`, installs them into one `entryProvider`, and adds the placeholder entries for Terminals and Settings until those features land (their routes then move to the respective `:api`).
+- Top-level destinations (Terminals = start, Hosts, Settings) are shown by `NavigationSuiteScaffold`: bottom bar on compact windows, rail on medium and expanded. Selecting one replaces the stack; the first stack element is the selected tab. The bar is hidden on full-screen routes (`isFullScreen()` in `:app`: onboarding, host edit).
+- First run: `AppViewModel` reads `UserPreferences.onboardingCompleted` once; if false the stack starts at `OnboardingRoute`, which calls `goHome()` when done.
+- One-off results (saved, deleted, finished) are state flags in the UiState; the route reacts in a `LaunchedEffect` and navigates.
+
 ## Build logic
 
 `build-logic/convention` holds the convention plugins (`flocket.jvm.library`, `flocket.android.library`, `flocket.android.compose`, `flocket.android.feature`, `flocket.android.application`, `flocket.android.room`, `flocket.hilt`). Module build files only pick plugins and declare project-specific dependencies. Spotless with ktlint and Compose rules is configured in the root `build.gradle.kts`; style options are in `.editorconfig`.

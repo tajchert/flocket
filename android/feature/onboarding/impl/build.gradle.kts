@@ -3,3 +3,13 @@
 plugins {
     id("flocket.android.feature")
 }
+
+dependencies {
+    implementation(projects.core.data)
+    implementation(projects.core.session)
+    implementation(libs.androidx.lifecycle.viewmodel.savedstate)
+    testImplementation(projects.core.testing)
+    screenshotTestImplementation(projects.core.testing)
+    screenshotTestImplementation(projects.core.designsystem)
+    screenshotTestImplementation(projects.core.ui)
+}
