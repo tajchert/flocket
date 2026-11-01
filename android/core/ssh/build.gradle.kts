@@ -8,7 +8,9 @@ dependencies {
     api(projects.core.protocol)
     api(projects.core.model)
     api(projects.core.common)
-    // SSHJ and BouncyCastle are wired in by the SSH implementation task:
-    // implementation(libs.sshj); implementation(libs.bouncycastle.prov); implementation(libs.bouncycastle.pkix)
-    // testImplementation(libs.mina.sshd.core)
+    implementation(libs.kotlinx.coroutines.core)
+    implementation(libs.sshj)
+    implementation(libs.bouncycastle.prov)
+    implementation(libs.bouncycastle.pkix)
+    testImplementation(libs.mina.sshd.core)
 }
