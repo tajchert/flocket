@@ -80,6 +80,8 @@ import com.mtajchert.flocket.core.ui.component.ConnectionStateBadge
 import com.mtajchert.flocket.core.ui.component.ErrorBanner
 import com.mtajchert.flocket.core.ui.component.HostKeyChangedDialog
 import com.mtajchert.flocket.core.ui.component.HostKeyTrustDialog
+import com.mtajchert.flocket.core.ui.component.KeySource
+import com.mtajchert.flocket.core.ui.component.KeySourceFields
 import com.mtajchert.flocket.core.ui.component.PublicKeyCard
 import com.mtajchert.flocket.core.ui.component.rememberNowMs
 import com.mtajchert.flocket.core.ui.error.UiErrorAction
@@ -94,6 +96,8 @@ data class OnboardingActions(
     val onGenerateKey: () -> Unit = {},
     val onToggleImport: () -> Unit = {},
     val onImportPem: (String) -> Unit = {},
+    val onImportSource: (KeySource) -> Unit = {},
+    val onPickKeyFile: () -> Unit = {},
     val onImportPassphrase: (String) -> Unit = {},
     val onImportKey: () -> Unit = {},
     val onUsePassword: () -> Unit = {},
@@ -459,15 +463,15 @@ private fun DeviceKeyPage(
             }
             if (state.importOpen) {
                 Column(Modifier.animateContentSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(
-                        value = state.importPem,
-                        onValueChange = actions.onImportPem,
-                        label = { Text(stringResource(R.string.key_import_pem)) },
-                        minLines = 4,
-                        maxLines = 8,
-                        textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                        keyboardOptions = KeyboardOptions(autoCorrectEnabled = false),
-                        modifier = Modifier.fillMaxWidth(),
+                    KeySourceFields(
+                        source = state.importSource,
+                        fileName = state.importFileName,
+                        pem = state.importPem,
+                        notAKey = state.importNotAKey,
+                        onPickFile = actions.onPickKeyFile,
+                        onPemChange = actions.onImportPem,
+                        onSourceChange = actions.onImportSource,
+                        enabled = !state.generatingKey,
                     )
                     OutlinedTextField(
                         value = state.importPassphrase,
@@ -484,7 +488,7 @@ private fun DeviceKeyPage(
                     )
                     Button(
                         onClick = actions.onImportKey,
-                        enabled = state.importPem.isNotBlank() && !state.generatingKey,
+                        enabled = state.importPem.isNotBlank() && !state.importNotAKey && !state.generatingKey,
                     ) {
                         Text(stringResource(R.string.key_import_action))
                     }

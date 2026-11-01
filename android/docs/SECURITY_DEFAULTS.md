@@ -9,6 +9,7 @@ Flocket stores SSH credentials and pinned host keys, so the defaults are strict.
 | Network security XML | Cleartext HTTP denied everywhere (Flocket speaks SSH over raw sockets, not HTTP) |
 | Backup XML | Cloud backup and device transfer exclude the key vault (`files/vault`) and `sharedpref`; the Room database (hosts, pinned host keys) and DataStore (preferences) are included |
 | Device keys | Generated on device, encrypted with an AES-GCM key in Android Keystore (`:core:security`) |
+| Key import | A key file picked through the system document picker by default (no storage permission), or pasted text. Files over 64 KB are refused, the key text is never shown, and it is sealed into the vault like a generated key |
 | Host trust | Host key verified before any credential is sent; a changed key is a hard stop |
 
 ## Rules

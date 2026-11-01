@@ -32,7 +32,6 @@
     <string name="key_continue">Continue</string>
     <string name="key_import">Import an existing key</string>
     <string name="key_import_hide">Cancel import</string>
-    <string name="key_import_pem">Private key (PEM or OpenSSH)</string>
     <string name="key_import_passphrase">Passphrase (if it has one)</string>
     <string name="key_import_action">Import key</string>
     <string name="key_use_password">Use a password instead</string>

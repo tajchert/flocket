@@ -4,10 +4,7 @@ package com.mtajchert.flocket.feature.settings.impl
 
 import android.annotation.SuppressLint
 import android.content.pm.PackageManager
-import android.net.Uri
 import android.os.Build
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -18,6 +15,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.mtajchert.flocket.core.ui.component.rememberKeyFilePicker
 import com.mtajchert.flocket.core.ui.nav.EntryProviderInstaller
 import com.mtajchert.flocket.core.ui.nav.Navigator
 import com.mtajchert.flocket.core.ui.terminalsettings.TerminalSettingsCallbacks
@@ -29,9 +27,8 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import dagger.multibindings.IntoSet
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import com.mtajchert.flocket.core.ui.R as CoreUiR
 
 @Module
 @InstallIn(SingletonComponent::class)
@@ -44,8 +41,6 @@ object SettingsNavigationModule {
             scope.entry<LicensesRoute> { LicensesRoute(navigator) }
         }
 }
-
-private const val MAX_KEY_FILE_CHARS = 64 * 1024
 
 @SuppressLint("LocalContextGetResourceValueCall", "LocalContextResourcesRead") // one-shot event text, not displayed state
 @Composable
@@ -73,30 +68,13 @@ private fun SettingsRoute(
             AppInfo(info?.versionName ?: "?", info?.longVersionCode ?: 0L)
         }
 
-    val picker =
-        rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
-            if (uri != null) {
-                scope.launch {
-                    val text =
-                        withContext(Dispatchers.IO) {
-                            runCatching {
-                                context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { r ->
-                                    val buf = CharArray(MAX_KEY_FILE_CHARS)
-                                    val n = r.read(buf)
-                                    if (n > 0) String(buf, 0, n) else null
-                                }
-                            }.getOrNull()
-                        }
-                    if (text !=
-                        null
-                    ) {
-                        viewModel.onImportFileRead(text)
-                    } else {
-                        snackbar.showSnackbar(context.getString(R.string.import_file_failed))
-                    }
-                }
-            }
-        }
+    val pickKeyFile =
+        rememberKeyFilePicker(
+            onPick = viewModel::onImportFilePicked,
+            onFail = {
+                scope.launch { snackbar.showSnackbar(context.getString(CoreUiR.string.key_import_file_failed)) }
+            },
+        )
 
     LaunchedEffect(viewModel) {
         viewModel.events.collect { event ->
@@ -157,7 +135,8 @@ private fun SettingsRoute(
             ImportKeyDialog(
                 d,
                 onChange = { label, pem, pass -> viewModel.onImportChange(label, pem, pass) },
-                onPickFile = { picker.launch(arrayOf("text/*", "application/octet-stream", "*/*")) },
+                onSource = viewModel::onImportSource,
+                onPickFile = pickKeyFile,
                 onConfirm = viewModel::import,
                 onDismiss = viewModel::dismissDialog,
             )

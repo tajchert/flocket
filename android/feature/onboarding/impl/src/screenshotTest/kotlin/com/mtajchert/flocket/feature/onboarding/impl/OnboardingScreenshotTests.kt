@@ -11,6 +11,7 @@ import com.mtajchert.flocket.core.designsystem.preview.PreviewLargeFont
 import com.mtajchert.flocket.core.designsystem.theme.FlocketTheme
 import com.mtajchert.flocket.core.model.ConnectionState
 import com.mtajchert.flocket.core.testing.SampleData
+import com.mtajchert.flocket.core.ui.component.KeySource
 import com.mtajchert.flocket.core.ui.error.toUiError
 import com.mtajchert.flocket.core.ui.hostform.HostFormState
 
@@ -52,6 +53,44 @@ private fun OnboardingPrerequisitesScreenshot() = Shot(at(OnboardingStep.Prerequ
 @PreviewPhone
 @Composable
 private fun OnboardingKeyInitialScreenshot() = Shot(at(OnboardingStep.DeviceKey))
+
+@PreviewTest
+@PreviewPhone
+@PreviewLargeFont
+@Composable
+private fun OnboardingKeyImportFileScreenshot() = Shot(at(OnboardingStep.DeviceKey).copy(importOpen = true))
+
+@PreviewTest
+@PreviewPhone
+@PreviewPhoneDark
+@Composable
+private fun OnboardingKeyImportPickedScreenshot() =
+    Shot(
+        at(OnboardingStep.DeviceKey).copy(
+            importOpen = true,
+            importFileName = "id_ed25519",
+            importPem = "-----BEGIN OPENSSH PRIVATE KEY-----",
+        ),
+    )
+
+@PreviewTest
+@PreviewPhone
+@Composable
+private fun OnboardingKeyImportPublicKeyScreenshot() =
+    Shot(
+        at(OnboardingStep.DeviceKey).copy(
+            importOpen = true,
+            importFileName = "id_ed25519.pub",
+            importPem = "ssh-ed25519 AAAA",
+            importNotAKey = true,
+        ),
+    )
+
+@PreviewTest
+@PreviewPhone
+@Composable
+private fun OnboardingKeyImportPasteScreenshot() =
+    Shot(at(OnboardingStep.DeviceKey).copy(importOpen = true, importSource = KeySource.Paste))
 
 @PreviewTest
 @PreviewFormFactors

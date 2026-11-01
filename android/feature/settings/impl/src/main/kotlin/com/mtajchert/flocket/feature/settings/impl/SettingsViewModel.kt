@@ -15,6 +15,10 @@ import com.mtajchert.flocket.core.model.DeviceKey
 import com.mtajchert.flocket.core.model.HostAuth
 import com.mtajchert.flocket.core.model.TerminalColorScheme
 import com.mtajchert.flocket.core.model.TerminalPreferences
+import com.mtajchert.flocket.core.ui.component.KeySource
+import com.mtajchert.flocket.core.ui.component.PickedKeyFile
+import com.mtajchert.flocket.core.ui.component.keyLabelFromFileName
+import com.mtajchert.flocket.core.ui.component.looksLikePrivateKey
 import com.mtajchert.flocket.core.ui.error.UiError
 import com.mtajchert.flocket.core.ui.error.UiText
 import com.mtajchert.flocket.core.ui.error.toUiError
@@ -55,7 +59,10 @@ sealed interface SettingsDialog {
         val busy: Boolean = false,
     ) : SettingsDialog
 
+    /** [pem] holds the picked file's text in [KeySource.File] mode; it is never shown there, only [fileName]. */
     data class Import(
+        val source: KeySource = KeySource.File,
+        val fileName: String? = null,
         val label: String = "",
         val pem: String = "",
         val passphrase: String = "",
@@ -200,11 +207,31 @@ class SettingsViewModel
             dialogState.value = SettingsDialog.Import(pem = pem)
         }
 
-        /** A key file was picked: fill the text box (creating the dialog if needed). */
-        fun onImportFileRead(pem: String) {
+        /** A key file was picked: keep its text (never shown), name it after the file if unnamed, pre-check it. */
+        fun onImportFilePicked(file: PickedKeyFile) {
             dialogState.update {
-                (it as? SettingsDialog.Import)?.copy(pem = pem, problem = null, error = null)
-                    ?: SettingsDialog.Import(pem = pem)
+                val d = it as? SettingsDialog.Import ?: SettingsDialog.Import()
+                d.copy(
+                    source = KeySource.File,
+                    fileName = file.name,
+                    pem = file.text,
+                    label = d.label.ifBlank { keyLabelFromFileName(file.name).orEmpty() },
+                    problem = if (looksLikePrivateKey(file.text)) null else ImportProblem.NotAPrivateKey,
+                    error = null,
+                )
+            }
+        }
+
+        /** Switching between file and paste drops whatever key text the other mode held. */
+        fun onImportSource(source: KeySource) {
+            dialogState.update {
+                (it as? SettingsDialog.Import)?.takeIf { d -> d.source != source }?.copy(
+                    source = source,
+                    fileName = null,
+                    pem = "",
+                    problem = null,
+                    error = null,
+                ) ?: it
             }
         }
 
@@ -230,7 +257,7 @@ class SettingsViewModel
             val problem =
                 when {
                     d.label.isBlank() -> ImportProblem.LabelMissing
-                    !d.pem.contains("PRIVATE KEY") -> ImportProblem.NotAPrivateKey
+                    !looksLikePrivateKey(d.pem) -> ImportProblem.NotAPrivateKey
                     else -> null
                 }
             if (problem != null) {

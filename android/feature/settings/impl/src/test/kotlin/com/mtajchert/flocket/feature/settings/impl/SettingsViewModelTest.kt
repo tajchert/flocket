@@ -13,6 +13,8 @@ import com.mtajchert.flocket.core.testing.FakeHostRepository
 import com.mtajchert.flocket.core.testing.FakePreferencesRepository
 import com.mtajchert.flocket.core.testing.MainDispatcherRule
 import com.mtajchert.flocket.core.testing.SampleData
+import com.mtajchert.flocket.core.ui.component.KeySource
+import com.mtajchert.flocket.core.ui.component.PickedKeyFile
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
@@ -129,6 +131,49 @@ class SettingsViewModelTest {
         }
 
     @Test
+    fun `import defaults to a key file, names the key after it and flags a public key file`() =
+        runTest {
+            val vm = vm()
+            vm.requestImport()
+            assertEquals(KeySource.File, (vm.dialog.value as SettingsDialog.Import).source)
+
+            vm.onImportFilePicked(PickedKeyFile("id_ed25519.pub", "ssh-ed25519 AAAA public"))
+            var d = vm.dialog.value as SettingsDialog.Import
+            assertEquals("id_ed25519.pub", d.fileName)
+            assertEquals(ImportProblem.NotAPrivateKey, d.problem)
+
+            vm.onImportChange(label = "")
+            vm.onImportFilePicked(PickedKeyFile("work.pem", PRIVATE_KEY))
+            d = vm.dialog.value as SettingsDialog.Import
+            assertEquals("work", d.label)
+            assertNull(d.problem)
+
+            vm.events.test {
+                vm.import()
+                assertTrue(awaitItem() is SettingsEvent.Info)
+            }
+            assertNull(vm.dialog.value)
+            assertEquals(2, vm.uiState.value.keys.size)
+        }
+
+    @Test
+    fun `a picked file keeps a label the user typed and switching to paste drops the file`() =
+        runTest {
+            val vm = vm()
+            vm.requestImport()
+            vm.onImportChange(label = "laptop")
+            vm.onImportFilePicked(PickedKeyFile("id_rsa", PRIVATE_KEY))
+            assertEquals("laptop", (vm.dialog.value as SettingsDialog.Import).label)
+
+            vm.onImportSource(KeySource.Paste)
+            val d = vm.dialog.value as SettingsDialog.Import
+            assertEquals(KeySource.Paste, d.source)
+            assertNull(d.fileName)
+            assertEquals("", d.pem)
+            assertEquals("laptop", d.label)
+        }
+
+    @Test
     fun `delete asks first`() =
         runTest {
             val vm = vm()
@@ -160,3 +205,5 @@ class SettingsViewModelTest {
         assertTrue(notices.footnotes.isNotEmpty())
     }
 }
+
+private const val PRIVATE_KEY = "-----BEGIN OPENSSH PRIVATE KEY-----\nabc\n-----END OPENSSH PRIVATE KEY-----"

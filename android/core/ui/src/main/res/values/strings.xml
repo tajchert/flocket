@@ -160,4 +160,18 @@
     <string name="ts_use_app_default">Use app default (%1$s)</string>
     <string name="ts_on">on</string>
     <string name="ts_off">off</string>
+
+    <!-- Key import (KeyImport.kt) -->
+    <string name="key_import_choose_file">Choose key file</string>
+    <string name="key_import_choose_other_file">Choose a different file</string>
+    <string name="key_import_file_hint">Pick the private key, for example ~/.ssh/id_ed25519, not the .pub file.</string>
+    <string name="key_import_file_loaded">Ready to import</string>
+    <string name="key_import_file_unnamed">Selected file</string>
+    <string name="key_import_switch_to_paste">Paste key text instead</string>
+    <string name="key_import_switch_to_file">Choose a file instead</string>
+    <string name="key_import_pem">Private key (OpenSSH or PEM)</string>
+    <string name="key_import_not_a_key">This doesn’t look like a private key.</string>
+    <string name="key_import_not_a_key_file">This isn’t a private key. Choose the file without .pub.</string>
+    <string name="key_import_file_failed">Couldn’t read that file.</string>
+    <string name="key_import_file_failed_message">Choose the key file again, or paste its text instead.</string>
 </resources>

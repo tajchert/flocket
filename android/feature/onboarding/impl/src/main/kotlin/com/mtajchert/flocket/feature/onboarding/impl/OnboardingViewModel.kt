@@ -17,8 +17,12 @@ import com.mtajchert.flocket.core.model.DeviceKey
 import com.mtajchert.flocket.core.model.Host
 import com.mtajchert.flocket.core.model.HostAuth
 import com.mtajchert.flocket.core.model.HostId
+import com.mtajchert.flocket.core.ui.component.KeySource
+import com.mtajchert.flocket.core.ui.component.PickedKeyFile
+import com.mtajchert.flocket.core.ui.component.looksLikePrivateKey
 import com.mtajchert.flocket.core.ui.error.UiError
 import com.mtajchert.flocket.core.ui.error.UiErrorAction
+import com.mtajchert.flocket.core.ui.error.UiText
 import com.mtajchert.flocket.core.ui.error.toUiError
 import com.mtajchert.flocket.core.ui.hostform.AuthKind
 import com.mtajchert.flocket.core.ui.hostform.HostFormError
@@ -38,6 +42,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+import com.mtajchert.flocket.core.ui.R as CoreUiR
 
 enum class OnboardingStep { Welcome, Prerequisites, DeviceKey, AddHost, Connect }
 
@@ -60,8 +65,11 @@ data class OnboardingUiState(
     val formErrors: Map<HostFormField, HostFormError> = emptyMap(),
     val generatingKey: Boolean = false,
     val importOpen: Boolean = false,
+    val importSource: KeySource = KeySource.File,
+    val importFileName: String? = null,
     val importPem: String = "",
     val importPassphrase: String = "",
+    val importNotAKey: Boolean = false,
     val saving: Boolean = false,
     val error: UiError? = null,
     val connect: ConnectUiState = ConnectUiState(),
@@ -94,8 +102,11 @@ class OnboardingViewModel
         private data class Local(
             val generating: Boolean = false,
             val importOpen: Boolean = false,
+            val importSource: KeySource = KeySource.File,
+            val importFileName: String? = null,
             val importPem: String = "",
             val importPassphrase: String = "",
+            val importNotAKey: Boolean = false,
             val saving: Boolean = false,
             val showFormErrors: Boolean = false,
             val error: UiError? = null,
@@ -119,8 +130,11 @@ class OnboardingViewModel
                     formErrors = if (local.showFormErrors) form.validate() else emptyMap(),
                     generatingKey = local.generating,
                     importOpen = local.importOpen,
+                    importSource = local.importSource,
+                    importFileName = local.importFileName,
                     importPem = local.importPem,
                     importPassphrase = local.importPassphrase,
+                    importNotAKey = local.importNotAKey,
                     saving = local.saving,
                     error = local.error,
                     connect = connect,
@@ -213,13 +227,57 @@ class OnboardingViewModel
 
         fun toggleImport() = local.update { it.copy(importOpen = !it.importOpen, error = null) }
 
-        fun onImportPem(value: String) = local.update { it.copy(importPem = value) }
+        fun onImportPem(value: String) = local.update { it.copy(importPem = value, importNotAKey = false) }
+
+        /** A key file was picked: keep its text (never shown) and pre-check that it is a private key. */
+        fun onImportFilePicked(file: PickedKeyFile) =
+            local.update {
+                it.copy(
+                    importOpen = true,
+                    importSource = KeySource.File,
+                    importFileName = file.name,
+                    importPem = file.text,
+                    importNotAKey = !looksLikePrivateKey(file.text),
+                    error = null,
+                )
+            }
+
+        fun onImportFileFailed() =
+            local.update {
+                it.copy(
+                    error =
+                        UiError(
+                            title = UiText.Res(CoreUiR.string.key_import_file_failed),
+                            message = UiText.Res(CoreUiR.string.key_import_file_failed_message),
+                        ),
+                )
+            }
+
+        /** Switching between file and paste drops whatever key text the other mode held. */
+        fun onImportSource(source: KeySource) =
+            local.update {
+                if (it.importSource == source) {
+                    it
+                } else {
+                    it.copy(
+                        importSource = source,
+                        importFileName = null,
+                        importPem = "",
+                        importNotAKey = false,
+                        error = null,
+                    )
+                }
+            }
 
         fun onImportPassphrase(value: String) = local.update { it.copy(importPassphrase = value) }
 
         fun importKey() {
             val current = local.value
             if (current.importPem.isBlank()) return
+            if (!looksLikePrivateKey(current.importPem)) {
+                local.update { it.copy(importNotAKey = true) }
+                return
+            }
             viewModelScope.launch {
                 local.update { it.copy(generating = true, error = null) }
                 val result =
@@ -239,8 +297,11 @@ class OnboardingViewModel
                             it.copy(
                                 generating = false,
                                 importOpen = false,
+                                importSource = KeySource.File,
+                                importFileName = null,
                                 importPem = "",
                                 importPassphrase = "",
+                                importNotAKey = false,
                             )
                         }
                     }

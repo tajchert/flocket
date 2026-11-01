@@ -7,6 +7,7 @@ import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.mtajchert.flocket.core.ui.component.rememberKeyFilePicker
 import com.mtajchert.flocket.core.ui.nav.EntryProviderInstaller
 import com.mtajchert.flocket.core.ui.nav.Navigator
 import com.mtajchert.flocket.feature.onboarding.api.OnboardingRoute
@@ -36,6 +37,7 @@ private fun OnboardingRoute(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val uriHandler = LocalUriHandler.current
     val helpUrl = stringResource(R.string.connect_install_url)
+    val pickKeyFile = rememberKeyFilePicker(viewModel::onImportFilePicked, viewModel::onImportFileFailed)
     LaunchedEffect(state.finished) { if (state.finished) navigator.goHome() }
     OnboardingScreen(
         state = state,
@@ -49,6 +51,8 @@ private fun OnboardingRoute(
                 onGenerateKey = viewModel::generateKey,
                 onToggleImport = viewModel::toggleImport,
                 onImportPem = viewModel::onImportPem,
+                onImportSource = viewModel::onImportSource,
+                onPickKeyFile = pickKeyFile,
                 onImportPassphrase = viewModel::onImportPassphrase,
                 onImportKey = viewModel::importKey,
                 onUsePassword = viewModel::usePassword,

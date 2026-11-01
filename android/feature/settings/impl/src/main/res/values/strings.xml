@@ -41,13 +41,9 @@
     <string name="key_label_required">Enter a name</string>
     <string name="generate_action">Generate</string>
     <string name="import_title">Import a private key</string>
-    <string name="import_message">Paste an OpenSSH or PEM private key, or choose a file. It is encrypted with the Android Keystore and never shown again.</string>
-    <string name="import_pem">Private key</string>
-    <string name="import_pick_file">Choose file…</string>
+    <string name="import_message">Choose your private key file (OpenSSH or PEM), or paste its text. It is encrypted with the Android Keystore and never shown again.</string>
     <string name="import_passphrase">Passphrase (if the key has one)</string>
-    <string name="import_not_a_key">This doesn’t look like a private key.</string>
     <string name="import_action">Import</string>
-    <string name="import_file_failed">Couldn’t read that file.</string>
     <string name="delete_title">Delete key “%1$s”?</string>
     <string name="delete_message_unused">The key is removed from this device. This can’t be undone.</string>
     <plurals name="delete_message_used">

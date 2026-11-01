@@ -18,6 +18,8 @@ import com.mtajchert.flocket.core.testing.FakeHostTrustRepository
 import com.mtajchert.flocket.core.testing.FakePreferencesRepository
 import com.mtajchert.flocket.core.testing.MainDispatcherRule
 import com.mtajchert.flocket.core.testing.SampleData
+import com.mtajchert.flocket.core.ui.component.KeySource
+import com.mtajchert.flocket.core.ui.component.PickedKeyFile
 import com.mtajchert.flocket.core.ui.hostform.AuthKind
 import com.mtajchert.flocket.core.ui.hostform.HostFormState
 import kotlinx.coroutines.CoroutineScope
@@ -27,7 +29,9 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -69,6 +73,50 @@ class OnboardingTest {
             assertEquals(OnboardingStep.AddHost, vm.uiState.value.step)
             vm.back()
             assertEquals(OnboardingStep.DeviceKey, vm.uiState.value.step)
+        }
+
+    @Test
+    fun `key import picks a file by default and imports it`() =
+        runTest {
+            val vm = viewModel()
+            vm.uiState.onEach { }.launchIn(CoroutineScope(UnconfinedTestDispatcher(testScheduler)))
+            vm.toggleImport()
+            assertEquals(KeySource.File, vm.uiState.value.importSource)
+
+            vm.onImportFilePicked(PickedKeyFile("id_ed25519.pub", "ssh-ed25519 AAAA public"))
+            assertTrue(vm.uiState.value.importNotAKey)
+            vm.importKey() // a public key is never sent to the repository
+            assertNull(vm.uiState.value.selectedKey)
+
+            vm.onImportFilePicked(
+                PickedKeyFile(
+                    "id_ed25519",
+                    "-----BEGIN OPENSSH PRIVATE KEY-----\nabc\n-----END OPENSSH PRIVATE KEY-----",
+                ),
+            )
+            assertEquals("id_ed25519", vm.uiState.value.importFileName)
+            assertFalse(vm.uiState.value.importNotAKey)
+            vm.importKey()
+            assertNotNull(vm.uiState.value.selectedKey)
+            assertEquals("", vm.uiState.value.importPem)
+            assertNull(vm.uiState.value.importFileName)
+            assertFalse(vm.uiState.value.importOpen)
+        }
+
+    @Test
+    fun `switching key import to paste drops the picked file`() =
+        runTest {
+            val vm = viewModel()
+            vm.uiState.onEach { }.launchIn(CoroutineScope(UnconfinedTestDispatcher(testScheduler)))
+            vm.onImportFilePicked(PickedKeyFile("id_rsa", "-----BEGIN RSA PRIVATE KEY-----"))
+            assertTrue(vm.uiState.value.importOpen)
+            vm.onImportSource(KeySource.Paste)
+            assertEquals(KeySource.Paste, vm.uiState.value.importSource)
+            assertEquals("", vm.uiState.value.importPem)
+            assertNull(vm.uiState.value.importFileName)
+
+            vm.onImportFileFailed()
+            assertNotNull(vm.uiState.value.error)
         }
 
     @Test
