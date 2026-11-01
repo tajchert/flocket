@@ -14,6 +14,9 @@ dependencies {
     implementation(projects.core.common)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.androidx.lifecycle.runtime.compose)
+    // ExploreByTouchHelper: accessibility nodes and actions for the selection handles.
+    implementation(libs.androidx.customview)
+    implementation(libs.androidx.core.ktx)
 
     testImplementation(libs.kotlinx.coroutines.test)
 

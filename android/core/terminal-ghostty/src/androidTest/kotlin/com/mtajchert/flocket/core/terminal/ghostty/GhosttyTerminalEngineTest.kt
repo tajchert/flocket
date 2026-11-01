@@ -398,4 +398,135 @@ class GhosttyTerminalEngineTest {
         println("GHOSTTY_PERF 200x(${line.size}B feed + snapshot) = $ms ms")
         assertTrue("too slow: $ms ms", ms < 5000)
     }
+
+    // ---- Smooth scrolling and selection: readRow, textRange, historyBase, scrollViewportTo ----
+
+    private fun lines(
+        from: Int,
+        to: Int,
+    ) = feed((from..to).joinToString("") { "\r\nline$it" })
+
+    @Test
+    fun readRowOfAScrollbackRowMatchesTheSnapshotOfThatRow() {
+        feed("\u001b[31mred\u001b[0m \u001b[1;44mbold\u001b[0m")
+        lines(1, 10)
+        val row = ScreenSnapshot(1, 1)
+        assertTrue(engine.readRow(0, row))
+        assertEquals("red bold", row.row(0))
+        assertEquals(theme.palette[1], row.foreground[0])
+        assertTrue(row.flags[4] and CellFlags.BOLD != 0)
+        // The same row through the viewport: identical cells.
+        engine.scrollViewportTo(0)
+        val snap = engine.snapshot()
+        assertEquals("red bold", snap.row(0))
+        assertArrayEquals(snap.codepoints.copyOf(20), row.codepoints.copyOf(20))
+        assertArrayEquals(snap.foreground.copyOf(20), row.foreground.copyOf(20))
+        assertArrayEquals(snap.background.copyOf(20), row.background.copyOf(20))
+        assertArrayEquals(snap.flags.copyOf(20), row.flags.copyOf(20))
+        assertFalse(engine.readRow(10_000, row))
+    }
+
+    @Test
+    fun textRangeJoinsWrappedLinesAndKeepsWideCharsAndZwjEmojiWhole() {
+        val long = "abcdefghijklmnopqrstuvwxyz0123" // 30 cells: wraps once at 20 columns
+        feed("$long\r\nnext\r\na你b \uD83D\uDC68\u200D\uD83D\uDC69\u200D\uD83D\uDC67 x")
+        assertEquals("$long\nnext", engine.textRange(0, 0, 2, 19))
+        assertEquals("a你b \uD83D\uDC68\u200D\uD83D\uDC69\u200D\uD83D\uDC67 x", engine.textRange(3, 0, 3, 19))
+        // An end past the last row is clamped, never an error.
+        assertEquals("next", engine.textRange(2, 0, 10_000, 19).lines()[0])
+    }
+
+    /**
+     * Feeds 50-line "frames" with a snapshot after each (like the controller) and checks the row-id
+     * contract on every frame: a row that is still there keeps its id and text, historyBase never
+     * decreases, and ids of rows that are gone are never reused.
+     */
+    private fun checkRowIds(
+        scrollbackLines: Int,
+        frames: Int,
+    ): Pair<GhosttyTerminalEngine, ScreenSnapshot> {
+        val e = GhosttyTerminalEngine(cols = 20, rows = 5, scrollbackLines = scrollbackLines)
+        val seen = HashMap<Long, String>()
+        var maxSeen = -1L
+        var lastBase = 0L
+        var pruned = false
+        var n = 0
+        val row = ScreenSnapshot(1, 1)
+        var snap = e.snapshot()
+        repeat(frames) {
+            e.feed((1..50).joinToString("") { "line${++n}\r\n" }.toByteArray())
+            snap = e.snapshot()
+            val base = snap.historyBase
+            assertTrue("historyBase went back", base >= lastBase)
+            if (base > lastBase) pruned = true
+            for ((id, text) in seen) {
+                if (id < base) continue
+                assertTrue(e.readRow((id - base).toInt(), row))
+                assertEquals("row id $id changed content", text, row.row(0))
+            }
+            seen.keys.removeAll { it < base }
+            // Ids handed out from now on must not collide with ids of rows that are gone.
+            if (seen.isEmpty()) assertTrue("id reused", base > maxSeen)
+            for (screenRow in intArrayOf(0, snap.scrollbackRows / 2, snap.scrollbackRows - 1)) {
+                if (screenRow < 0 || !e.readRow(screenRow, row)) continue
+                val id = base + screenRow
+                seen[id] = row.row(0)
+                maxSeen = maxOf(maxSeen, id)
+            }
+            lastBase = base
+        }
+        assertTrue("nothing was trimmed", pruned)
+        return e to snap
+    }
+
+    @Test
+    fun historyBaseIsExactWhenTrimmingKeepsTheNewestRows() {
+        // Ghostty trims whole pages (about 2233 rows at 20 columns). With a cap above one page the
+        // newest rows always survive a trim, so ids equal absolute line numbers: line k has id k - 1.
+        val (e, snap) = checkRowIds(scrollbackLines = 3000, frames = 200)
+        try {
+            val row = ScreenSnapshot(1, 1)
+            assertTrue(e.readRow(0, row))
+            assertEquals("line${snap.historyBase + 1}", row.row(0))
+            assertEquals(10_000L, snap.historyBase + snap.scrollbackRows + snap.cursorRow)
+            assertEquals(snap.historyBase, e.historyBase())
+        } finally {
+            e.close()
+        }
+    }
+
+    @Test
+    fun rowIdsStayStableWhenATrimRemovesEveryRowSeenBefore() {
+        // A 100-line cap is far below one page: the first trim drops the whole first page, newer than
+        // anything the last snapshot saw. Old ids then all point at evicted rows (a selection there is
+        // cleared) and the surviving rows get new ids above them; nothing is renumbered.
+        checkRowIds(scrollbackLines = 100, frames = 60).first.close()
+    }
+
+    @Test
+    fun alternateScreenIsFlaggedAndLeavesHistoryBaseAlone() {
+        lines(1, 30)
+        val primary = engine.snapshot()
+        assertFalse(primary.altScreen)
+        feed("\u001b[?1049hvim")
+        val alt = engine.snapshot()
+        assertTrue(alt.altScreen)
+        assertEquals(0, alt.scrollbackRows)
+        assertEquals(primary.historyBase, alt.historyBase)
+        feed("\u001b[?1049l")
+        val back = engine.snapshot()
+        assertFalse(back.altScreen)
+        assertEquals(primary.scrollbackRows, back.scrollbackRows)
+    }
+
+    @Test
+    fun scrollViewportToIsAbsoluteAndClampsToTheBottom() {
+        lines(1, 30)
+        engine.scrollViewportTo(3)
+        val s = engine.snapshot()
+        assertEquals("line3", s.row(0)) // screen row 0 is the empty first line
+        assertEquals(s.scrollbackRows - 3, s.viewportOffset)
+        engine.scrollViewportTo(10_000)
+        assertEquals(0, engine.snapshot().viewportOffset)
+    }
 }

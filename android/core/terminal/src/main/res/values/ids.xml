@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Accessibility custom actions of the selection handles. -->
+    <item name="terminal_action_handle_previous_word" type="id" />
+    <item name="terminal_action_handle_next_word" type="id" />
+    <item name="terminal_action_handle_previous_line" type="id" />
+    <item name="terminal_action_handle_next_line" type="id" />
+</resources>

@@ -121,9 +121,18 @@ class TerminalController(
 
     @Volatile private var viewport: TerminalViewport? = null
 
+    // Row above the viewport for smooth scrolling (engine side). [aboveStale]: theme or size changed.
+    @Volatile private var rowAboveWanted = false
+    private val aboveWork = RowSnapshot()
+    private var aboveStale = false
+
+    // The viewport moved since `work` was taken (input must still snap it to the bottom).
+    private var scrolledSinceSnapshot = false
+
     // ---- shared with the UI thread (guarded by [lock]) ----
     private val lock = Any()
     private val shared = ScreenSnapshot(initialCols, initialRows)
+    private val aboveShared = RowSnapshot()
 
     private val frameRequests = Channel<Unit>(Channel.CONFLATED)
     private val visibleFlow = MutableStateFlow(true)
@@ -311,7 +320,7 @@ class TerminalController(
             return
         }
         becomeOwner()
-        if (work.viewportOffset != 0) {
+        if (work.viewportOffset != 0 || scrolledSinceSnapshot) {
             e.scrollToBottom()
             requestFrame()
         }
@@ -362,6 +371,7 @@ class TerminalController(
         scope.launch {
             this@TerminalController.theme = theme
             engine?.setTheme(theme)
+            aboveStale = true
             requestFrame()
             if (owner) stream?.updateDisplay(displayFacts())
         }
@@ -372,6 +382,7 @@ class TerminalController(
         if (rows == 0) return
         scope.launch {
             engine?.scrollViewport(rows)
+            scrolledSinceSnapshot = true
             requestFrame()
         }
     }
@@ -382,6 +393,57 @@ class TerminalController(
             requestFrame()
         }
     }
+
+    /**
+     * Scroll so the viewport's top row is the row with id [rowId] (`historyBase + screen row`, see
+     * [ScreenSnapshot.historyBase]), clamped to the scrollback. Absolute and resolved against the
+     * engine's current history base, so neither moves in flight nor output fed since the last frame
+     * shift the result. To follow the bottom use [scrollToBottom].
+     */
+    fun scrollToRow(rowId: Long) {
+        scope.launch {
+            val e = engine ?: return@launch
+            val row = (rowId - e.historyBase()).coerceIn(0, Int.MAX_VALUE.toLong()).toInt()
+            e.scrollViewportTo(row)
+            scrolledSinceSnapshot = true
+            requestFrame()
+        }
+    }
+
+    override fun setRowAboveWanted(wanted: Boolean) {
+        if (rowAboveWanted == wanted) return
+        rowAboveWanted = wanted
+        if (wanted) scope.launch { requestFrame() }
+    }
+
+    override fun acquireRowAbove(target: RowSnapshot): Boolean =
+        synchronized(lock) {
+            if (target.version == aboveShared.version) return false
+            copyRows(aboveShared.cells, aboveShared.cells.dirtyRows, target.cells, force = true)
+            target.id = aboveShared.id
+            target.version = aboveShared.version
+            true
+        }
+
+    /**
+     * Plain text of the cells from ([startRow], [startCol]) to ([endRow], [endCol]) inclusive, rows as
+     * ids (see [scrollToRow]) on the screen given by [altScreen]; null when the start row has left the
+     * scrollback, the active screen changed, or there is no text.
+     */
+    suspend fun selectionText(
+        startRow: Long,
+        startCol: Int,
+        endRow: Long,
+        endCol: Int,
+        altScreen: Boolean,
+    ): String? =
+        kotlinx.coroutines.withContext(dispatcher) {
+            val e = engine ?: return@withContext null
+            publish() // current historyBase
+            val base = work.historyBase
+            if (startRow < base || work.altScreen != altScreen) return@withContext null
+            e.textRange((startRow - base).toInt(), startCol, (endRow - base).toInt(), endCol).ifEmpty { null }
+        }
 
     /** Plain text of the screen plus [historyLines] of scrollback. */
     suspend fun screenText(historyLines: Int = 0): String =
@@ -482,10 +544,39 @@ class TerminalController(
             }
         }
         e.snapshot(work)
-        synchronized(lock) { copyRows(work, work.dirtyRows, shared, force = false) }
+        scrolledSinceSnapshot = false
+        // Read the row above outside the lock, then publish it with the frame it belongs to.
+        val aboveChanged = rowAboveWanted && readRowAbove(e)
+        synchronized(lock) {
+            copyRows(work, work.dirtyRows, shared, force = false)
+            if (aboveChanged) {
+                copyRows(aboveWork.cells, aboveWork.cells.dirtyRows, aboveShared.cells, force = true)
+                aboveShared.id = aboveWork.id
+                aboveShared.version = (aboveShared.version + 1) and 0x3FFFFFFF
+            }
+        }
         publishedFrames++
         _frameVersion.value = (_frameVersion.value + 1) and 0x7F
     }
+
+    /** Engine thread: read the row above the viewport if it is a different row than last time. */
+    private fun readRowAbove(e: TerminalEngine): Boolean {
+        val screenRow = work.scrollbackRows - work.viewportOffset - 1
+        val id = if (screenRow >= 0) work.historyBase + screenRow else RowSnapshot.NONE
+        if (id == aboveWork.id && aboveWork.cells.cols == work.cols && !aboveStale) return false
+        aboveStale = false
+        aboveWork.id = if (id != RowSnapshot.NONE && e.readRow(screenRow, aboveWork.cells)) id else RowSnapshot.NONE
+        return true
+    }
+
+    override fun acquire(
+        target: ScreenSnapshot,
+        rowAbove: RowSnapshot,
+    ): Int =
+        synchronized(lock) {
+            (if (acquireFrame(target)) TerminalFrameSource.FRAME_CHANGED else 0) or
+                (if (acquireRowAbove(rowAbove)) TerminalFrameSource.ROW_ABOVE_CHANGED else 0)
+        }
 
     override fun acquireFrame(target: ScreenSnapshot): Boolean =
         synchronized(lock) {

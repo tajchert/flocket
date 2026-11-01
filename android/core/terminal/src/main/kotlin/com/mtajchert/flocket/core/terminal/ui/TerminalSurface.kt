@@ -26,6 +26,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.Role
@@ -114,6 +115,7 @@ private fun TerminalAndroidView(
     onFontSizeChange: (Float) -> Unit,
 ) {
     val fontChange by rememberUpdatedState(onFontSizeChange)
+    val selectionColor = MaterialTheme.colorScheme.primary.toArgb()
     DisposableEffect(state) { onDispose { state.view = null } }
     AndroidView(
         modifier = Modifier.fillMaxSize(),
@@ -128,6 +130,7 @@ private fun TerminalAndroidView(
         update = { view ->
             view.theme = theme
             view.fontSizeSp = fontSizeSp
+            view.selectionColor = selectionColor
             view.onFontSizeChange = { fontChange(it) }
         },
         onReset = { view ->
@@ -168,6 +171,7 @@ fun TerminalSnapshot(
     selection: IntRange? = null,
 ) {
     val source = remember(snapshot) { StaticFrameSource(snapshot) }
+    val selectionColor = MaterialTheme.colorScheme.primary.toArgb()
     AndroidView(
         modifier = modifier,
         factory = { context -> TerminalView(context) },
@@ -175,6 +179,7 @@ fun TerminalSnapshot(
             view.theme = theme
             view.fontSizeSp = fontSizeSp
             view.forceFocusedLook = focused
+            view.selectionColor = selectionColor
             view.bindSource(source)
             if (selection != null) view.select(selection.first, selection.last) else view.clearSelection()
         },

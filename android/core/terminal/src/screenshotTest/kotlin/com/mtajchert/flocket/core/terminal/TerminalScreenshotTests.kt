@@ -89,6 +89,19 @@ private fun TerminalPhoneLight() = TerminalScreen(dark = false, cols = 50, rows 
 @Composable
 private fun TerminalPhoneDark() = TerminalScreen(dark = true, cols = 50, rows = 16, selection = 2 * 50 + 5..2 * 50 + 8)
 
+// Selection across rows: highlight plus Material teardrop handles in the theme's primary color.
+@PreviewTest
+@Preview(name = "SelectionLight", widthDp = 412, heightDp = 420)
+@Composable
+private fun TerminalSelectionLight() =
+    TerminalScreen(
+        dark = false,
+        cols = 50,
+        rows = 16,
+        selection =
+            1 * 50 + 2..3 * 50 + 9,
+    )
+
 @PreviewTest
 @Preview(name = "TabletLight", widthDp = 1280, heightDp = 480)
 @Composable

@@ -18,6 +18,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -192,6 +193,8 @@ class TerminalControllerTest {
         runBlocking {
             c.bind(s)
             repeat(20) { s.chunks.send("x$it\n".encodeToByteArray()) }
+            // bind() is applied on the engine thread; a key queued before that is refused (no stream).
+            withTimeout(5_000) { c.connected.first { it } }
             c.sendKey(KeyInput(Key.Character, "a"))
             c.onViewportChanged(phone)
             c.scrollBy(-1)

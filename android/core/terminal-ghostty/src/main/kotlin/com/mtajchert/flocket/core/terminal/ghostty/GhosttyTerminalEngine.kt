@@ -111,6 +111,8 @@ class GhosttyTerminalEngine(
             }
         snap.scrollbackRows = header[SnapshotHeader.SCROLLBACK_ROWS]
         snap.viewportOffset = header[SnapshotHeader.VIEWPORT_OFFSET]
+        snap.historyBase = GhosttyNative.nativeHistoryBase(handle)
+        snap.altScreen = header[SnapshotHeader.ALT_SCREEN] != 0
         val gen = header[SnapshotHeader.TITLE_GENERATION]
         if (gen != lastTitleGeneration) {
             lastTitleGeneration = gen
@@ -177,6 +179,64 @@ class GhosttyTerminalEngine(
 
     override fun text(historyLines: Int): String =
         GhosttyNative.nativeText(h(), historyLines.coerceAtLeast(0)).decodeToString()
+
+    // ---- Smooth scrolling and selection ----
+
+    private var rowGraphemes = IntArray(64)
+
+    override fun historyBase(): Long = GhosttyNative.nativeHistoryBase(h())
+
+    override fun scrollViewportTo(screenRow: Int) = GhosttyNative.nativeScrollToRow(h(), screenRow)
+
+    override fun readRow(
+        screenRow: Int,
+        target: ScreenSnapshot,
+    ): Boolean {
+        val handle = h()
+        target.resize(cols, 1)
+        var n = readRowInto(handle, screenRow, target)
+        if (n > rowGraphemes.size) {
+            rowGraphemes = IntArray(n)
+            n = readRowInto(handle, screenRow, target)
+        }
+        if (n < 0) return false
+        target.dirtyRows[0] = true
+        target.graphemes.clear()
+        var i = 0
+        val sb = graphemeText
+        while (i < n) {
+            val cell = rowGraphemes[i]
+            val count = rowGraphemes[i + 1]
+            sb.setLength(0)
+            for (k in 0 until count) sb.appendCodePoint(rowGraphemes[i + 2 + k])
+            target.graphemes[cell] = sb.toString()
+            i += 2 + count
+        }
+        return true
+    }
+
+    private fun readRowInto(
+        handle: Long,
+        screenRow: Int,
+        target: ScreenSnapshot,
+    ): Int =
+        GhosttyNative.nativeReadRow(
+            handle,
+            screenRow,
+            cols,
+            target.codepoints,
+            target.foreground,
+            target.background,
+            target.flags,
+            rowGraphemes,
+        )
+
+    override fun textRange(
+        startRow: Int,
+        startCol: Int,
+        endRow: Int,
+        endCol: Int,
+    ): String = GhosttyNative.nativeTextRange(h(), startRow, startCol, endRow, endCol).decodeToString()
 
     override fun close() {
         val h = handle
