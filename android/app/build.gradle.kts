@@ -5,10 +5,33 @@ plugins {
     alias(libs.plugins.baselineprofile)
 }
 
+// Release signing comes from the environment (or Gradle properties; the environment wins). Only when all four
+// values are present is the release build signed; otherwise it stays unsigned. Values are never logged.
+fun signingValue(name: String): String? =
+    (System.getenv(name) ?: providers.gradleProperty(name).orNull)?.takeIf { it.isNotBlank() }
+
+val releaseKeystoreFile = signingValue("FLOCKET_KEYSTORE_FILE")
+val releaseKeystorePassword = signingValue("FLOCKET_KEYSTORE_PASSWORD")
+val releaseKeyAlias = signingValue("FLOCKET_KEY_ALIAS")
+val releaseKeyPassword = signingValue("FLOCKET_KEY_PASSWORD")
+val hasReleaseSigning =
+    listOf(releaseKeystoreFile, releaseKeystorePassword, releaseKeyAlias, releaseKeyPassword).all { it != null }
+
 android {
     namespace = "com.mtajchert.flocket"
     defaultConfig {
         applicationId = "com.mtajchert.flocket"
+    }
+    if (hasReleaseSigning) {
+        signingConfigs {
+            create("release") {
+                storeFile = file(releaseKeystoreFile!!)
+                storePassword = releaseKeystorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
+        buildTypes.getByName("release").signingConfig = signingConfigs.getByName("release")
     }
 }
 
