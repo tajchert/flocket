@@ -13,7 +13,7 @@ data class DesktopSpace(
     val id: String,
     /** Blank when the desktop user never named it. */
     val name: String,
-    /** The space's folder, if set. */
+    /** Where the space was created, if set. Goes stale; the UI prefers its first terminal's live folder. */
     val folder: String?,
     val tabs: List<DesktopTab>,
 )
@@ -66,10 +66,14 @@ data class WorkspaceSpace(
     /** Stable within a host: `desktop:<id>`, `label:<id>` or `folder:<machine>:<path>`. */
     val key: String,
     /**
-     * Display name: the given name, else the folder's last segment. Blank when neither exists; the
+     * Display name: the given name, else the [folder]'s last segment. Blank when neither exists; the
      * UI then shows "Space [number]".
      */
     val name: String,
+    /**
+     * The folder to show: for desktop and label spaces the first terminal's live folder (the
+     * document's folder only when no terminal has one), for [SpaceSource.Folder] the start folder.
+     */
     val folder: String?,
     val source: SpaceSource,
     /** Federated machine for remote terminals, null for the host's own. */
