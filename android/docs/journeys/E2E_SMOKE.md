@@ -123,6 +123,12 @@ Real agents need their own login on the machine; run them in a terminal started 
     the file is in Downloads with the same bytes. Share → the Android share sheet with the
     file. "Paste path into terminal" types its absolute path. Overflow → "Shared files"
     lists the share; after it is opened, reconnecting does not show the card again.
+    Also share a path containing a space (`cp shot.png "My Report.png"; flocket-share "My Report.png"`):
+    "Paste path into terminal" types `…/My\ Report.png ` with the space escaped.
+    Share opened late: with the app already installed for more than 10 minutes and no share
+    seen yet, run `flocket-share` from a terminal. The card must still show, even if the
+    terminal screen is only opened 10+ minutes after the app first read the (empty) list.
+    An entry older than 10 minutes before that first read stays hidden.
 15. **Federated share (optional).** With a federated machine (`hc machine add …`), run
     `flocket-share` in one of its terminals: the card shows on `rohan/tN` and the viewer
     says "Machine rohan".
