@@ -62,6 +62,13 @@ data class Workspace(
     }
 }
 
+/** A space, or a tab inside it, as it exists in a `herdr-app` document (SPEC §9.1). */
+data class LayoutRef(
+    val machine: String?,
+    val spaceId: String,
+    val tabId: String? = null,
+)
+
 data class WorkspaceSpace(
     /** Stable within a host: `desktop:<id>`, `label:<id>` or `folder:<machine>:<path>`. */
     val key: String,
@@ -83,6 +90,10 @@ data class WorkspaceSpace(
     val topState: AgentState?,
     /** 1-based position among all spaces of the workspace. */
     val number: Int,
+    /** The document space this is, when it is one with a usable id; null for label and folder spaces. */
+    val layoutRef: LayoutRef? = null,
+    /** The document's trimmed name; blank when unnamed ([name] is the display name). */
+    val givenName: String = "",
 ) {
     val terminalCount: Int get() = tabs.sumOf { it.panes.size }
 }
@@ -98,6 +109,8 @@ data class WorkspaceTab(
     val topState: AgentState?,
     /** 1-based position among the space's (non-empty) tabs. */
     val number: Int,
+    /** The document tab this is, when it has a usable id; null for implicit and label-only tabs. */
+    val layoutRef: LayoutRef? = null,
 )
 
 /** Label keys the desktop app puts on terminals it created (SPEC §9.1). Read-only for Flocket. */
