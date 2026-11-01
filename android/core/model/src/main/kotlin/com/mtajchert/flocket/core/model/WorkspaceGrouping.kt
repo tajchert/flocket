@@ -3,85 +3,124 @@ package com.mtajchert.flocket.core.model
 /**
  * Groups one host's [terminals] (in core order) into a [Workspace], like the desktop app does.
  *
- * Each terminal is placed by the first source that knows it:
- * 1. the desktop [layout] (`herdr-app`, local machine only): spaces and tabs in document order,
- *    panes in layout order. Layout panes whose terminal no longer exists are dropped, then empty
- *    tabs and spaces. A terminal listed twice stays in its first pane.
+ * The host's own terminals are grouped first, then each federated machine's (`rohan/t7` belongs to
+ * machine `rohan`; machines in order of first appearance). Within one scope each terminal is placed
+ * by the first source that knows it:
+ * 1. the desktop layout: [layout] for local terminals, `machineLayouts[machine]` for that machine's
+ *    (its panes are machine-local, `t7` there means `rohan/t7`). A layout never places terminals of
+ *    another scope. Spaces and tabs in document order, panes in layout order. Layout panes whose
+ *    terminal no longer exists are dropped, then empty tabs and spaces. A terminal listed twice stays
+ *    in its first pane.
  * 2. the `herdr.space` / `herdr.tab` labels ([HerdrLabels]). A label space whose id matches a desktop
  *    space joins that space (as the desktop app would show it); other label spaces follow the desktop
  *    ones in order of first appearance.
- * 3. otherwise the start folder ([TerminalRecord.cwd], not the foreground one, so rows don't jump):
- *    one [SpaceSource.Folder] space with one implicit tab per folder, in order of first appearance.
+ * 3. the start folder ([TerminalRecord.cwd], not the foreground one, so rows don't jump). A terminal
+ *    whose folder equals (ignoring trailing `/`) the folder of a desktop or label space of its scope
+ *    joins the first such space, in one trailing implicit tab. Any other gets one
+ *    [SpaceSource.Folder] space with one implicit tab per folder, in order of first appearance.
  *
- * Federated terminals (`rohan/t7`) never use the layout or labels: they are folder-grouped per
- * machine, after all local spaces. Names are never blank: the given name, else the folder's last
- * segment, else "Space N" / "Tab N" (N = 1-based position). Pure and deterministic.
+ * Names may be blank (an unnamed desktop or label space without a folder, an unnamed tab): the UI
+ * shows "Space [WorkspaceSpace.number]" / "Tab [WorkspaceTab.number]". Machine spaces have keys
+ * prefixed with the machine and carry [WorkspaceSpace.machine]. Pure and deterministic.
  */
 fun buildWorkspace(
     terminals: List<TerminalRecord>,
     layout: DesktopLayout?,
-    /** Federated machines' layouts by machine name; their panes are machine-local (`t7` = `rohan/t7`). */
-    @Suppress("UNUSED_PARAMETER") machineLayouts: Map<String, DesktopLayout> = emptyMap(),
+    machineLayouts: Map<String, DesktopLayout> = emptyMap(),
 ): Workspace {
     val records = LinkedHashMap<TerminalAddress, TerminalRecord>()
     for (t in terminals) records.putIfAbsent(t.address, t)
+    val keys = KeyAllocator()
+    val machines = records.keys.mapNotNull { it.machine }.distinct()
+    val spaces = mutableListOf<SpaceDraft>()
+    for (machine in listOf<String?>(null) + machines) {
+        val scope = records.values.filter { it.address.machine == machine }
+        spaces += groupScope(machine, if (machine == null) layout else machineLayouts[machine], scope, keys)
+    }
+    return Workspace(
+        spaces
+            .map { it.build(records) }
+            .filter { it.tabs.isNotEmpty() }
+            .mapIndexed { i, s -> s.copy(number = i + 1) },
+    )
+}
+
+/** Groups the terminals of one [machine] (null = the host itself) using that scope's [layout]. */
+private fun groupScope(
+    machine: String?,
+    layout: DesktopLayout?,
+    scope: List<TerminalRecord>,
+    keys: KeyAllocator,
+): List<SpaceDraft> {
+    val inScope = scope.mapTo(HashSet()) { it.address }
+    val prefix = machine?.let { "$it:" }.orEmpty()
     val placed = HashSet<TerminalAddress>()
     val spaces = mutableListOf<SpaceDraft>()
-    val keys = KeyAllocator()
 
-    // 1. Desktop layout (local terminals only).
+    // 1. Desktop layout.
     layout?.spaces?.forEachIndexed { si, ds ->
         val space =
             SpaceDraft(
-                key = keys.next("desktop:${ds.id.ifBlank { "#$si" }}"),
+                key = keys.next("desktop:$prefix${ds.id.ifBlank { "#$si" }}"),
                 id = ds.id,
                 name = ds.name.trim(),
                 folder = ds.folder?.takeIf { it.isNotBlank() },
                 source = SpaceSource.Desktop,
-                machine = null,
+                machine = machine,
             )
         ds.tabs.forEachIndexed { ti, dt ->
-            val tab = space.tab(dt.id.ifBlank { "#$ti" }, dt.name.trim(), ti)
-            for (p in dt.panes) {
-                if (p.isRemote || p !in records || !placed.add(p)) continue
+            val tab = space.tab(dt.id.ifBlank { "#$ti" }, dt.name.trim())
+            for (local in dt.panes) {
+                if (local.isRemote) continue
+                val p = if (machine == null) local else TerminalAddress("$machine/${local.value}")
+                if (p !in inScope || !placed.add(p)) continue
                 tab.panes += p
             }
-            tab.activePane = dt.activePane?.takeIf { it in tab.panes }
+            tab.activePane =
+                dt.activePane
+                    ?.takeIf { !it.isRemote }
+                    ?.let { if (machine == null) it else TerminalAddress("$machine/${it.value}") }
+                    ?.takeIf { it in tab.panes }
         }
         spaces += space
     }
 
-    // 2. Labels (local terminals the layout did not place).
+    // 2. Labels (terminals the layout did not place).
     val desktopById = HashMap<String, SpaceDraft>()
     for (s in spaces) if (s.id.isNotBlank()) desktopById.putIfAbsent(s.id, s)
     val labelSpaces = LinkedHashMap<String, SpaceDraft>()
-    for (t in records.values) {
-        if (t.address.isRemote || t.address in placed) continue
+    for (t in scope) {
+        if (t.address in placed) continue
         val spaceId = t.labels[HerdrLabels.SPACE]?.takeIf { it.isNotBlank() } ?: continue
         val space =
             desktopById[spaceId] ?: labelSpaces.getOrPut(spaceId) {
                 SpaceDraft(
-                    key = keys.next("label:$spaceId"),
+                    key = keys.next("label:$prefix$spaceId"),
                     id = spaceId,
                     name = "",
                     folder = t.cwd.takeIf { it.isNotBlank() },
                     source = SpaceSource.Labels,
-                    machine = null,
+                    machine = machine,
                 )
             }
         val tabId = t.labels[HerdrLabels.TAB]?.takeIf { it.isNotBlank() }.orEmpty()
-        space.tab(tabId, "", space.tabs.size).panes += t.address
+        space.tab(tabId, "").panes += t.address
         placed += t.address
     }
     spaces += labelSpaces.values
 
-    // 3. Start folder: local groups first, then each machine's (machines in first-appearance order).
-    val folderSpaces = LinkedHashMap<Pair<String?, String>, SpaceDraft>()
-    val unplaced = records.values.filter { it.address !in placed }
-    for (t in unplaced.sortedBy { if (it.address.isRemote) 1 else 0 }) {
-        val machine = t.address.machine
+    // 3. Start folder: join the first space with that folder, else one Folder space per folder.
+    val known = spaces.toList()
+    val folderSpaces = LinkedHashMap<String, SpaceDraft>()
+    for (t in scope) {
+        if (t.address in placed) continue
+        val joined = normalizedFolder(t.cwd)?.let { f -> known.firstOrNull { normalizedFolder(it.folder) == f } }
+        if (joined != null) {
+            joined.implicitTab().panes += t.address
+            continue
+        }
         val space =
-            folderSpaces.getOrPut(machine to t.cwd) {
+            folderSpaces.getOrPut(t.cwd) {
                 SpaceDraft(
                     key = keys.next("folder:${machine.orEmpty()}:${t.cwd}"),
                     id = "",
@@ -91,19 +130,16 @@ fun buildWorkspace(
                     machine = machine,
                 )
             }
-        space.tab(FOLDER_TAB, "", 0).panes += t.address
+        space.implicitTab().panes += t.address
     }
     spaces += folderSpaces.values
-
-    return Workspace(
-        spaces
-            .map { it.build(records) }
-            .filter { it.tabs.isNotEmpty() }
-            .mapIndexed { i, s -> if (s.name.isEmpty()) s.copy(name = "Space ${i + 1}") else s },
-    )
+    return spaces
 }
 
-/** Key of the one implicit tab of a [SpaceSource.Folder] space. */
+/** [path] without trailing slashes; null when nothing is left (blank or `/`). */
+private fun normalizedFolder(path: String?): String? = path?.trim()?.trimEnd('/')?.takeIf { it.isNotEmpty() }
+
+/** Key base of the trailing implicit tab (folder groups and folder-joined terminals). */
 private const val FOLDER_TAB = "all"
 
 /** Display name for [path]: its last segment; `~` and `/` stay as they are; null when blank. */
@@ -136,8 +172,6 @@ private class KeyAllocator {
 private class TabDraft(
     val key: String,
     val name: String,
-    /** 0-based position used for "Tab N" when unnamed. */
-    val position: Int,
 ) {
     val panes = mutableListOf<TerminalAddress>()
     var activePane: TerminalAddress? = null
@@ -159,21 +193,30 @@ private class SpaceDraft(
     fun tab(
         id: String,
         name: String,
-        position: Int,
     ): TabDraft =
         byId.getOrPut(id) {
-            TabDraft(tabKeys.next(id.ifEmpty { "-" }), name, position).also { tabs += it }
+            TabDraft(tabKeys.next(id.ifEmpty { "-" }), name).also { tabs += it }
         }
+
+    /** The one unnamed tab appended after the others for folder terminals (never a desktop tab id). */
+    fun implicitTab(): TabDraft =
+        implicit ?: TabDraft(tabKeys.next(FOLDER_TAB), "").also {
+            implicit = it
+            tabs += it
+        }
+
+    private var implicit: TabDraft? = null
 
     fun build(records: Map<TerminalAddress, TerminalRecord>): WorkspaceSpace {
         val builtTabs =
-            tabs.filter { it.panes.isNotEmpty() }.map { t ->
+            tabs.filter { it.panes.isNotEmpty() }.mapIndexed { i, t ->
                 WorkspaceTab(
                     key = t.key,
-                    name = t.name.ifEmpty { "Tab ${t.position + 1}" },
+                    name = t.name,
                     panes = t.panes.toList(),
                     activePane = t.activePane,
                     topState = t.panes.mapNotNull { records[it] }.topState(),
+                    number = i + 1,
                 )
             }
         return WorkspaceSpace(
@@ -184,6 +227,7 @@ private class SpaceDraft(
             machine = machine,
             tabs = builtTabs,
             topState = builtTabs.flatMap { it.panes }.mapNotNull { records[it] }.topState(),
+            number = 0,
         )
     }
 }

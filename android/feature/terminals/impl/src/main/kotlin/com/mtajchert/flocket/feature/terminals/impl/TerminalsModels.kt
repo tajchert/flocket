@@ -60,12 +60,15 @@ data class MachineSection(
 data class SpaceSection(
     /** Stable within a host; from the workspace model. */
     val key: String,
+    /** Blank when neither the desktop nor a folder names it. */
     val name: String,
     /** Display folder, only when it adds something beyond [name]. */
     val folderSubtitle: String?,
     /** Highest urgency among non-finished terminals; null = no reported status. */
     val topState: AgentState?,
     val tabs: List<TabSection>,
+    /** 1-based place in the workspace; names the space "Space N" when [name] is blank. */
+    val number: Int = 1,
 ) {
     val count: Int get() = tabs.sumOf { it.items.size }
     val items: List<TerminalItem> get() = tabs.flatMap { it.items }
@@ -79,6 +82,8 @@ data class TabSection(
     val key: String,
     val name: String,
     val items: List<TerminalItem>,
+    /** 1-based place in its space; names the tab "Tab N" when [name] is blank. */
+    val number: Int = 1,
 )
 
 @Immutable

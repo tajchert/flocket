@@ -27,12 +27,15 @@ data class TabStripUi(
 @Immutable
 data class StripTab(
     val key: String,
+    /** Blank when unnamed; the strip then shows "Tab [number]". */
     val name: String,
     /** Highest-urgency state among the tab's live terminals; null = nothing reported. */
     val state: AgentState?,
     val selected: Boolean,
     /** The terminal to open when the tab is tapped: its active pane, else its first. */
     val target: String,
+    /** 1-based place in the space. */
+    val number: Int = 1,
 )
 
 @Immutable
@@ -73,6 +76,7 @@ fun buildTabStrip(
                 selected = tab.key == currentTab.key,
                 // The open terminal stays the target of its own tab, so re-tapping it is a no-op.
                 target = if (tab.key == currentTab.key) current.value else target.value,
+                number = tab.number,
             )
         }
     // Panes matter only when there is something to switch between.

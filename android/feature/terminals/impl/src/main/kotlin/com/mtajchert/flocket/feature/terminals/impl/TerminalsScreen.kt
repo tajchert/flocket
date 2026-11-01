@@ -365,7 +365,16 @@ private fun TerminalList(
                         if (!isCollapsed) {
                             space.tabs.forEach { tab ->
                                 if (space.showTabLabels) {
-                                    item(key = "tab:$spaceKey/${tab.key}", contentType = "tab") { TabLabel(tab.name) }
+                                    item(key = "tab:$spaceKey/${tab.key}", contentType = "tab") {
+                                        TabLabel(
+                                            tab.name.ifBlank {
+                                                stringResource(
+                                                    R.string.workspace_tab_fallback,
+                                                    tab.number,
+                                                )
+                                            },
+                                        )
+                                    }
                                 }
                                 items(tab.items.size, key = { tab.items[it].key }, contentType = { "row" }) { index ->
                                     val item = tab.items[index]
@@ -477,7 +486,8 @@ private fun SpaceHeader(
                 AgentState.Other -> R.string.space_status_other
             },
         )
-    val toggleLabel = stringResource(if (collapsed) R.string.space_expand else R.string.space_collapse, space.name)
+    val spaceName = space.name.ifBlank { stringResource(R.string.workspace_space_fallback, space.number) }
+    val toggleLabel = stringResource(if (collapsed) R.string.space_expand else R.string.space_collapse, spaceName)
     Row(
         Modifier
             .fillMaxWidth()
@@ -490,7 +500,7 @@ private fun SpaceHeader(
         Box(Modifier.size(10.dp).background(statusColor(space.topState, scheme), CircleShape))
         Column(Modifier.weight(1f)) {
             Text(
-                space.name,
+                spaceName,
                 style = MaterialTheme.typography.titleSmall,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,

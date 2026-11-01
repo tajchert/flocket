@@ -65,7 +65,10 @@ data class Workspace(
 data class WorkspaceSpace(
     /** Stable within a host: `desktop:<id>`, `label:<id>` or `folder:<machine>:<path>`. */
     val key: String,
-    /** Display name; never blank (falls back to the folder's last segment, else "Space N"). */
+    /**
+     * Display name: the given name, else the folder's last segment. Blank when neither exists; the
+     * UI then shows "Space [number]".
+     */
     val name: String,
     val folder: String?,
     val source: SpaceSource,
@@ -74,6 +77,8 @@ data class WorkspaceSpace(
     val tabs: List<WorkspaceTab>,
     /** Highest [AgentState.urgency] among its non-finished terminals with a reported status; null = none. */
     val topState: AgentState?,
+    /** 1-based position among all spaces of the workspace. */
+    val number: Int,
 ) {
     val terminalCount: Int get() = tabs.sumOf { it.panes.size }
 }
@@ -81,12 +86,14 @@ data class WorkspaceSpace(
 data class WorkspaceTab(
     /** Stable within its space. */
     val key: String,
-    /** Display name; never blank (falls back to "Tab N", N = its 1-based place in the space). */
+    /** Display name; blank when unnamed, the UI then shows "Tab [number]". */
     val name: String,
     /** Terminal addresses in layout order; only terminals that exist on the host. */
     val panes: List<TerminalAddress>,
     val activePane: TerminalAddress?,
     val topState: AgentState?,
+    /** 1-based position among the space's (non-empty) tabs. */
+    val number: Int,
 )
 
 /** Label keys the desktop app puts on terminals it created (SPEC §9.1). Read-only for Flocket. */

@@ -98,13 +98,14 @@ internal fun buildSections(
                             tab.key,
                             tab.name,
                             if (controls.attentionFirst) rows.sortedByDescending { it.urgency } else rows,
+                            tab.number,
                         )
                     }
                 }
             if (tabs.isEmpty()) {
                 null
             } else {
-                space.machine to SpaceSection(space.key, space.name, subtitle, space.topState, tabs)
+                space.machine to SpaceSection(space.key, space.name, subtitle, space.topState, tabs, space.number)
             }
         }
     val ordered =
