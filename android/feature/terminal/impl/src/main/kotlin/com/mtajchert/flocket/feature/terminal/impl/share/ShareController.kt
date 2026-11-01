@@ -18,7 +18,6 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -34,9 +33,11 @@ class ShareController(
     private val scope: CoroutineScope,
     private val hostId: HostId,
     private val address: TerminalAddress,
-    shares: Flow<List<AgentShare>>,
-    /** Per machine (null = local): when the session first read that machine's share document (even if empty). */
-    firstReadAt: Flow<Map<String?, Long>> = flowOf(emptyMap()),
+    /**
+     * The shares and, per machine (null = local), when the session first read that machine's share document (even
+     * if empty). One flow so the two always belong together.
+     */
+    feed: Flow<Pair<List<AgentShare>, Map<String?, Long>>>,
     private val session: () -> CoreSession?,
     private val seen: ShareSeenRepository,
     private val pasteText: (String) -> Unit,
@@ -66,7 +67,7 @@ class ShareController(
     init {
         scope.launch { seen.seen.collect { seenIds.value = it } }
         scope.launch {
-            combine(shares, firstReadAt) { list, at -> list to at }.collect { (list, at) ->
+            feed.collect { (list, at) ->
                 // Hide old entries on the first read of each source before anything can show. "Old" is judged at
                 // the session's first read of that machine, not now: a screen opened later must not hide a share
                 // that arrived after an empty first read.

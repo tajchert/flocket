@@ -13,6 +13,7 @@ import com.mtajchert.flocket.core.testing.SampleData
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runCurrent
@@ -51,8 +52,7 @@ class TerminalSharesTest {
             scope = CoroutineScope(UnconfinedTestDispatcher(testScheduler)),
             hostId = HostId("studio"),
             address = TerminalAddress(address),
-            shares = shares,
-            firstReadAt = firstReadAt,
+            feed = combine(shares, firstReadAt) { s, f -> s to f },
             session = { session as CoreSession },
             seen = repo,
             pasteText = { pasted += it },

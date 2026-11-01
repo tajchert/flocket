@@ -469,6 +469,9 @@ class CoreSessionImpl(
     /** Last good shares per machine (key null = local); guarded by [reduceLock]. Merged into [SessionState.shares]. */
     private val sharesByMachine = HashMap<String?, List<AgentShare>>()
 
+    /** First successful read per machine; published together with [sharesByMachine]'s merge. Guarded by [reduceLock]. */
+    private val sharesFirstReadAt = HashMap<String?, Long>()
+
     /** Read `flocket-share` of [machine] on [l]; coalesced per machine like [refreshLayout]. */
     private fun refreshShares(
         l: Link,
@@ -498,10 +501,7 @@ class CoreSessionImpl(
             if (link.get() !== l) return
             if (machine != null && stateFlow.value.machines.none { it.name == machine }) return
             if (shares.isEmpty()) sharesByMachine.remove(machine) else sharesByMachine[machine] = shares
-            if (machine !in stateFlow.value.sharesFirstReadAt) {
-                val at = clock.nowMillis() / 1000
-                stateFlow.update { it.copy(sharesFirstReadAt = it.sharesFirstReadAt + (machine to at)) }
-            }
+            sharesFirstReadAt.putIfAbsent(machine, clock.nowMillis() / 1000)
             publishShares()
         }
     }
@@ -509,7 +509,9 @@ class CoreSessionImpl(
     /** A removed or renamed machine loses its shares. Call with [reduceLock] held. */
     private fun dropSharesOfRemovedMachines(machines: List<MachineInfo>) {
         val names = machines.mapTo(HashSet()) { it.name }
-        if (sharesByMachine.keys.removeAll { it != null && it !in names }) publishShares()
+        val a = sharesByMachine.keys.removeAll { it != null && it !in names }
+        val b = sharesFirstReadAt.keys.removeAll { it != null && it !in names }
+        if (a || b) publishShares()
     }
 
     /** Merge all machines: the same id once (local first, then machine name order), newest first. */
@@ -520,7 +522,8 @@ class CoreSessionImpl(
                 .flatMap { it.value }
                 .distinctBy { it.id }
                 .sortedWith(compareByDescending<AgentShare> { it.atEpochSeconds }.thenBy { it.id })
-        stateFlow.update { it.copy(shares = merged) }
+        // One update: a collector never sees a first-read time without the shares of that read.
+        stateFlow.update { it.copy(shares = merged, sharesFirstReadAt = sharesFirstReadAt.toMap()) }
     }
 
     private suspend fun watchdog(c: CoreConnection) {

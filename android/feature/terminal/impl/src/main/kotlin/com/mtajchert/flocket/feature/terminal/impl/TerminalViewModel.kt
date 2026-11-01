@@ -158,8 +158,10 @@ class TerminalViewModel
                 scope = viewModelScope,
                 hostId = hostId,
                 address = address,
-                shares = sessionState.map { it?.shares.orEmpty() }.distinctUntilChanged(),
-                firstReadAt = sessionState.map { it?.sharesFirstReadAt.orEmpty() }.distinctUntilChanged(),
+                feed =
+                    sessionState
+                        .map { it?.shares.orEmpty() to it?.sharesFirstReadAt.orEmpty() }
+                        .distinctUntilChanged(),
                 session = { session.value },
                 seen = shareSeen,
                 pasteText = ::paste,

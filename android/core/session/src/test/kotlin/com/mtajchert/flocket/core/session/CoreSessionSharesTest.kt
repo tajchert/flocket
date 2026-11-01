@@ -2,6 +2,7 @@ package com.mtajchert.flocket.core.session
 
 import com.mtajchert.flocket.core.protocol.testing.FakeCore
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -152,6 +153,26 @@ class CoreSessionSharesTest {
             host.core.shareEvent(null)
             eventually { s.shareIds() == listOf("a") }
             assertEquals(mapOf<String?, Long>(null to first!!), s.state.value.sharesFirstReadAt)
+            s.stop()
+        }
+
+    @Test
+    fun `first read time is never published without that read's shares`() =
+        runTest {
+            val r = Remote()
+            r.docs[""] = shareDoc(Triple("a", "t1", 10))
+            val host = host(r)
+            val s = host.session(this)
+            val seen = java.util.Collections.synchronizedList(mutableListOf<Pair<Boolean, Boolean>>())
+            val job =
+                backgroundScope.launch(kotlinx.coroutines.Dispatchers.Unconfined) {
+                    s.state.collect { seen += (null in it.sharesFirstReadAt) to it.shares.isNotEmpty() }
+                }
+            s.start()
+            s.awaitOnline()
+            eventually { s.shareIds() == listOf("a") }
+            job.cancel()
+            assertEquals(emptyList<Pair<Boolean, Boolean>>(), seen.filter { it.first && !it.second })
             s.stop()
         }
 
