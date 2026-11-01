@@ -87,12 +87,20 @@ HC_TERMINAL_ID=t1 sh "$HELPER" -m second report.png >/dev/null 2>&1
 getdoc | pydoc 'assert len(v["shares"])==2 and v["shares"][0].get("note")=="second" and "note" not in v["shares"][1], v' >"$work/err" 2>&1
 check "4 two runs, newest first" $? "$(cat "$work/err")"
 
-# 5. note with quote, backslash, tab
+# 5. note with quote, backslash, tab, UTF-8, shell syntax and a newline
 seed null
-note=$(printf 'a"b\\c\td')
+note=$(printf 'a"b\\c\td \303\251\346\227\245 $HOME `x`\nsecond line')
 HC_TERMINAL_ID=t1 sh "$HELPER" -m "$note" report.png >/dev/null 2>&1
 getdoc | pydoc 'assert v["shares"][0]["note"]==sys.argv[1], v' "$note" >"$work/err" 2>&1
 check "5 note round-trips" $? "$(cat "$work/err")"
+
+# 5b. invalid UTF-8 byte in a note: exit 0, the invalid byte is dropped, the rest kept
+seed null
+bnote=$(printf 'ab\377cd \303\251')
+HC_TERMINAL_ID=t1 sh "$HELPER" -m "$bnote" report.png >/dev/null 2>&1
+rc=$?
+getdoc | pydoc 'assert v["shares"][0]["note"]=="abcd \u00e9", v' >"$work/err" 2>&1
+check "5b invalid UTF-8 byte dropped, rest kept" $(( rc == 0 && $(cat "$work/err" | wc -c) == 0 ? 0 : 1 )) "rc=$rc $(cat "$work/err")"
 
 # 6. file name with spaces and a quote
 seed null

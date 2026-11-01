@@ -621,6 +621,7 @@ Value: `{"v":1,"shares":[<entry>, …]}`, newest first. An entry:
 Rules:
 - Readers ignore unknown fields and entries they cannot parse, and tolerate a missing or `null` document (`{value:null, version:0}`).
 - Writers prepend the new entry with compare-and-set (§9) and, on `conflict`, re-read and retry. When the serialised existing value would exceed 64 KiB, or it is not this shape, the writer starts a fresh list holding only the new entry. The app keeps its own history, so dropping old entries is harmless.
+- A file over 8 MB is still listed (the helper only warns); the app refuses to download it.
 - hc stores values with **keys sorted alphabetically** [W 0.1.16, `fixtures/transfers-0.1.16.json`]: a value written as `{"v":1,"shares":[…]}` reads back as `{"shares":[…],"v":1}` (entries too: `at`, `id`, `note`, `paths`, `terminal`). The helper's value surgery relies on that read-back prefix `{"shares":[` and suffix `],"v":1}`; readers must not depend on key order.
 
 ---

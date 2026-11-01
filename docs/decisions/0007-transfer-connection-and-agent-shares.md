@@ -51,4 +51,5 @@ later change lowers the size cap for remote machines.
 - `flocket-share` depends on the document's read-back shape (sorted keys), which is
   pinned by `protocol/fixtures/transfers-0.1.16.json` and tested by
   `protocol/tools/test-flocket-share.sh`.
+- The helper keeps stdin open until the reply line arrives (10 s at most); an empty `doc.set` reply is reported as "may or may not have been recorded" (exit 3).
 - The share list is bounded (64 KiB); the app keeps its own history.

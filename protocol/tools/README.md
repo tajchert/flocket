@@ -12,8 +12,13 @@ It needs `hc` (or `herdr-core`, or `$HC_BIN`), `sed`, `od`, `tr`, `wc` and `date
 runs only inside a herdr terminal (`HC_TERMINAL_ID` set).
 
 Exit codes: 0 ok; 1 a path is missing or unreadable (nothing is shared); 2 not in a
-herdr terminal; 3 could not reach the core (the message ends with a hint to rerun
-outside a sandbox).
+herdr terminal; 3 could not reach the core. Every exit-3 message ends with "If you are
+running in a sandbox, rerun this command outside it." (including a reply that is missing
+after the update was sent: then the share may or may not have been recorded).
+
+Files over 8 MB are still shared, with a warning on stderr (Flocket refuses to open them).
+Bytes in a note that are not valid UTF-8 are dropped; a path that is not valid UTF-8 is
+rejected (exit 1).
 
 ### Install
 

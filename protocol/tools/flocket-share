@@ -10,10 +10,17 @@
 #             2 not in a herdr terminal; 3 could not reach the core.
 # POSIX sh plus sed, od, tr, wc, date; no jq or python.
 
+# Byte-transparent tr/sed, and ${#var} counts bytes (the 64 KiB cap is in bytes).
+LC_ALL=C
+export LC_ALL
+
 MAX_BYTES=8388608
 MAX_VALUE=65536
 RETRIES=20
 SANDBOX_HINT="If you are running in a sandbox, rerun this command outside it."
+
+# fail3 MESSAGE: exit 3; every exit-3 message ends with the sandbox hint.
+fail3() { die 3 "$1. $SANDBOX_HINT"; }
 
 die() { code=$1; shift; printf 'flocket-share: %s\n' "$*" >&2; exit "$code"; }
 
@@ -36,9 +43,20 @@ TAB=$(printf '\t')
 CR=$(printf '\r')
 SOH=$(printf '\001')
 
-# esc STRING: JSON string body (no quotes). Other control characters are dropped.
+# utf8 STRING: STRING with bytes that are not valid UTF-8 removed (hc rejects invalid
+# UTF-8). Without iconv, every non-ASCII byte is removed.
+utf8() {
+  if command -v iconv >/dev/null 2>&1; then
+    printf '%s' "$1" | iconv -c -f UTF-8 -t UTF-8 2>/dev/null
+  else
+    printf '%s' "$1" | tr -d '\200-\377'
+  fi
+}
+
+# esc STRING: JSON string body (no quotes). Other control characters and bytes that are
+# not valid UTF-8 are dropped; valid UTF-8 passes unchanged.
 esc() {
-  printf '%s' "$1" | tr -d '\000-\010\013\014\016-\037' | tr '\n' "$SOH" |
+  utf8 "$1" | tr -d '\000-\010\013\014\016-\037' | tr '\n' "$SOH" |
     sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e "s/$TAB/\\\\t/g" -e "s/$CR/\\\\r/g" -e "s/$SOH/\\\\n/g"
 }
 
@@ -49,6 +67,7 @@ for p in "$@"; do
   clean=$(printf '%s' "$p" | tr -d '\000-\010\012-\037')
   [ "$clean" = "$p" ] || die 1 "path contains a newline or control character: not shared"
   [ -n "$p" ] || die 1 "empty path"
+  [ "$(utf8 "$p")" = "$p" ] || die 1 "path is not valid UTF-8: not shared"
   [ -f "$p" ] && [ -r "$p" ] || die 1 "not a readable file: $p (nothing was shared)"
   dir=$(cd -- "$(dirname -- "$p")" 2>/dev/null && pwd) || die 1 "cannot resolve: $p"
   abs=${dir%/}/$(basename -- "$p")
@@ -67,7 +86,7 @@ elif command -v hc >/dev/null 2>&1; then
 elif command -v herdr-core >/dev/null 2>&1; then
   HC=herdr-core
 else
-  die 3 "hc (herdr-core) not found on PATH. $SANDBOX_HINT"
+  fail3 "hc (herdr-core) not found on PATH"
 fi
 
 id=$(od -An -tx1 -N16 /dev/urandom | tr -d ' \n')
@@ -76,10 +95,32 @@ entry="{\"id\":\"$id\",\"terminal\":\"$(esc "$HC_TERMINAL_ID")\",\"paths\":[$pat
 [ "$have_note" -eq 1 ] && [ -n "$note" ] && entry="$entry,\"note\":\"$(esc "$note")\""
 entry="$entry,\"at\":$at}"
 
-# rpc REQUEST: one request, one reply line. stdin stays open until the reply.
-rpc() { { printf '%s\n' "$1"; sleep 1; } | "$HC" connect 2>/dev/null | head -n 1; }
+# rpc REQUEST: one request, one reply line on stdout (empty when none arrived). The
+# core cancels work when its caller goes away, so stdin stays open until the reply line
+# has arrived, the connection ended, or RPC_WAIT seconds passed.
+RPC_WAIT=10
+rpc() {
+  rdir=$(mktemp -d "${TMPDIR:-/tmp}/flocket-share.XXXXXX") || return 0
+  mkfifo "$rdir/in" || { rm -rf "$rdir"; return 0; }
+  exec 3<>"$rdir/in"
+  "$HC" connect <"$rdir/in" 3>&- >"$rdir/out" 2>/dev/null &
+  rpid=$!
+  printf '%s\n' "$1" >&3
+  waited=0
+  while [ "$waited" -lt $((RPC_WAIT * 10)) ]; do
+    [ "$(wc -l <"$rdir/out")" -gt 0 ] && break
+    kill -0 "$rpid" 2>/dev/null || break
+    sleep 0.1 2>/dev/null || sleep 1
+    waited=$((waited + 1))
+  done
+  exec 3>&-
+  kill "$rpid" 2>/dev/null
+  wait "$rpid" 2>/dev/null
+  head -n 1 "$rdir/out"
+  rm -rf "$rdir"
+}
 
-unreachable() { die 3 "could not reach the herdr core${1:+ ($1)}. $SANDBOX_HINT"; }
+unreachable() { fail3 "could not reach the herdr core${1:+ ($1)}"; }
 
 attempt=0
 while [ "$attempt" -lt "$RETRIES" ]; do
@@ -118,8 +159,8 @@ while [ "$attempt" -lt "$RETRIES" ]; do
       n=$(od -An -tu1 -N1 /dev/urandom | tr -d ' ')
       sleep "0.$((n % 10))" 2>/dev/null || sleep 1
       ;;
-    '') unreachable "no reply to doc.set" ;;
-    *) die 3 "the core refused the update: $reply" ;;
+    '') fail3 "no reply to doc.set: the share may or may not have been recorded" ;;
+    *) fail3 "the core refused the update: $reply" ;;
   esac
 done
-die 3 "gave up after $RETRIES conflicting updates"
+fail3 "gave up after $RETRIES conflicting updates"
