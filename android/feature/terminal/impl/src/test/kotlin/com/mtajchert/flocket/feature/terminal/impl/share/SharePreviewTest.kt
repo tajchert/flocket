@@ -22,13 +22,35 @@ class SharePreviewTest {
     }
 
     @Test
-    fun `text is cut at one megabyte`() {
-        val (short, cutShort) = SharePreview.text("abc".toByteArray())
-        assertEquals("abc", short)
-        assertFalse(cutShort)
-        val (long, cut) = SharePreview.text(ByteArray(SharePreview.MAX_TEXT_BYTES + 5) { 'a'.code.toByte() })
-        assertEquals(SharePreview.MAX_TEXT_BYTES, long.length)
+    fun `short text keeps every line and the last partial line`() {
+        assertEquals(listOf("a", "", "b"), SharePreview.textLines("a\n\nb".toByteArray()).first)
+        assertEquals(listOf("a", "b"), SharePreview.textLines("a\r\nb\n".toByteArray()).first)
+        assertFalse(SharePreview.textLines("abc".toByteArray()).second)
+    }
+
+    @Test
+    fun `one megabyte of lines splits without losing a line`() {
+        val line = "0123456789012345678901234567890123456789012345678\n" // 50 bytes
+        val count = 20_000
+        val text = (0 until count).joinToString("") { line } + "tail"
+        val bytes = text.toByteArray()
+        assertTrue(bytes.size < SharePreview.MAX_TEXT_BYTES)
+        val (lines, cut) = SharePreview.textLines(bytes)
+        assertFalse(cut)
+        assertEquals(count + 1, lines.size)
+        assertEquals("tail", lines.last())
+        assertEquals(line.trimEnd(), lines.first())
+    }
+
+    @Test
+    fun `text over a megabyte is cut before a split character`() {
+        // "é" is two bytes; make the 1 MiB boundary fall between them.
+        val bytes = ByteArray(SharePreview.MAX_TEXT_BYTES - 1) { 'a'.code.toByte() } + "éé".toByteArray()
+        assertTrue(SharePreview.classify("a.txt", "text/plain", bytes) == PreviewKind.Text)
+        val (lines, cut) = SharePreview.textLines(bytes)
         assertTrue(cut)
+        assertEquals(SharePreview.MAX_TEXT_BYTES - 1, lines.single().length)
+        assertFalse('\uFFFD' in lines.single())
     }
 
     @Test

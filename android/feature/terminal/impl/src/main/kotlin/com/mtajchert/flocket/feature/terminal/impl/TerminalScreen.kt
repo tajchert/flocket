@@ -195,9 +195,10 @@ fun TerminalScreen(
                     actions = listOf(stringResource(R.string.terminal_dismiss) to actions.onDismissFreshShell),
                 )
             }
-            shares.card?.let { ShareCard(it, shareActions) }
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 terminal(Modifier.fillMaxSize())
+                // Over the terminal, never above it: a layout change would resize the remote terminal.
+                shares.card?.let { ShareCard(it, shareActions, Modifier.align(Alignment.TopCenter).padding(8.dp)) }
                 when (state.phase) {
                     TerminalPhase.Connecting -> {
                         ProgressOverlay(

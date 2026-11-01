@@ -119,7 +119,7 @@ private fun ShareViewerDialog(
                             }
 
                             PreviewKind.Text -> {
-                                SharePreview.text(file.bytes).let { (t, cut) -> ViewerBody.Text(t, cut) }
+                                SharePreview.textLines(file.bytes).let { (lines, cut) -> ViewerBody.Text(lines, cut) }
                             }
 
                             PreviewKind.Other -> {
@@ -134,7 +134,9 @@ private fun ShareViewerDialog(
     val saveLauncher =
         rememberLauncherForActivityResult(remember(mime) { ActivityResultContracts.CreateDocument(mime) }) { uri ->
             val bytes = loaded?.bytes
-            if (uri != null && bytes != null) {
+            if (uri != null && bytes == null) {
+                message(context.getString(R.string.share_save_failed))
+            } else if (uri != null && bytes != null) {
                 scope.launch {
                     val ok =
                         withContext(Dispatchers.IO) {
@@ -163,7 +165,7 @@ private fun ShareViewerDialog(
             sizeBytes = loaded?.bytes?.size?.toLong(),
             canPaste = canPaste,
             actions = actions,
-            onSave = { saveLauncher.launch(name) },
+            onSave = { saveLauncher.launch(ShareFiles.safeSegment(name)) },
             onShare = {
                 val bytes = loaded?.bytes
                 if (bytes != null) {

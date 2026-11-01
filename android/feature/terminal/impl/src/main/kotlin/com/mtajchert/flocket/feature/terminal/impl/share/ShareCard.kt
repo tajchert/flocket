@@ -22,7 +22,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.mtajchert.flocket.feature.terminal.impl.R
 
-/** A new share of this terminal: what it is, the agent's note, and Open / Dismiss. */
+/** A new share of this terminal: what it is, the agent's note, and Open / Dismiss. Drawn over the terminal. */
 @Composable
 fun ShareCard(
     share: ShareItem,
@@ -33,6 +33,8 @@ fun ShareCard(
     Surface(
         color = colors.secondaryContainer,
         contentColor = colors.onSecondaryContainer,
+        shape = MaterialTheme.shapes.medium,
+        shadowElevation = 6.dp,
         modifier = modifier.fillMaxWidth().testTag("share_card"),
     ) {
         Row(

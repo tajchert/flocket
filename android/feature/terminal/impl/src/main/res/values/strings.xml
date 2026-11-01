@@ -101,7 +101,6 @@
     <string name="share_viewer_text_cut">Showing the first 1 MB</string>
     <string name="share_viewer_no_preview">No preview for this file type</string>
     <string name="share_viewer_image_alt">Preview of %1$s</string>
-    <string name="share_viewer_size_format">%1$s · %2$s</string>
     <string name="share_save">Save</string>
     <string name="share_share">Share</string>
     <string name="share_paste_path">Paste path into terminal</string>

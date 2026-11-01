@@ -61,9 +61,17 @@ object SharePreview {
         bytes: ByteArray,
     ): PreviewKind =
         when {
-            mime.startsWith("image/") -> PreviewKind.Image
-            (mime.startsWith("text/") || extension(name) in textExtensions) && isUtf8(bytes) -> PreviewKind.Text
-            else -> PreviewKind.Other
+            mime.startsWith("image/") -> {
+                PreviewKind.Image
+            }
+
+            (mime.startsWith("text/") || extension(name) in textExtensions) && isUtf8(textPrefix(bytes)) -> {
+                PreviewKind.Text
+            }
+
+            else -> {
+                PreviewKind.Other
+            }
         }
 
     fun isUtf8(bytes: ByteArray): Boolean =
@@ -78,10 +86,21 @@ object SharePreview {
             false
         }
 
-    /** The first [MAX_TEXT_BYTES] of [bytes] as text, and whether it was cut. */
-    fun text(bytes: ByteArray): Pair<String, Boolean> {
-        val cut = bytes.size > MAX_TEXT_BYTES
-        return String(bytes, 0, minOf(bytes.size, MAX_TEXT_BYTES), Charsets.UTF_8) to cut
+    /** The part of [bytes] shown as text: at most [MAX_TEXT_BYTES], cut before a split multibyte character. */
+    fun textPrefix(bytes: ByteArray): ByteArray {
+        if (bytes.size <= MAX_TEXT_BYTES) return bytes
+        var end = MAX_TEXT_BYTES
+        // `end` is the first excluded byte: if it continues a character, that character is dropped whole.
+        while (end > 0 && (bytes[end].toInt() and 0xC0) == 0x80) end--
+        return bytes.copyOf(end)
+    }
+
+    /** The shown text of [bytes] as lines (no line lost, a last partial line kept), and whether it was cut. */
+    fun textLines(bytes: ByteArray): Pair<List<String>, Boolean> {
+        val text = String(textPrefix(bytes), Charsets.UTF_8)
+        val lines = text.split('\n').map { it.trimEnd('\r') }
+        // A final newline ends the last line; it does not start another.
+        return (if (text.endsWith('\n')) lines.dropLast(1) else lines) to (bytes.size > MAX_TEXT_BYTES)
     }
 
     /** Decode size that keeps the long side within [MAX_IMAGE_SIDE]; the original size when it already fits. */

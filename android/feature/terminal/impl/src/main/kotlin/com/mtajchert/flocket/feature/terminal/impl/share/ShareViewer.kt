@@ -9,11 +9,14 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -69,8 +72,9 @@ sealed interface ViewerBody {
         val bitmap: ImageBitmap,
     ) : ViewerBody
 
+    /** The shown text split into lines once (off the main thread), so only visible lines are laid out. */
     class Text(
-        val text: String,
+        val lines: List<String>,
         val cut: Boolean,
     ) : ViewerBody
 
@@ -213,17 +217,20 @@ fun ShareViewerContent(
                                 modifier = Modifier.fillMaxSize().padding(8.dp),
                                 shape = MaterialTheme.shapes.small,
                             ) {
-                                Text(
-                                    text = body.text,
-                                    fontFamily = FontFamily.Monospace,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    modifier =
-                                        Modifier
-                                            .verticalScroll(rememberScrollState())
-                                            .horizontalScroll(rememberScrollState())
-                                            .padding(12.dp)
-                                            .testTag("share_text"),
-                                )
+                                val hScroll = rememberScrollState()
+                                LazyColumn(
+                                    Modifier.fillMaxSize().horizontalScroll(hScroll).testTag("share_text"),
+                                    contentPadding = PaddingValues(12.dp),
+                                ) {
+                                    items(body.lines) { line ->
+                                        Text(
+                                            text = line.ifEmpty { " " },
+                                            fontFamily = FontFamily.Monospace,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            softWrap = false,
+                                        )
+                                    }
+                                }
                             }
                         }
                     }

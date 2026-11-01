@@ -6,16 +6,25 @@ import android.graphics.Canvas
 import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.Shader
+import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.tooling.preview.Preview
 import com.android.tools.screenshot.PreviewTest
 import com.mtajchert.flocket.core.common.error.AppError
 import com.mtajchert.flocket.core.designsystem.theme.FlocketTheme
+import com.mtajchert.flocket.core.model.ConnectionState
+import com.mtajchert.flocket.core.testing.SampleData
 import com.mtajchert.flocket.core.ui.error.toUiError
+import com.mtajchert.flocket.feature.terminal.impl.TerminalActions
+import com.mtajchert.flocket.feature.terminal.impl.TerminalPhase
+import com.mtajchert.flocket.feature.terminal.impl.TerminalScreen
+import com.mtajchert.flocket.feature.terminal.impl.TerminalUiState
 
 @Preview(name = "Phone", showBackground = true, widthDp = 412, heightDp = 892, apiLevel = 36)
 private annotation class PreviewPhone
@@ -128,7 +137,14 @@ private fun ShareViewerTextScreenshot() =
     Viewer(
         body =
             ViewerBody.Text(
-                "# Auth refactor\n\n- moved the token store behind `TokenStore`\n- 42 tests pass\n\nTODO: rotate keys on logout",
+                listOf(
+                    "# Auth refactor",
+                    "",
+                    "- moved the token store behind `TokenStore`",
+                    "- 42 tests pass",
+                    "",
+                    "TODO: rotate keys on logout",
+                ),
                 cut = false,
             ),
     )
@@ -150,3 +166,24 @@ private fun ShareViewerMissingScreenshot() =
 @PreviewPhone
 @Composable
 private fun ShareViewerFileListScreenshot() = Viewer(share = many, path = null, body = ViewerBody.Files(many.paths))
+
+@PreviewTest
+@PreviewPhoneDark
+@Composable
+private fun ShareCardOverTerminalScreenshot() =
+    FlocketTheme(darkTheme = true, dynamicColor = false) {
+        TerminalScreen(
+            state =
+                TerminalUiState(
+                    address = "t1",
+                    hostLabel = "Studio Mac",
+                    agentLabel = "claude",
+                    connection = ConnectionState.Online(SampleData.coreInfo),
+                    phase = TerminalPhase.Live,
+                    streamConnected = true,
+                    showExtraKeys = false,
+                ),
+            actions = TerminalActions(),
+            shares = SharesUi(card = one, all = listOf(one)),
+        ) { modifier -> Box(modifier.background(Color(0xFF101418))) }
+    }

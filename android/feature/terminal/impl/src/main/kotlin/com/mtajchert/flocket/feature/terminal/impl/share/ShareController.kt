@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -37,6 +38,7 @@ class ShareController(
     private val nowSeconds: () -> Long = { Clock.System.nowMillis() / 1000 },
 ) {
     private val processed = MutableStateFlow<List<AgentShare>>(emptyList())
+    private val seenIds = MutableStateFlow<Set<String>>(emptySet())
     private val local = MutableStateFlow(Local())
     private var download: Job? = null
 
@@ -46,7 +48,7 @@ class ShareController(
     )
 
     val ui: StateFlow<SharesUi> =
-        combine(processed, seen.seen, local) { list, seenIds, loc ->
+        combine(processed, seenIds, local) { list, seenIds, loc ->
             val mine = list.filter { it.address == address }.map { it.toItem() }
             SharesUi(
                 card = mine.firstOrNull { it.id !in seenIds },
@@ -57,12 +59,15 @@ class ShareController(
         }.stateIn(scope, SharingStarted.Eagerly, SharesUi())
 
     init {
+        scope.launch { seen.seen.collect { seenIds.value = it } }
         scope.launch {
             shares.collect { list ->
                 // Hide old entries on the first read of each source before anything can show.
                 list.map { it.machine }.distinct().forEach { machine ->
                     seen.firstRead(hostId, machine, list, nowSeconds())
                 }
+                // Publish the fresh seen set first, so a hidden old entry never flashes as a card.
+                seenIds.value = seen.seen.first()
                 processed.value = list
             }
         }

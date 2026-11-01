@@ -75,7 +75,8 @@ internal object DataModule {
 
     @Provides
     @Singleton
-    fun provideShareSeenRepository(source: ShareSeenDataSource): ShareSeenRepository = ShareSeenRepositoryImpl(source)
+    fun provideShareSeenRepository(source: ShareSeenDataSource): ShareSeenRepository =
+        ShareSeenRepositoryImpl(source, AndroidLogger)
 
     @Provides
     @Singleton
