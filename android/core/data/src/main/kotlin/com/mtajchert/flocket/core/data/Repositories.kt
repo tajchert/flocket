@@ -10,6 +10,7 @@ import com.mtajchert.flocket.core.model.HostSetting
 import com.mtajchert.flocket.core.model.HostSettingsOverrides
 import com.mtajchert.flocket.core.model.PinnedHostKey
 import com.mtajchert.flocket.core.model.TerminalPreferences
+import com.mtajchert.flocket.core.model.TerminalSort
 import com.mtajchert.flocket.core.session.CoreSession
 import com.mtajchert.flocket.core.session.SessionState
 import kotlinx.coroutines.flow.Flow
@@ -143,6 +144,8 @@ data class UserPreferences(
      * with no foreground service and no notification.
      */
     val keepConnectedInBackground: Boolean = true,
+    /** How the terminal list is ordered. */
+    val terminalSort: TerminalSort = TerminalSort.Priority,
 )
 
 /**

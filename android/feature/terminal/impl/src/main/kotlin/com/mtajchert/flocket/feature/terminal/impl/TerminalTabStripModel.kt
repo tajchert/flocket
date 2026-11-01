@@ -27,7 +27,7 @@ data class TabStripUi(
 @Immutable
 data class StripTab(
     val key: String,
-    /** Blank when unnamed; the strip then shows "Tab [number]". */
+    /** Blank when unnamed; the strip then shows its [number]. */
     val name: String,
     /** Highest-urgency state among the tab's live terminals; null = nothing reported. */
     val state: AgentState?,

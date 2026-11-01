@@ -65,5 +65,5 @@
     <string name="terminal_clipboard_always">Always allow for this host</string>
     <string name="terminal_clipboard_written">A program copied text to your clipboard</string>
     <string name="terminal_clipboard_deny">Don\'t copy</string>
-    <string name="workspace_tab_fallback">Tab %1$d</string>
+    <string name="workspace_tab_fallback">%1$d</string>
 </resources>

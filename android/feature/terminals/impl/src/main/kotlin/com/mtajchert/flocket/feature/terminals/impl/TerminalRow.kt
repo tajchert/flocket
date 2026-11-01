@@ -62,6 +62,8 @@ internal fun TerminalRow(
     actions: TerminalsActions,
     modifier: Modifier = Modifier,
     dense: Boolean = false,
+    /** Priority mode: where the terminal lives ("Space · Tab"), shown under it. */
+    place: String? = null,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     val scheme = MaterialTheme.colorScheme
@@ -85,9 +87,9 @@ internal fun TerminalRow(
             verticalAlignment = if (dense) Alignment.CenterVertically else Alignment.Top,
         ) {
             if (dense) {
-                DenseBody(item, label, nowMs, Modifier.weight(1f))
+                DenseBody(item, label, nowMs, place, Modifier.weight(1f))
             } else {
-                FullBody(item, label, nowMs, Modifier.weight(1f))
+                FullBody(item, label, nowMs, place, Modifier.weight(1f))
             }
             Box {
                 IconButton(onClick = { menuOpen = true }, modifier = if (dense) Modifier.size(40.dp) else Modifier) {
@@ -105,6 +107,7 @@ private fun DenseBody(
     item: TerminalItem,
     label: String,
     nowMs: Long,
+    place: String?,
     modifier: Modifier = Modifier,
 ) {
     val scheme = MaterialTheme.colorScheme
@@ -143,7 +146,7 @@ private fun DenseBody(
             }
         }
         Text(
-            listOfNotNull(word, age).joinToString(" · "),
+            listOfNotNull(place, word, age).joinToString(" · "),
             style = MaterialTheme.typography.labelSmall,
             color = scheme.onSurfaceVariant,
             maxLines = 1,
@@ -206,6 +209,7 @@ private fun FullBody(
     item: TerminalItem,
     label: String,
     nowMs: Long,
+    place: String?,
     modifier: Modifier = Modifier,
 ) {
     val scheme = MaterialTheme.colorScheme
@@ -239,6 +243,15 @@ private fun FullBody(
                         item.headline,
                         style = MaterialTheme.typography.bodyMedium,
                         maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                if (place != null) {
+                    Text(
+                        place,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = scheme.onSurfaceVariant,
+                        maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
                 }

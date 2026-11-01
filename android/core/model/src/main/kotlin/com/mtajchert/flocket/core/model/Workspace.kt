@@ -79,7 +79,7 @@ data class WorkspaceSpace(
     /** Federated machine for remote terminals, null for the host's own. */
     val machine: String?,
     val tabs: List<WorkspaceTab>,
-    /** Highest [AgentState.urgency] among its non-finished terminals with a reported status; null = none. */
+    /** Highest [AgentState.priorityRank] among its non-finished terminals with a reported status; null = none. */
     val topState: AgentState?,
     /** 1-based position among all spaces of the workspace. */
     val number: Int,

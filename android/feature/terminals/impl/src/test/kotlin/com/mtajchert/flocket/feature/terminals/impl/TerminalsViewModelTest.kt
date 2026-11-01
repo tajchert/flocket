@@ -5,10 +5,12 @@ package com.mtajchert.flocket.feature.terminals.impl
 import app.cash.turbine.test
 import com.mtajchert.flocket.core.common.error.AppError
 import com.mtajchert.flocket.core.common.result.AppResult
+import com.mtajchert.flocket.core.data.UserPreferences
 import com.mtajchert.flocket.core.model.ConnectionState
 import com.mtajchert.flocket.core.model.CoreInfo
 import com.mtajchert.flocket.core.model.HostId
 import com.mtajchert.flocket.core.model.MachineState
+import com.mtajchert.flocket.core.model.TerminalSort
 import com.mtajchert.flocket.core.session.SendReceipt
 import com.mtajchert.flocket.core.session.SessionState
 import com.mtajchert.flocket.core.testing.FakeConnectionManager
@@ -62,8 +64,9 @@ class TerminalsViewModelTest {
         manager: FakeConnectionManager = manager(),
         settings: FakeHostSettingsRepository = FakeHostSettingsRepository(),
         lastCwd: LastCwdStore = InMemoryLastCwdStore(),
+        prefs: FakePreferencesRepository = FakePreferencesRepository(),
     ): TerminalsViewModel {
-        val vm = TerminalsViewModel(manager, lastCwd, settings)
+        val vm = TerminalsViewModel(manager, lastCwd, settings, prefs)
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.uiState.collect {} }
         return vm
     }
@@ -81,11 +84,11 @@ class TerminalsViewModelTest {
         .orEmpty()
 
     @Test
-    fun `groups by host then by federated machine and puts attention first`() =
+    fun `grouped mode groups by host then by federated machine and sorts rows by desktop rank`() =
         runTest {
-            val state = vm().uiState.value
+            val state = vm(prefs = grouped()).uiState.value
             assertEquals(listOf(studio, hetzner, pi), state.groups.map { it.hostId })
-            assertEquals(listOf("t2", "t1", "t3", "t4", "t5"), state.addresses(studio)) // blocked, working, done, idle, no status
+            assertEquals(listOf("t2", "t3", "t1", "t4", "t5"), state.addresses(studio)) // blocked, done, working, idle, no status
             assertEquals(listOf("rohan/t7"), state.addresses(studio, "rohan"))
             assertEquals(
                 MachineState.Connected,
@@ -98,12 +101,38 @@ class TerminalsViewModelTest {
             assertEquals(1, state.hiddenFinished)
         }
 
+    private fun grouped() = FakePreferencesRepository(UserPreferences(terminalSort = TerminalSort.Grouped))
+
     @Test
-    fun `core order is kept when attention sorting is off`() =
+    fun `sort defaults to priority and follows the stored preference`() =
         runTest {
-            val vm = vm()
-            vm.setAttentionFirst(false)
-            assertEquals(listOf("t1", "t2", "t3", "t4", "t5"), vm.uiState.value.addresses(studio))
+            val prefs = FakePreferencesRepository()
+            val vm = vm(prefs = prefs)
+            assertEquals(TerminalSort.Priority, vm.uiState.value.sort)
+            // priority sections: needs you, done, working, idle, no status
+            assertEquals(listOf("t2", "t3", "t1", "t4", "t5"), vm.uiState.value.addresses(studio))
+            prefs.update { it.copy(terminalSort = TerminalSort.Grouped) }
+            assertEquals(TerminalSort.Grouped, vm.uiState.value.sort)
+            assertTrue(
+                vm.uiState.value
+                    .group(studio)
+                    .sections
+                    .first()
+                    .priority
+                    .isEmpty(),
+            )
+        }
+
+    @Test
+    fun `setSort persists the choice`() =
+        runTest {
+            val prefs = FakePreferencesRepository()
+            val vm = vm(prefs = prefs)
+            vm.setSort(TerminalSort.Grouped)
+            assertEquals(TerminalSort.Grouped, prefs.preferences.value.terminalSort)
+            assertEquals(TerminalSort.Grouped, vm.uiState.value.sort)
+            vm.setSort(TerminalSort.Priority)
+            assertEquals(TerminalSort.Priority, prefs.preferences.value.terminalSort)
         }
 
     @Test

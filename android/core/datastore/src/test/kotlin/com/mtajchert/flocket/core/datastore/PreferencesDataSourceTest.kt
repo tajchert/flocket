@@ -38,7 +38,7 @@ class PreferencesDataSourceTest {
             val file = File(tmp.root, "p.preferences_pb")
             val s = source(file)
             assertEquals(StoredPreferences(), s.preferences.first())
-            val changed = StoredPreferences(true, "Dark", false, 17.5f, false, false)
+            val changed = StoredPreferences(true, "Dark", false, 17.5f, false, false, terminalListSort = "Grouped")
             s.update { changed }
             assertEquals(changed, s.preferences.first())
         }

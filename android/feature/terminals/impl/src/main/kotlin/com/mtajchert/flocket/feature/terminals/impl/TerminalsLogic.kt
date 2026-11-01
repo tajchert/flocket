@@ -1,9 +1,13 @@
 package com.mtajchert.flocket.feature.terminals.impl
 
 import com.mtajchert.flocket.core.data.HostOverview
+import com.mtajchert.flocket.core.model.AgentState
+import com.mtajchert.flocket.core.model.AgentStatus
 import com.mtajchert.flocket.core.model.ConnectionState
 import com.mtajchert.flocket.core.model.Liveness
+import com.mtajchert.flocket.core.model.TerminalAddress
 import com.mtajchert.flocket.core.model.TerminalRecord
+import com.mtajchert.flocket.core.model.TerminalSort
 import com.mtajchert.flocket.core.model.Workspace
 import com.mtajchert.flocket.core.model.buildWorkspace
 import com.mtajchert.flocket.core.session.SessionState
@@ -51,7 +55,7 @@ internal fun TerminalRecord.toItem(writable: Boolean): TerminalItem {
 
 internal data class ListControls(
     val filter: TerminalFilter = TerminalFilter.All,
-    val attentionFirst: Boolean = true,
+    val sort: TerminalSort = TerminalSort.Priority,
     val showFinished: Boolean = false,
 )
 
@@ -64,8 +68,9 @@ private fun TerminalItem.matches(controls: ListControls): Boolean =
     }
 
 /**
- * Arranges the already filtered [shown] rows as machine -> space -> tab. The host's own machine comes
- * first. With "attention first", spaces sort by their status urgency and rows by theirs (both stable).
+ * Arranges the already filtered [shown] rows per machine (the host's own first). In Priority mode each
+ * machine gets the desktop's status sections with rows in core order; in Grouped mode it gets
+ * space -> tab -> rows, all ordered by desktop rank (stable, so ties keep the layout order).
  */
 internal fun buildSections(
     shown: List<TerminalItem>,
@@ -73,6 +78,25 @@ internal fun buildSections(
     session: SessionState,
     controls: ListControls,
 ): List<MachineSection> {
+    fun info(machine: String?) = machine?.let { name -> session.machines.firstOrNull { it.name == name } }
+    if (controls.sort == TerminalSort.Priority) {
+        val places = workspace.rowPlaces()
+        return shown
+            .groupBy { it.ref.address.machine }
+            .entries
+            .sortedBy { if (it.key == null) 0 else 1 }
+            .map { (machine, items) ->
+                val rows = items.map { PriorityRow(it, places[it.ref.address] ?: RowPlace.None) }
+                val sections =
+                    PriorityBucket.entries.mapNotNull { bucket ->
+                        rows.filter { it.item.bucket() == bucket }.takeIf { it.isNotEmpty() }?.let {
+                            PrioritySection(bucket, it)
+                        }
+                    }
+                val i = info(machine)
+                MachineSection(machine, i?.state, i?.rawState, spaces = emptyList(), priority = sections)
+            }
+    }
     val byAddress = shown.associateBy { it.ref.address }
     val spaces =
         workspace.spaces.mapNotNull { space ->
@@ -94,30 +118,51 @@ internal fun buildSections(
                     if (rows.isEmpty()) {
                         null
                     } else {
-                        TabSection(
-                            tab.key,
-                            tab.name,
-                            if (controls.attentionFirst) rows.sortedByDescending { it.urgency } else rows,
-                            tab.number,
-                        )
+                        tab to TabSection(tab.key, tab.name, rows.sortedByDescending { it.urgency }, tab.number)
                     }
                 }
             if (tabs.isEmpty()) {
                 null
             } else {
-                space.machine to SpaceSection(space.key, space.name, subtitle, space.topState, tabs, space.number)
+                val ordered = tabs.sortedByDescending { it.first.topState.rank() }.map { it.second }
+                space.machine to SpaceSection(space.key, space.name, subtitle, space.topState, ordered, space.number)
             }
         }
-    val ordered =
-        if (controls.attentionFirst) spaces.sortedByDescending { it.second.topState?.urgency ?: -1 } else spaces
+    val ordered = spaces.sortedByDescending { it.second.topState.rank() }
     return ordered
         .groupBy({ it.first }, { it.second })
         .entries
         .sortedBy { if (it.key == null) 0 else 1 }
         .map { (machine, list) ->
-            val info = machine?.let { name -> session.machines.firstOrNull { it.name == name } }
-            MachineSection(machine, info?.state, info?.rawState, list)
+            val i = info(machine)
+            MachineSection(machine, i?.state, i?.rawState, list)
         }
+}
+
+private fun AgentState?.rank(): Int = this?.priorityRank ?: -1
+
+/** The desktop section a row belongs to. A reported but unrecognised state counts as no status. */
+internal fun TerminalItem.bucket(): PriorityBucket {
+    if (isFinished) return PriorityBucket.Finished
+    return when ((status as? AgentStatus.Reported)?.state) {
+        AgentState.Blocked, AgentState.Error -> PriorityBucket.NeedsYou
+        AgentState.Done -> PriorityBucket.Done
+        AgentState.Working -> PriorityBucket.Working
+        AgentState.Idle -> PriorityBucket.Idle
+        AgentState.Other, null -> PriorityBucket.NoStatus
+    }
+}
+
+private fun Workspace.rowPlaces(): Map<TerminalAddress, RowPlace> {
+    val places = HashMap<TerminalAddress, RowPlace>()
+    for (space in spaces) {
+        for (tab in space.tabs) {
+            val place =
+                RowPlace(space.key, space.name, space.number, tab.key, tab.name, tab.number, space.tabs.size > 1)
+            for (pane in tab.panes) places.putIfAbsent(pane, place)
+        }
+    }
+    return places
 }
 
 private fun String.endsWithSegment(name: String): Boolean = trimEnd('/').substringAfterLast('/') == name
@@ -181,7 +226,7 @@ internal fun buildUiState(
         loaded = true,
         groups = groups,
         filter = controls.filter,
-        attentionFirst = controls.attentionFirst,
+        sort = controls.sort,
         showFinished = controls.showFinished,
         refreshing = refreshing,
         emptyKind = empty,

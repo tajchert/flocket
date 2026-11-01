@@ -38,9 +38,11 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -71,6 +73,7 @@ import androidx.compose.ui.unit.dp
 import com.mtajchert.flocket.core.model.AgentState
 import com.mtajchert.flocket.core.model.HostId
 import com.mtajchert.flocket.core.model.MachineState
+import com.mtajchert.flocket.core.model.TerminalSort
 import com.mtajchert.flocket.core.ui.component.CenteredContent
 import com.mtajchert.flocket.core.ui.component.ConnectionStateBadge
 import com.mtajchert.flocket.core.ui.component.EmptyState
@@ -85,7 +88,7 @@ import com.mtajchert.flocket.feature.terminal.api.TerminalRoute
 @Immutable
 class TerminalsActions(
     val onFilter: (TerminalFilter) -> Unit = {},
-    val onAttentionFirst: (Boolean) -> Unit = {},
+    val onSort: (TerminalSort) -> Unit = {},
     val onShowFinished: (Boolean) -> Unit = {},
     val onClearFilters: () -> Unit = {},
     val onRefresh: () -> Unit = {},
@@ -207,11 +210,26 @@ private fun OptionsMenu(
         Icon(Icons.Outlined.MoreVert, contentDescription = stringResource(R.string.menu_options))
     }
     DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-        DropdownMenuItem(
-            text = { Text(stringResource(R.string.menu_sort_attention)) },
-            onClick = { actions.onAttentionFirst(!state.attentionFirst) },
-            trailingIcon = { Checkbox(checked = state.attentionFirst, onCheckedChange = null) },
+        Text(
+            stringResource(R.string.menu_sort_title),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
         )
+        listOf(
+            TerminalSort.Priority to R.string.menu_sort_priority,
+            TerminalSort.Grouped to R.string.menu_sort_grouped,
+        ).forEach { (sort, label) ->
+            DropdownMenuItem(
+                text = { Text(stringResource(label)) },
+                onClick = {
+                    actions.onSort(sort)
+                    open = false
+                },
+                leadingIcon = { RadioButton(selected = state.sort == sort, onClick = null) },
+            )
+        }
+        HorizontalDivider()
         DropdownMenuItem(
             text = { Text(stringResource(R.string.menu_show_finished)) },
             onClick = { actions.onShowFinished(!state.showFinished) },
@@ -348,6 +366,24 @@ private fun TerminalList(
                             MachineHeader(section)
                         }
                     }
+                    section.priority.forEach { prio ->
+                        val sectionKey = "${group.hostId.value}/${section.machine.orEmpty()}/${prio.bucket.name}"
+                        item(key = "prio:$sectionKey", contentType = "prio") { PriorityHeader(prio) }
+                        items(prio.rows.size, key = { prio.rows[it].item.key }, contentType = { "row" }) { index ->
+                            val row = prio.rows[index]
+                            TerminalRow(
+                                item = row.item,
+                                selected =
+                                    selected != null && selected.hostId == row.item.hostId.value &&
+                                        selected.address == row.item.address,
+                                nowMs = nowMs,
+                                actions = actions,
+                                modifier = Modifier.padding(start = 12.dp),
+                                dense = dense,
+                                place = placeText(row.place),
+                            )
+                        }
+                    }
                     section.spaces.forEach { space ->
                         val spaceKey = "${group.hostId.value}/${section.machine.orEmpty()}/${space.key}"
                         val isCollapsed = spaceKey in collapsed
@@ -413,6 +449,43 @@ private fun TerminalList(
                 }
             }
         }
+    }
+}
+
+/** "Space · Tab", or just the space when it has a single tab; null for a terminal without a place. */
+@Composable
+private fun placeText(place: RowPlace): String? {
+    if (place.spaceNumber == 0) return null
+    val space = place.spaceName.ifBlank { stringResource(R.string.workspace_space_fallback, place.spaceNumber) }
+    if (!place.showTab) return space
+    val tab = place.tabName.ifBlank { stringResource(R.string.workspace_tab_fallback, place.tabNumber) }
+    return stringResource(R.string.row_place, space, tab)
+}
+
+@Composable
+private fun PriorityHeader(section: PrioritySection) {
+    val scheme = MaterialTheme.colorScheme
+    val (title, color) =
+        when (section.bucket) {
+            PriorityBucket.NeedsYou -> R.string.priority_needs_you to statusColor(AgentState.Blocked, scheme)
+            PriorityBucket.Done -> R.string.priority_done to statusColor(AgentState.Done, scheme)
+            PriorityBucket.Working -> R.string.priority_working to statusColor(AgentState.Working, scheme)
+            PriorityBucket.Idle -> R.string.priority_idle to statusColor(AgentState.Idle, scheme)
+            PriorityBucket.NoStatus -> R.string.priority_no_status to statusColor(null, scheme)
+            PriorityBucket.Finished -> R.string.priority_finished to statusColor(null, scheme)
+        }
+    Row(
+        Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Box(Modifier.size(10.dp).background(color, CircleShape))
+        Text(stringResource(title), style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+        Text(
+            section.rows.size.toString(),
+            style = MaterialTheme.typography.labelMedium,
+            color = scheme.onSurfaceVariant,
+        )
     }
 }
 

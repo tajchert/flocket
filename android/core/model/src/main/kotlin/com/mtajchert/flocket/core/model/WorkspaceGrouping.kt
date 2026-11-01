@@ -161,7 +161,7 @@ internal fun List<TerminalRecord>.topState(): AgentState? =
     asSequence()
         .filter { it.liveness !is Liveness.Finished }
         .mapNotNull { (it.status as? AgentStatus.Reported)?.state }
-        .maxByOrNull { it.urgency }
+        .maxByOrNull { it.priorityRank }
 
 /** Unique keys within one workspace (a damaged document may repeat ids). */
 private class KeyAllocator {
