@@ -62,6 +62,18 @@ emulator_up() {
 # Run after `pm clear`/installs: clearing app data re-enables the system keyboards.
 keyboards_off() { for ime in "${IMES[@]}"; do A shell ime disable "$ime" >/dev/null 2>&1 || true; done; }
 
+# Device-wide state outlives `pm clear`, so a journey that toggled it (and failed before restoring it)
+# must not leak into the next one: Wi-Fi and mobile data on, airplane mode off, auto-rotate off at
+# portrait, screen awake and unlocked. Re-enabling a network is asynchronous, so it then waits (up to
+# 10 s) until the Mac (10.0.2.2) answers a ping; that is immediate when nothing was off. One `adb shell`
+# call: about 0.1 s per test.
+device_reset() {
+  A shell 'svc wifi enable; svc data enable; cmd connectivity airplane-mode disable;' \
+    'settings put system accelerometer_rotation 0; settings put system user_rotation 0;' \
+    'input keyevent KEYCODE_WAKEUP; wm dismiss-keyguard;' \
+    'for i in 1 2 3 4 5 6 7 8 9 10; do ping -c1 -W1 10.0.2.2 && break; sleep 1; done' >/dev/null 2>&1 || true
+}
+
 APK="app/build/outputs/apk/debug/app-debug.apk"
 TEST_APK="app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk"
 TEST_ID="$APP_ID.test"
@@ -204,6 +216,7 @@ cmd_journey() {
     ((repeat > 1)) && echo "--- run $run/$repeat"
     for name in "${tests[@]}"; do
       t0="$(now)"
+      device_reset
       A shell pm clear "$APP_ID" >/dev/null
       A shell pm grant "$APP_ID" android.permission.POST_NOTIFICATIONS >/dev/null 2>&1 || true
       keyboards_off
