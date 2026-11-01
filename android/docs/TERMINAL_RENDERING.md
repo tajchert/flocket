@@ -130,10 +130,13 @@ one `TerminalController` (Ghostty engine via `TerminalControllerFactory`) and th
   scrollback, reset), so `historyBase + screen row` names the same content while output arrives. Ghostty tracks it with
   a tracked grid ref; the fake engine counts evictions.
 - `SmoothScroll` keeps a fractional top row id. The engine viewport only sits on whole rows: the view requests
-  `ceil(top)` with the absolute `TerminalController.scrollToRow` (moves still in flight never add up) and draws the
+  `ceil(top)` with the absolute `TerminalController.scrollToRow` (resolved on the engine thread against the current
+  history base with `TerminalEngine.scrollViewportTo`, so neither moves in flight nor output fed since the last frame
+  shift it; reaching the bottom uses `scrollToBottom`, which follows output) and draws the
   frame shifted down by the fraction, rounded to whole device pixels, with the row above the viewport filling the gap.
   The controller reads that row (`TerminalEngine.readRow`, read-only) only while the view asks for it (touching or
-  scrolled up), and only when it is a different row; at the live bottom nothing extra happens per frame.
+  scrolled up), and only when it is a different row; at the live bottom nothing extra happens per frame. The row is
+  published with its frame under one lock and the view takes both in one `acquire` call, so they always match.
 - The engine lags a frame or two behind requests; the shift never exceeds the one row we have, so a fast fling moves
   in whole rows and turns smooth as it slows. Fling: `OverScroller`, stopped at the oldest row and at the bottom.
 - Live (at the bottom) follows new output. Scrolled up stays on its content (ids are stable). Input snaps the engine
@@ -142,8 +145,9 @@ one `TerminalController` (Ghostty engine via `TerminalControllerFactory`) and th
 
 ## Selection
 
-- `TerminalSelection` holds two cells in row ids, so it survives output and scrolling. It is cleared when its start row
-  is evicted, when cols x rows change (rotation, resize, reflow) and on any key.
+- `TerminalSelection` holds two cells in row ids, so it survives output, scrolling and height changes (IME). It is
+  cleared when its start row is evicted, when the width changes (reflow), when the active screen switches
+  (`ScreenSnapshot.altScreen`: shell <-> vim) and on any key.
 - Long-press selects a word (letters, digits, `-_./~:@%+=#`, any non-ASCII; a wide character whole) and dragging
   extends the end. Two teardrop handles (start hangs below-left, end below-right) drag with the finger offset kept;
   they may cross (ends swap) and auto-scroll near the top/bottom edge, into scrollback.
@@ -152,7 +156,11 @@ one `TerminalController` (Ghostty engine via `TerminalControllerFactory`) and th
 - Text: `TerminalController.selectionText` calls `TerminalEngine.textRange` on the engine thread, so rows scrolled off
   screen are included; wide characters and grapheme clusters appear once, soft-wrapped rows join without a newline,
   line ends are trimmed. Static frame sources (previews) use the same rules on visible rows (`RowTextBuilder`).
-- Accessibility: the handles are virtual nodes ("Selection start handle", "Selection end handle").
+- Copy never writes an empty clip: if the start was evicted, the screen switched or the text is blank, a toast says
+  nothing was copied; engine failures are caught (cancellation is rethrown).
+- Accessibility: `ExploreByTouchHelper` (androidx.customview) exposes the handles as virtual views ("Selection start
+  handle", "Selection end handle") with hover and accessibility focus, and custom actions to move a handle to the
+  previous/next word or line.
 - "Copy screen text" in the terminal screen still copies the visible screen.
 
 ## Profiling
