@@ -6,10 +6,12 @@ import com.mtajchert.flocket.core.model.AgentState
 import com.mtajchert.flocket.core.model.AgentStatus
 import com.mtajchert.flocket.core.model.ConnectionState
 import com.mtajchert.flocket.core.model.Liveness
+import com.mtajchert.flocket.core.model.MachineState
 import com.mtajchert.flocket.core.model.TerminalAddress
 import com.mtajchert.flocket.core.model.TerminalRecord
 import com.mtajchert.flocket.core.model.TerminalSort
 import com.mtajchert.flocket.core.model.Workspace
+import com.mtajchert.flocket.core.model.WorkspaceSpace
 import com.mtajchert.flocket.core.model.buildWorkspace
 import com.mtajchert.flocket.core.session.SessionState
 import com.mtajchert.flocket.core.ui.error.toUiError
@@ -81,8 +83,12 @@ internal fun buildSections(
     controls: ListControls,
 ): List<MachineSection> {
     fun info(machine: String?) = machine?.let { name -> session.machines.firstOrNull { it.name == name } }
+    val online = session.connection is ConnectionState.Online
+
+    // A write goes out only to an online host and, for a federated space, to a connected machine.
+    fun canRename(machine: String?) = online && (machine == null || info(machine)?.state == MachineState.Connected)
     if (controls.sort == TerminalSort.Priority) {
-        val places = workspace.rowPlaces()
+        val places = workspace.rowPlaces(::canRename)
         return shown
             .groupBy { it.ref.address.machine }
             .entries
@@ -120,14 +126,34 @@ internal fun buildSections(
                     if (rows.isEmpty()) {
                         null
                     } else {
-                        tab to TabSection(tab.key, tab.name, rows.sortedByDescending { it.urgency }, tab.number)
+                        tab to
+                            TabSection(
+                                tab.key,
+                                tab.name,
+                                rows.sortedByDescending { it.urgency },
+                                tab.number,
+                                tab.layoutRef,
+                                canRename(space.machine),
+                            )
                     }
                 }
             if (tabs.isEmpty()) {
                 null
             } else {
                 val ordered = tabs.sortedByDescending { it.first.topState.rank() }.map { it.second }
-                space.machine to SpaceSection(space.key, space.name, subtitle, space.topState, ordered, space.number)
+                space.machine to
+                    SpaceSection(
+                        space.key,
+                        space.name,
+                        subtitle,
+                        space.topState,
+                        ordered,
+                        space.number,
+                        space.layoutRef,
+                        space.givenName,
+                        space.autoName(),
+                        canRename(space.machine),
+                    )
             }
         }
     val ordered = spaces.sortedByDescending { it.second.topState.rank() }
@@ -155,17 +181,33 @@ internal fun TerminalItem.bucket(): PriorityBucket {
     }
 }
 
-private fun Workspace.rowPlaces(): Map<TerminalAddress, RowPlace> {
+private fun Workspace.rowPlaces(canRename: (String?) -> Boolean): Map<TerminalAddress, RowPlace> {
     val places = HashMap<TerminalAddress, RowPlace>()
     for (space in spaces) {
         for (tab in space.tabs) {
             val place =
-                RowPlace(space.key, space.name, space.number, tab.key, tab.name, tab.number, space.tabs.size > 1)
+                RowPlace(
+                    space.key,
+                    space.name,
+                    space.number,
+                    tab.key,
+                    tab.name,
+                    tab.number,
+                    space.tabs.size > 1,
+                    space.layoutRef,
+                    tab.layoutRef,
+                    space.givenName,
+                    space.autoName(),
+                    canRename(space.machine),
+                )
             for (pane in tab.panes) places.putIfAbsent(pane, place)
         }
     }
     return places
 }
+
+/** The name the desktop shows for an unnamed space: its folder's last segment. */
+private fun WorkspaceSpace.autoName(): String = folder?.trimEnd('/')?.substringAfterLast('/').orEmpty()
 
 private fun String.endsWithSegment(name: String): Boolean = trimEnd('/').substringAfterLast('/') == name
 

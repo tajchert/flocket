@@ -8,16 +8,24 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.hasScrollToIndexAction
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.unit.dp
 import com.mtajchert.flocket.core.designsystem.theme.FlocketTheme
+import com.mtajchert.flocket.core.model.ConnectionState
 import com.mtajchert.flocket.core.model.HostId
+import com.mtajchert.flocket.core.model.LayoutRef
 import com.mtajchert.flocket.core.model.SpaceSource
 import com.mtajchert.flocket.core.model.TerminalAddress
 import com.mtajchert.flocket.core.model.TerminalSort
@@ -186,5 +194,143 @@ class TerminalsComposeTest {
         rule.onNodeWithText("No terminals yet").assertIsDisplayed()
         rule.onNodeWithText("Start a terminal").performClick()
         assertTrue(started)
+    }
+
+    // ---- rename -------------------------------------------------------------------------------
+
+    private val studio = HostId("studio")
+    private val refA = LayoutRef(null, "a")
+
+    /** A desktop space with two tabs (one named), and a folder space whose tabs have no layout. */
+    private val renameWorkspace =
+        Workspace(
+            listOf(
+                WorkspaceSpace(
+                    "desktop:a",
+                    "Flocket",
+                    null,
+                    SpaceSource.Desktop,
+                    null,
+                    listOf(
+                        WorkspaceTab(
+                            "1",
+                            "agents",
+                            listOf(TerminalAddress("t1")),
+                            null,
+                            null,
+                            1,
+                            LayoutRef(null, "a", "ta1"),
+                        ),
+                        WorkspaceTab(
+                            "2",
+                            "",
+                            listOf(TerminalAddress("t2")),
+                            null,
+                            null,
+                            2,
+                            LayoutRef(null, "a", "ta2"),
+                        ),
+                    ),
+                    null,
+                    1,
+                    refA,
+                    "Flocket",
+                ),
+                WorkspaceSpace(
+                    "folder::/x",
+                    "x",
+                    "/x",
+                    SpaceSource.Folder,
+                    null,
+                    listOf(
+                        WorkspaceTab("b1", "first", listOf(TerminalAddress("t3")), null, null, 1),
+                        WorkspaceTab("b2", "second", listOf(TerminalAddress("t4")), null, null, 2),
+                    ),
+                    null,
+                    2,
+                ),
+            ),
+        )
+
+    private fun renameState(sort: TerminalSort) =
+        buildUiState(SampleData.overview.take(1), ListControls(sort = sort), refreshing = false) { renameWorkspace }
+
+    @Test
+    fun `long-press on a desktop space header opens rename prefilled with its given name`() {
+        var asked: List<Any?>? = null
+        show(
+            renameState(TerminalSort.Grouped),
+            TerminalsActions(onRename = { host, ref, current, placeholder ->
+                asked =
+                    listOf(host, ref, current, placeholder)
+            }),
+        )
+        rule.onNodeWithText("Flocket").performTouchInput { longClick() }
+        assertEquals(listOf<Any?>(studio, refA, "Flocket", "Space 1"), asked)
+        asked = null
+        rule.onNodeWithText("agents").performTouchInput { longClick() }
+        assertEquals(listOf<Any?>(studio, LayoutRef(null, "a", "ta1"), "agents", "1"), asked)
+    }
+
+    @Test
+    fun `no rename on a folder space or the implicit tab`() {
+        var asked = 0
+        show(renameState(TerminalSort.Grouped), TerminalsActions(onRename = { _, _, _, _ -> asked++ }))
+        rule.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("first"))
+        rule.onNodeWithText("first").performTouchInput { longClick() }
+        rule.onNodeWithText("second").performTouchInput { longClick() }
+        // Last: without a long-press action the header just toggles collapse on release.
+        rule.onNodeWithText("x").performTouchInput { longClick() }
+        assertEquals(0, asked)
+    }
+
+    @Test
+    fun `priority row overflow has Rename tab and Rename space only when refs exist`() {
+        val state = renameState(TerminalSort.Priority)
+        val addresses =
+            state.groups
+                .first()
+                .sections
+                .first()
+                .items
+                .map { it.address }
+        val actionButtons = hasContentDescription("Actions for", substring = true)
+        var asked = mutableListOf<LayoutRef>()
+        show(state, TerminalsActions(onRename = { _, ref, _, _ -> asked += ref }))
+
+        rule.onAllNodes(actionButtons)[addresses.indexOf("t1")].performClick()
+        rule.onNodeWithText("Rename tab…").performClick()
+        rule.onAllNodes(actionButtons)[addresses.indexOf("t1")].performClick()
+        rule.onNodeWithText("Rename space…").performClick()
+        assertEquals(listOf(LayoutRef(null, "a", "ta1"), refA), asked)
+
+        rule.onAllNodes(actionButtons)[addresses.indexOf("t3")].performClick()
+        rule.onNodeWithText("Kill…").assertIsDisplayed()
+        rule.onAllNodesWithText("Rename tab…").assertCountEquals(0)
+        rule.onAllNodesWithText("Rename space…").assertCountEquals(0)
+    }
+
+    @Test
+    fun `rename entries are disabled while the host is stale`() {
+        val offline =
+            SampleData.overview.first().let {
+                it.copy(
+                    session = it.session.copy(connection = ConnectionState.Idle),
+                )
+            }
+        val stale = buildUiState(listOf(offline), ListControls(), false) { renameWorkspace }
+        val addresses =
+            stale.groups
+                .first()
+                .sections
+                .first()
+                .items
+                .map { it.address }
+        var asked = 0
+        show(stale, TerminalsActions(onRename = { _, _, _, _ -> asked++ }))
+        rule.onAllNodes(hasContentDescription("Actions for", substring = true))[addresses.indexOf("t1")].performClick()
+        rule.onNodeWithText("Rename tab…").assertIsNotEnabled()
+        rule.onNodeWithText("Rename space…").assertIsNotEnabled()
+        assertEquals(0, asked)
     }
 }

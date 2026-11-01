@@ -77,8 +77,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.mtajchert.flocket.core.model.AgentStatus
 import com.mtajchert.flocket.core.model.ConnectionState
+import com.mtajchert.flocket.core.model.LayoutRef
 import com.mtajchert.flocket.core.ui.component.AgentStatusChip
 import com.mtajchert.flocket.core.ui.component.ConnectionStateBadge
+import com.mtajchert.flocket.core.ui.component.RenameDialog
 import com.mtajchert.flocket.core.ui.error.asString
 import com.mtajchert.flocket.core.ui.nav.LocalPaneLayout
 import com.mtajchert.flocket.core.ui.nav.LocalSidebarToggle
@@ -90,6 +92,11 @@ data class TerminalActions(
     val onBack: () -> Unit = {},
     /** Open another terminal of the same host (tab strip). */
     val onOpenTerminal: (address: String) -> Unit = {},
+    /** Rename a tab of the strip: its desktop tab, current given name, automatic name. */
+    val onRenameTab: (LayoutRef, String, String) -> Unit = { _, _, _ -> },
+    val onRenameChange: (String) -> Unit = {},
+    val onRenameSave: () -> Unit = {},
+    val onRenameDismiss: () -> Unit = {},
     val onFit: () -> Unit = {},
     val onPaste: () -> Unit = {},
     val onCopy: () -> Unit = {},
@@ -139,7 +146,11 @@ fun TerminalScreen(
                 .consumeWindowInsets(inner)
                 .imePadding(),
         ) {
-            if (stripVisible && tabStrip != null) TerminalTabStrip(tabStrip, actions.onOpenTerminal)
+            if (stripVisible &&
+                tabStrip != null
+            ) {
+                TerminalTabStrip(tabStrip, actions.onOpenTerminal, onRename = actions.onRenameTab)
+            }
             if (state.freshShell) {
                 StateBanner(
                     icon = Icons.Outlined.Info,
@@ -178,6 +189,16 @@ fun TerminalScreen(
         }
     }
 
+    state.rename?.let { r ->
+        RenameDialog(
+            isTab = true,
+            text = r.text,
+            placeholder = r.placeholder,
+            onTextChange = actions.onRenameChange,
+            onSave = actions.onRenameSave,
+            onDismiss = actions.onRenameDismiss,
+        )
+    }
     if (state.confirmKill) {
         AlertDialog(
             onDismissRequest = actions.onDismissKill,

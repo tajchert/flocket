@@ -177,6 +177,10 @@ fun TerminalRouteContent(
             TerminalActions(
                 onBack = { close() },
                 onOpenTerminal = { openTerminal(it) },
+                onRenameTab = viewModel::requestRename,
+                onRenameChange = viewModel::updateRename,
+                onRenameSave = viewModel::confirmRename,
+                onRenameDismiss = viewModel::dismissRename,
                 onFit = viewModel::fitToScreen,
                 onPaste = {
                     val text =

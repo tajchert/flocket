@@ -9,6 +9,7 @@ import com.mtajchert.flocket.core.data.UserPreferences
 import com.mtajchert.flocket.core.model.ConnectionState
 import com.mtajchert.flocket.core.model.CoreInfo
 import com.mtajchert.flocket.core.model.HostId
+import com.mtajchert.flocket.core.model.LayoutRef
 import com.mtajchert.flocket.core.model.MachineState
 import com.mtajchert.flocket.core.model.TerminalSort
 import com.mtajchert.flocket.core.session.SendReceipt
@@ -20,6 +21,7 @@ import com.mtajchert.flocket.core.testing.FakeHostSettingsRepository
 import com.mtajchert.flocket.core.testing.FakePreferencesRepository
 import com.mtajchert.flocket.core.testing.MainDispatcherRule
 import com.mtajchert.flocket.core.testing.SampleData
+import com.mtajchert.flocket.core.ui.error.UiText
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
@@ -33,6 +35,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
+import com.mtajchert.flocket.core.ui.R as UiR
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class TerminalsViewModelTest {
@@ -461,5 +464,91 @@ class TerminalsViewModelTest {
             )
             vm.onHostAction(studio, com.mtajchert.flocket.core.ui.error.UiErrorAction.Retry)
             assertTrue(studio in m.connectRequests)
+        }
+
+    // ---- rename -------------------------------------------------------------------------------
+
+    private val spaceRef = LayoutRef(null, "s1")
+    private val tabRef = LayoutRef(null, "s1", "tb1")
+    private val rohanRef = LayoutRef("rohan", "rs1")
+
+    private suspend fun TestScope.renameWith(
+        ref: LayoutRef,
+        host: HostId = studio,
+        text: String = "new",
+        handler: suspend (LayoutRef, String) -> AppResult<Unit>,
+    ): List<TerminalsEvent> {
+        val m = manager()
+        m.fakeSession(host)!!.renameHandler = handler
+        val vm = vm(m)
+        val events = mutableListOf<TerminalsEvent>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.events.collect { events += it } }
+        vm.requestRename(host, ref, "old", "auto")
+        vm.updateRename(text)
+        vm.confirmRename()
+        advanceUntilIdle()
+        return events
+    }
+
+    @Test
+    fun `rename calls renameInLayout with the ref and trimmed text`() =
+        runTest {
+            val m = manager()
+            val session = m.fakeSession(studio)!!
+            session.renameHandler = { _, _ -> AppResult.Success(Unit) }
+            val vm = vm(m)
+            vm.requestRename(studio, tabRef, "old", "2")
+            assertEquals(TerminalDialog.Rename(studio, tabRef, "old", "2"), vm.dialog.value)
+            vm.updateRename("  build  ")
+            vm.confirmRename()
+            advanceUntilIdle()
+            assertNull(vm.dialog.value)
+            assertEquals(listOf("rename:null:s1:tb1:build"), session.calls.filter { it.startsWith("rename:") })
+        }
+
+    @Test
+    fun `rename errors map to the exact messages`() =
+        runTest {
+            fun text(events: List<TerminalsEvent>) = (events.single() as TerminalsEvent.Info).text as UiText.Res
+
+            var e = renameWith(tabRef) { _, _ -> AppResult.Failure(AppError.Rpc(AppError.Rpc.CONFLICT, "x")) }
+            assertEquals(UiR.string.rename_error_conflict, text(e).id)
+            e = renameWith(tabRef) { _, _ -> AppResult.Failure(AppError.Rpc(AppError.Rpc.NOT_FOUND, "x")) }
+            assertEquals(UiR.string.rename_error_gone_tab, text(e).id)
+            e = renameWith(spaceRef) { _, _ -> AppResult.Failure(AppError.Rpc(AppError.Rpc.NOT_FOUND, "x")) }
+            assertEquals(UiR.string.rename_error_gone_space, text(e).id)
+            e = renameWith(rohanRef) { _, _ -> AppResult.Failure(AppError.Rpc(AppError.Rpc.UNAVAILABLE, "x")) }
+            assertEquals(UiR.string.rename_error_unreachable, text(e).id)
+            assertEquals(listOf<Any>("rohan"), text(e).args)
+            e = renameWith(rohanRef) { _, _ -> AppResult.Failure(AppError.Rpc("needs_update", "x")) }
+            assertEquals(listOf<Any>("rohan"), text(e).args)
+            e = renameWith(spaceRef) { _, _ -> AppResult.Failure(AppError.ConnectionLost) }
+            assertEquals(UiR.string.rename_error_unreachable, text(e).id)
+            assertEquals(listOf<Any>(SampleData.studio.label), text(e).args)
+            e = renameWith(spaceRef) { _, _ -> AppResult.Failure(AppError.OutcomeUnknown("doc.set")) }
+            assertEquals(UiR.string.rename_outcome_unknown, text(e).id)
+            // Anything else uses the generic failure path.
+            e = renameWith(spaceRef) { _, _ -> AppResult.Failure(AppError.Rpc(AppError.Rpc.UNAVAILABLE, "x")) }
+            assertTrue(e.single() is TerminalsEvent.Failure)
+        }
+
+    @Test
+    fun `rename is not offered while the host is stale or the machine is not connected`() =
+        runTest {
+            val m = manager()
+            val session = m.fakeSession(hetzner)!!
+            val vm = vm(m)
+            vm.events.test {
+                vm.requestRename(hetzner, spaceRef, "old", "auto")
+                assertTrue(awaitItem() is TerminalsEvent.Info)
+            }
+            assertNull(vm.dialog.value)
+            assertTrue(session.calls.none { it.startsWith("rename:") })
+            // A federated space whose machine is not in the connected state is refused too.
+            vm.events.test {
+                vm.requestRename(studio, LayoutRef("ghost", "gs"), "old", "auto")
+                assertTrue(awaitItem() is TerminalsEvent.Info)
+            }
+            assertNull(vm.dialog.value)
         }
 }

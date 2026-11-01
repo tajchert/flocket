@@ -10,6 +10,7 @@ import com.mtajchert.flocket.core.data.UserPreferences
 import com.mtajchert.flocket.core.model.BellMode
 import com.mtajchert.flocket.core.model.ClipboardWritePolicy
 import com.mtajchert.flocket.core.model.ConnectionState
+import com.mtajchert.flocket.core.model.LayoutRef
 import com.mtajchert.flocket.core.model.Liveness
 import com.mtajchert.flocket.core.model.TerminalAddress
 import com.mtajchert.flocket.core.model.TerminalColorScheme
@@ -26,6 +27,7 @@ import com.mtajchert.flocket.core.testing.FakePreferencesRepository
 import com.mtajchert.flocket.core.testing.FakeTerminalStream
 import com.mtajchert.flocket.core.testing.MainDispatcherRule
 import com.mtajchert.flocket.core.testing.SampleData
+import com.mtajchert.flocket.core.ui.error.UiText
 import com.mtajchert.flocket.feature.terminal.api.TerminalRoute
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -44,6 +46,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
+import com.mtajchert.flocket.core.ui.R as UiR
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class TerminalViewModelTest {
@@ -494,5 +497,72 @@ class TerminalViewModelTest {
             val vm = viewModel(preferences = prefs)
             vm.onClipboardWriteRequest("x")
             assertNull(vm.uiState.value.clipboardRequest)
+        }
+
+    // ---- rename -------------------------------------------------------------------------------
+
+    private val tabRef = LayoutRef(null, "s1", "tb1")
+
+    @Test
+    fun `rename writes the trimmed name and reports a conflict with the exact message`() =
+        runTest {
+            goOnline()
+            session.renameHandler = { _, _ -> AppResult.Failure(AppError.Rpc(AppError.Rpc.CONFLICT, "x")) }
+            val vm = viewModel()
+            vm.requestRename(tabRef, "old", "2")
+            assertEquals(RenameUi(tabRef, "2", "old"), vm.uiState.value.rename)
+            vm.updateRename("  build ")
+            vm.confirmRename()
+            advanceUntilIdle()
+            assertNull(vm.uiState.value.rename)
+            assertEquals(listOf("rename:null:s1:tb1:build"), session.calls.filter { it.startsWith("rename:") })
+            assertEquals(
+                TerminalScreenEvent.Message(UiText.Res(UiR.string.rename_error_conflict)),
+                vm.events.first(),
+            )
+        }
+
+    @Test
+    fun `rename maps gone, unknown outcome and a lost connection`() =
+        runTest {
+            goOnline()
+            val vm = viewModel()
+
+            suspend fun fail(error: AppError): TerminalScreenEvent {
+                session.renameHandler = { _, _ -> AppResult.Failure(error) }
+                vm.requestRename(tabRef, "", "2")
+                vm.confirmRename()
+                advanceUntilIdle()
+                return vm.events.first()
+            }
+            assertEquals(
+                TerminalScreenEvent.Message(UiText.Res(UiR.string.rename_error_gone_tab)),
+                fail(AppError.Rpc(AppError.Rpc.NOT_FOUND, "x")),
+            )
+            assertEquals(
+                TerminalScreenEvent.Message(UiText.Res(UiR.string.rename_outcome_unknown)),
+                fail(AppError.OutcomeUnknown("doc.set")),
+            )
+            assertEquals(
+                TerminalScreenEvent.Message(
+                    UiText.Res(UiR.string.rename_error_unreachable, listOf(SampleData.studio.label)),
+                ),
+                fail(AppError.ConnectionLost),
+            )
+        }
+
+    @Test
+    fun `rename is refused while the host is not online`() =
+        runTest {
+            val vm = viewModel() // studio starts Idle
+            vm.requestRename(tabRef, "old", "2")
+            assertNull(vm.uiState.value.rename)
+            assertTrue(session.calls.none { it.startsWith("rename:") })
+            assertEquals(
+                TerminalScreenEvent.Message(
+                    UiText.Res(UiR.string.rename_error_unreachable, listOf(SampleData.studio.label)),
+                ),
+                vm.events.first(),
+            )
         }
 }

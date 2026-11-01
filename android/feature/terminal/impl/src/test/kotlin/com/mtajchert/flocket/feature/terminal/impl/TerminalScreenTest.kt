@@ -6,15 +6,18 @@ import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.mtajchert.flocket.core.designsystem.theme.FlocketTheme
 import com.mtajchert.flocket.core.model.AgentState
 import com.mtajchert.flocket.core.model.ConnectionState
+import com.mtajchert.flocket.core.model.LayoutRef
 import com.mtajchert.flocket.core.testing.SampleData
 import com.mtajchert.flocket.core.ui.nav.LocalPaneLayout
 import com.mtajchert.flocket.core.ui.nav.LocalSidebarToggle
@@ -57,6 +60,10 @@ class TerminalScreenTest {
             onRemove = { clicks += "remove" },
             onReattach = { clicks += "reattach" },
             onClipboardAnswer = { clicks += "clipboard:$it" },
+            onRenameTab = { ref, current, placeholder -> clicks += "rename:${ref.tabId}:$current:$placeholder" },
+            onRenameChange = { clicks += "text:$it" },
+            onRenameSave = { clicks += "save" },
+            onRenameDismiss = { clicks += "cancelRename" },
         )
 
     private fun show(state: TerminalUiState) =
@@ -160,6 +167,42 @@ class TerminalScreenTest {
         ) {
             FlocketTheme(dynamicColor = false) { TerminalScreen(live, actions, tabStrip = tabStrip) { Box(it) } }
         }
+    }
+
+    @Test
+    fun `strip tab long-press opens rename, and only for tabs that have a layout ref`() {
+        val renamable =
+            TabStripUi(
+                tabs =
+                    listOf(
+                        StripTab(
+                            "a",
+                            "server",
+                            null,
+                            selected = true,
+                            target = "t1",
+                            layoutRef = LayoutRef(null, "s", "ta"),
+                        ),
+                        StripTab("b", "", AgentState.Working, selected = false, target = "t2", number = 2),
+                    ),
+                panes = emptyList(),
+            )
+        showMulti(sidebarVisible = true, tabStrip = renamable)
+        compose.onAllNodes(hasTestTag("terminal_tab"))[1].performTouchInput { longClick() }
+        assertEquals(listOf("open:t2"), clicks) // no layout ref: long-press is just a tap
+        clicks.clear()
+        compose.onAllNodes(hasTestTag("terminal_tab"))[0].performTouchInput { longClick() }
+        assertEquals(listOf("rename:ta:server:1"), clicks)
+    }
+
+    @Test
+    fun `rename dialog edits, saves with the keyboard action and cancels`() {
+        show(live.copy(rename = RenameUi(LayoutRef(null, "s", "ta"), "1", "old")))
+        compose.onNodeWithText("Rename tab").assertExists()
+        compose.onNodeWithText("Leave empty to use “1”").assertExists()
+        compose.onNodeWithText("Save").performClick()
+        compose.onNodeWithText("Cancel").performClick()
+        assertEquals(listOf("save", "cancelRename"), clicks)
     }
 
     @Test

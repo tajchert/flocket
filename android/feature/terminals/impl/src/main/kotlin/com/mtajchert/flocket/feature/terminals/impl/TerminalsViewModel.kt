@@ -11,6 +11,7 @@ import com.mtajchert.flocket.core.data.PreferencesRepository
 import com.mtajchert.flocket.core.model.ConnectionState
 import com.mtajchert.flocket.core.model.CoreInfo
 import com.mtajchert.flocket.core.model.HostId
+import com.mtajchert.flocket.core.model.LayoutRef
 import com.mtajchert.flocket.core.model.MachineState
 import com.mtajchert.flocket.core.model.TerminalAddress
 import com.mtajchert.flocket.core.model.TerminalPreferences
@@ -21,6 +22,7 @@ import com.mtajchert.flocket.core.session.RunRequest
 import com.mtajchert.flocket.core.ui.error.UiError
 import com.mtajchert.flocket.core.ui.error.UiErrorAction
 import com.mtajchert.flocket.core.ui.error.UiText
+import com.mtajchert.flocket.core.ui.error.toRenameText
 import com.mtajchert.flocket.core.ui.error.toUiError
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.channels.Channel
@@ -244,6 +246,56 @@ class TerminalsViewModel
                 this is AppError.Rpc && kind == AppError.Rpc.BLOCKED -> SendPhase.Blocked(message)
                 else -> SendPhase.Failed(toUiError())
             }
+
+        // ---- rename -----------------------------------------------------------------------------
+
+        /** Opens the rename dialog for a desktop space or tab; refused while the host or machine is not reachable. */
+        fun requestRename(
+            hostId: HostId,
+            ref: LayoutRef,
+            current: String,
+            placeholder: String,
+        ) {
+            val overview = connectionManager.overview.value.firstOrNull { it.host.id == hostId }
+            val machine = ref.machine?.let { name -> overview?.session?.machines?.firstOrNull { it.name == name } }
+            val reachable =
+                overview?.session?.connection is ConnectionState.Online &&
+                    (ref.machine == null || machine?.state == MachineState.Connected)
+            if (!reachable) {
+                send(TerminalsEvent.Info(UiText.Res(R.string.msg_read_only)))
+                return
+            }
+            dialogState.value = TerminalDialog.Rename(hostId, ref, current, placeholder)
+        }
+
+        fun updateRename(text: String) {
+            dialogState.update { d -> if (d is TerminalDialog.Rename) d.copy(text = text) else d }
+        }
+
+        /** Writes the name (an empty one returns the space or tab to its automatic name). Never resent on a drop. */
+        fun confirmRename() {
+            val d = dialogState.value as? TerminalDialog.Rename ?: return
+            dialogState.value = null
+            val hostLabel =
+                connectionManager.overview.value
+                    .firstOrNull { it.host.id == d.hostId }
+                    ?.host
+                    ?.label
+                    .orEmpty()
+            viewModelScope.launch {
+                val session = connectionManager.session(d.hostId)
+                val result = session?.renameInLayout(d.ref, d.text.trim()) ?: AppResult.Failure(AppError.ConnectionLost)
+                if (result is AppResult.Failure) {
+                    val text = result.error.toRenameText(d.ref, hostLabel)
+                    send(
+                        when {
+                            text != null -> TerminalsEvent.Info(text)
+                            else -> TerminalsEvent.Failure(result.error.toUiError())
+                        },
+                    )
+                }
+            }
+        }
 
         // ---- new terminal -----------------------------------------------------------------------
 

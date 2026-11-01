@@ -5,6 +5,7 @@ import com.mtajchert.flocket.core.model.AgentState
 import com.mtajchert.flocket.core.model.AgentStatus
 import com.mtajchert.flocket.core.model.ConnectionState
 import com.mtajchert.flocket.core.model.HostId
+import com.mtajchert.flocket.core.model.LayoutRef
 import com.mtajchert.flocket.core.model.MachineState
 import com.mtajchert.flocket.core.model.TerminalRef
 import com.mtajchert.flocket.core.model.TerminalSort
@@ -78,6 +79,16 @@ data class RowPlace(
     val tabNumber: Int,
     /** False when the space has a single tab: the place is then just the space. */
     val showTab: Boolean,
+    /** The desktop space this row's space is, if it is one (rename target). */
+    val spaceRef: LayoutRef? = null,
+    /** The desktop tab this row's tab is, if it is one (rename target). */
+    val tabRef: LayoutRef? = null,
+    /** The desktop's own name of the space, blank when unnamed. */
+    val spaceGivenName: String = "",
+    /** What the space is called when its given name is empty: its folder's name; blank = "Space N". */
+    val spaceAutoName: String = "",
+    /** Renaming is possible right now: the host is online and, for a federated space, so is its machine. */
+    val canRename: Boolean = false,
 ) {
     companion object {
         /** A terminal the workspace does not place (should not happen): no place line is shown. */
@@ -111,6 +122,14 @@ data class SpaceSection(
     val tabs: List<TabSection>,
     /** 1-based place in the workspace; names the space "Space N" when [name] is blank. */
     val number: Int = 1,
+    /** The desktop space this is, if it is one (rename target). */
+    val layoutRef: LayoutRef? = null,
+    /** The desktop's own name, blank when unnamed ([name] may be the folder's name then). */
+    val givenName: String = "",
+    /** What the space is called when its given name is empty: its folder's name; blank = "Space N". */
+    val autoName: String = "",
+    /** Renaming is possible right now: the host is online and, for a federated space, so is its machine. */
+    val canRename: Boolean = false,
 ) {
     val count: Int get() = tabs.sumOf { it.items.size }
     val items: List<TerminalItem> get() = tabs.flatMap { it.items }
@@ -126,6 +145,8 @@ data class TabSection(
     val items: List<TerminalItem>,
     /** 1-based place in its space; names the tab "Tab N" when [name] is blank. */
     val number: Int = 1,
+    val layoutRef: LayoutRef? = null,
+    val canRename: Boolean = false,
 )
 
 @Immutable
@@ -173,6 +194,15 @@ sealed interface TerminalDialog {
 
     data class NewTerminal(
         val form: NewTerminalForm,
+    ) : TerminalDialog
+
+    /** Rename a desktop space or tab ([ref].tabId set). [placeholder] is the automatic name shown when empty. */
+    data class Rename(
+        val hostId: HostId,
+        val ref: LayoutRef,
+        val current: String,
+        val placeholder: String,
+        val text: String = current,
     ) : TerminalDialog
 }
 

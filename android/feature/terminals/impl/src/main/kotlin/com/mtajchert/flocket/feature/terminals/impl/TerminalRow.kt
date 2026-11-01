@@ -9,6 +9,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
@@ -19,6 +20,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CloudOff
 import androidx.compose.material.icons.outlined.DeleteSweep
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.HourglassEmpty
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.OpenInNew
@@ -52,6 +54,7 @@ import com.mtajchert.flocket.core.model.AgentStatus
 import com.mtajchert.flocket.core.model.BlockKind
 import com.mtajchert.flocket.core.ui.component.AgentIcon
 import com.mtajchert.flocket.core.ui.component.AgentStatusChip
+import com.mtajchert.flocket.core.ui.R as CoreUiR
 
 /** One terminal. Tap opens it; long-press or the overflow button opens the action menu. */
 @OptIn(ExperimentalLayoutApi::class, ExperimentalFoundationApi::class)
@@ -65,6 +68,8 @@ internal fun TerminalRow(
     dense: Boolean = false,
     /** Priority mode: where the terminal lives ("Space · Tab"), shown under it. */
     place: String? = null,
+    /** Priority mode: the row's space and tab, for the rename entries. */
+    placeInfo: RowPlace? = null,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     val scheme = MaterialTheme.colorScheme
@@ -97,7 +102,7 @@ internal fun TerminalRow(
                 IconButton(onClick = { menuOpen = true }, modifier = if (dense) Modifier.size(40.dp) else Modifier) {
                     Icon(Icons.Outlined.MoreVert, contentDescription = stringResource(R.string.row_actions, label))
                 }
-                RowMenu(menuOpen, { menuOpen = false }, item, actions)
+                RowMenu(menuOpen, { menuOpen = false }, item, actions, placeInfo)
             }
         }
     }
@@ -323,6 +328,7 @@ private fun RowMenu(
     onDismiss: () -> Unit,
     item: TerminalItem,
     actions: TerminalsActions,
+    placeInfo: RowPlace?,
 ) {
     fun run(action: (TerminalItem) -> Unit): () -> Unit =
         {
@@ -343,6 +349,7 @@ private fun RowMenu(
             onClick = run(actions.onOpen),
             leadingIcon = { Icon(Icons.Outlined.OpenInNew, contentDescription = null) },
         )
+        if (placeInfo != null) RenameItems(item, placeInfo, actions, onDismiss)
         if (item.isFinished) {
             DropdownMenuItem(
                 text = { Text(stringResource(R.string.action_remove)) },
@@ -376,5 +383,40 @@ private fun RowMenu(
                 },
             )
         }
+    }
+}
+
+/** "Rename tab…" and "Rename space…" for rows that live in a desktop layout; disabled while unreachable. */
+@Composable
+private fun ColumnScope.RenameItems(
+    item: TerminalItem,
+    place: RowPlace,
+    actions: TerminalsActions,
+    onDismiss: () -> Unit,
+) {
+    val enabled = item.writable && place.canRename
+    place.tabRef?.let { ref ->
+        val fallback = stringResource(R.string.workspace_tab_fallback, place.tabNumber)
+        DropdownMenuItem(
+            text = { Text(stringResource(CoreUiR.string.menu_rename_tab)) },
+            onClick = {
+                onDismiss()
+                actions.onRename(item.hostId, ref, place.tabName, fallback)
+            },
+            enabled = enabled,
+            leadingIcon = { Icon(Icons.Outlined.Edit, contentDescription = null) },
+        )
+    }
+    place.spaceRef?.let { ref ->
+        val auto = place.spaceAutoName.ifBlank { stringResource(R.string.workspace_space_fallback, place.spaceNumber) }
+        DropdownMenuItem(
+            text = { Text(stringResource(CoreUiR.string.menu_rename_space)) },
+            onClick = {
+                onDismiss()
+                actions.onRename(item.hostId, ref, place.spaceGivenName, auto)
+            },
+            enabled = enabled,
+            leadingIcon = { Icon(Icons.Outlined.Edit, contentDescription = null) },
+        )
     }
 }
