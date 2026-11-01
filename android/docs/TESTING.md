@@ -17,6 +17,7 @@ This file is the canonical home of the verification commands. Run them from `and
 
 Real `hc` tests use an isolated session (`--session flocket-test-<random>` or `HC_SESSION`), stop it in teardown, and never touch the developer's default session.
 On macOS, start the `hc` child with `TMPDIR=/tmp`: the default per-user `TMPDIR` makes the core's socket path longer than the 103-byte Unix socket limit and `hc connect` fails (`RealCoreIntegrationTest` passes it through `ProcessTransport(environment = ...)`).
+Slow real-core measurements are skipped unless `FLOCKET_SLOW=1` is set, for example the federated transfer stall over a throttled link (recorded in ADR-0007): `FLOCKET_SLOW=1 ./gradlew :core:session:test --tests '*TransferRealCoreIntegrationTest*' --rerun -i | grep FederatedTransferStall`.
 
 ## Commands
 

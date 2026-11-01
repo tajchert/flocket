@@ -91,24 +91,44 @@ Known follow-ups:
 
 ---
 
-## M3: Send files to the host
+## M3: Files between phone and host (done, 2026-11-01)
 
-**Goal:** give an agent a screenshot, photo or file from the phone.
+**Goal:** give an agent a screenshot, photo or file from the phone, and see the files an
+agent wants to show you.
 
-**Scope:**
+Design: [`design/2026-11-01-paste-files-share.md`](design/2026-11-01-paste-files-share.md).
+Decision: [ADR-0007](decisions/0007-transfer-connection-and-agent-shares.md). Wire facts:
+SPEC §4.17–§4.20 and §9.2.
 
-- Use `terminal.put` to upload a file of up to 8 MB next to a terminal. It returns `{path, bytes}`.
-- Then optionally type the returned path into the terminal, which is the "image paste for agents" flow.
-- Flocket appears in the Android share sheet, and picking a terminal is a step of the share flow.
-- Uploads are at most once: a dropped connection shows "may not have been uploaded" and offers a manual retry.
-- There is a size check before upload, and progress plus cancel while it runs.
+- **Paste an image or file:** the terminal's Paste… menu, Ctrl+V or a two-finger tap with
+  an image on the clipboard, the photo picker or the file picker. `terminal.put` uploads up
+  to 8 MB next to the terminal, then the app types the returned, shell-escaped path.
+- **Send a file to a folder:** `file.write` to the terminal's folder, with a check for an
+  existing file and an explicit Replace.
+- **Agent shares:** an agent runs `flocket-share PATH…` (`protocol/tools/`). The app watches
+  the `flocket-share` document on the host and on every federated machine, shows a card on
+  the matching terminal and a "Shared files" list, and opens a viewer with image and text
+  previews, Save, Share and "Paste path into terminal".
+- **Install the helper:** host settings install `flocket-share` on the host and its
+  federated machines and copy the agent instruction.
+- Transfers run on their own connection, so terminals keep streaming while a file moves.
+  Uploads are at most once: a dropped connection shows "may not have been uploaded".
 
-**Start here:**
+Known limits and what is left:
 
-- Spec: SPEC §4 and §4.16, where `terminal.put` is listed as optional and must be capability-gated through the `hello` methods. Before coding, record a fixture and refresh `protocol/SPEC.md`.
-- RPC client: `android/core/protocol/src/main/kotlin/com/mtajchert/flocket/core/protocol/CoreConnection.kt` and `dto/`. Method constants live in `android/core/model/.../Core.kt` (`CoreInfo`).
-- Session API: `android/core/session/.../CoreSession.kt`. Add a `put` call that returns `AppResult`, with `OutcomeUnknown` when the connection drops after the upload was sent.
-- UI: the terminal screen `android/feature/terminal/impl/.../TerminalScreen.kt` and `TerminalViewModel.kt`. The share target goes in `android/app/src/main/AndroidManifest.xml`, plus a new picker entry in `android/feature/terminals`.
+- **Federated transfers stall that machine's terminals** on a slow link, for the whole
+  transfer (measurements in ADR-0007 §4). Lower the cap for remote machines or send large
+  remote files in chunks.
+- **Files over 8 MB:** needs chunked `file.write` and a chunked read on the core, or a
+  ranged `cat`.
+- **Share into Flocket from the Android share sheet:** a share target in
+  `android/app/src/main/AndroidManifest.xml` that picks a terminal and reuses
+  `TerminalTransfers` in `android/feature/terminal/impl/.../transfer/`.
+- **Push for shares:** a share made while the app is closed is only seen on the next
+  connection. It belongs with M2's push decision.
+- **Web preview:** see M5.
+- Leaving the terminal during an upload cancels it without reporting the possibly unknown
+  outcome. Downloads show indeterminate progress.
 
 ---
 
@@ -146,7 +166,7 @@ Write the research up in `docs/reference/` before you design anything.
 1. **Web preview:** forward a port on the host over the existing SSH connection, for example a dev server on `localhost:5173`, and open it in a Custom Tab or WebView.
    - Forwarding binds to loopback only.
    - The user starts and stops each forward and can see which forwards are active.
-2. **Image preview:** for files an agent creates, through `file.read`. That method is not yet in the app's method list, so first check what the spec says about it.
+2. **Image preview:** for files an agent creates, read through `machine.exec` (`cat`, SPEC §4.20), the way M3's share viewer downloads them. `file.read` (§4.19) returns text only, so it is not used for images.
 3. **Later:** streaming an emulator or the screen, and casting. Each needs its own design.
 
 **Start here:**
