@@ -131,16 +131,29 @@ kover {
 // =============================================================================
 // `./gradlew spotlessApply` before every commit; `spotlessCheck` runs in CI.
 // Style options (line length, Composable function naming) live in .editorconfig.
+// Targets are file trees with the excludes inside them, so Gradle prunes build/ and other output
+// folders while walking. With `target` + `targetExclude` it walks into them first, and a test task
+// rewriting build/intermediates at the same time fails spotlessCheck with "Could not read path".
+val spotlessExcludes = listOf("**/build/**", "**/generated/**", "**/.gradle/**", "**/.kotlin/**")
+
 spotless {
     kotlin {
-        target("**/*.kt")
-        targetExclude("**/build/**", "**/generated/**")
+        target(
+            fileTree(rootDir) {
+                include("**/*.kt")
+                exclude(spotlessExcludes)
+            },
+        )
         ktlint(libs.versions.ktlint.get())
             .customRuleSets(listOf("io.nlopez.compose.rules:ktlint:${libs.versions.composeRulesKtlint.get()}"))
     }
     kotlinGradle {
-        target("**/*.gradle.kts")
-        targetExclude("**/build/**")
+        target(
+            fileTree(rootDir) {
+                include("**/*.gradle.kts")
+                exclude(spotlessExcludes)
+            },
+        )
         ktlint(libs.versions.ktlint.get())
     }
 }
