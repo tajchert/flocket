@@ -72,4 +72,51 @@ class HcLocatorTest {
         assertEquals("'it'\\''s'", ShellQuote.quote("it's"))
         assertEquals("/a/hc connect --session 'a b'", ShellQuote.join(listOf("/a/hc", "connect", "--session", "a b")))
     }
+
+    @Test
+    fun `script is one line and ignores a login shell that reads stdin`() {
+        assertTrue('\n' !in HcLocator.SCRIPT)
+        val dir =
+            java.nio.file.Files
+                .createTempDirectory("hcloc")
+                .toFile()
+        try {
+            java.io.File(dir, ".local/bin").mkdirs()
+            java.io.File(dir, ".local/bin/hc").apply {
+                writeText("#!/bin/sh\n")
+                setExecutable(true)
+            }
+            val shell =
+                java.io.File(dir, "promptsh").apply {
+                    writeText("#!/bin/sh\nread answer\nexec /bin/sh \"$@\"\n")
+                    setExecutable(true)
+                }
+            val pb = ProcessBuilder("sh", "-c", HcLocator.SCRIPT)
+            pb.environment()["HOME"] = dir.path
+            pb.environment()["PATH"] = "/usr/bin:/bin"
+            pb.environment()["SHELL"] = shell.path
+            val p = pb.start() // stdin stays open, like an SSH exec channel
+            assertTrue(
+                "locator hung on a login shell reading stdin",
+                p.waitFor(10, java.util.concurrent.TimeUnit.SECONDS),
+            )
+            assertEquals(
+                "${dir.path}/.local/bin/hc",
+                p.inputStream
+                    .readBytes()
+                    .decodeToString()
+                    .trim(),
+            )
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `assignment-like and non-ascii args are quoted`() {
+        assertEquals("'X=1'", ShellQuote.quote("X=1"))
+        assertEquals("'é'", ShellQuote.quote("é"))
+        assertEquals("''", ShellQuote.quote(""))
+        assertEquals("'\$(id)'", ShellQuote.quote("\$(id)"))
+    }
 }

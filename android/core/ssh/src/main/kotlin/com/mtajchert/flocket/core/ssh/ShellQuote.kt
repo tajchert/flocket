@@ -2,8 +2,11 @@ package com.mtajchert.flocket.core.ssh
 
 /** POSIX single-quote escaping for building an exec command line. */
 object ShellQuote {
+    // ASCII-only safe set; `=` is excluded so a first word can never be read as an assignment.
     fun quote(arg: String): String =
-        if (arg.isNotEmpty() && arg.all { it.isLetterOrDigit() || it in "_-./:=@%+," }) {
+        if (arg.isNotEmpty() &&
+            arg.all { (it in 'a'..'z') || (it in 'A'..'Z') || (it in '0'..'9') || it in "_-./:@%+," }
+        ) {
             arg
         } else {
             "'" + arg.replace("'", "'\\''") + "'"

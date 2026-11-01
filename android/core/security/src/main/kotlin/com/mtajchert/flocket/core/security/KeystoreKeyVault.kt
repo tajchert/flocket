@@ -66,14 +66,12 @@ class KeystoreKeyVault(
                 return@io AppResult.Failure(AppError.InvalidInput("alias", "no such key"))
             }
             val bytes = cipher.decrypt(file.readBytes())
+            val cb = Charsets.UTF_8.decode(java.nio.ByteBuffer.wrap(bytes))
             try {
-                AppResult.Success(
-                    Charsets.UTF_8.decode(java.nio.ByteBuffer.wrap(bytes)).let { cb ->
-                        CharArray(cb.remaining()).also { cb.get(it) }
-                    },
-                )
+                AppResult.Success(CharArray(cb.remaining()).also { cb.get(it) })
             } finally {
                 bytes.fill(0)
+                if (cb.hasArray()) cb.array().fill('\u0000')
             }
         }
 
@@ -86,10 +84,9 @@ class KeystoreKeyVault(
             val produced = produce()
             if (produced is AppResult.Failure) return@io produced
             val material = produced as KeyMaterial
-            val plain =
-                Charsets.UTF_8.encode(CharBuffer.wrap(material.privateKeyPem)).let { bb ->
-                    ByteArray(bb.remaining()).also { bb.get(it) }
-                }
+            val encoded = Charsets.UTF_8.encode(CharBuffer.wrap(material.privateKeyPem))
+            val plain = ByteArray(encoded.remaining()).also { encoded.get(it) }
+            if (encoded.hasArray()) encoded.array().fill(0)
             try {
                 val sealed = cipher.encrypt(plain)
                 val key =

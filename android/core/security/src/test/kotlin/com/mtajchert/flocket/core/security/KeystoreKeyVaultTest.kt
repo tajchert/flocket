@@ -88,4 +88,15 @@ class KeystoreKeyVaultTest {
             assertTrue((r as AppResult.Failure).error is AppError.SecureStorageUnavailable)
             assertTrue(tmp.root.listFiles().isNullOrEmpty())
         }
+
+    @Test
+    fun `malformed sealed blob is rejected before touching the keystore`() {
+        for (blob in listOf(ByteArray(0), byteArrayOf(-1), byteArrayOf(12) + ByteArray(12))) {
+            try {
+                KeystoreSecretCipher().decrypt(blob)
+                org.junit.Assert.fail("expected SecureStorageException")
+            } catch (_: SecureStorageException) {
+            }
+        }
+    }
 }

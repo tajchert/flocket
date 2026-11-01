@@ -15,17 +15,21 @@ object HcLocator {
             "/usr/bin/hc",
         )
 
+    /**
+     * One line on purpose: the exec command passes through the user's login shell, and csh/tcsh
+     * reject newlines inside single quotes. stdin is /dev/null so a profile that prompts can't hang.
+     */
     internal val SCRIPT =
-        """
-        for s in "${'$'}{SHELL:-sh}" sh; do
-          p=${'$'}("${'$'}s" -lc "command -v hc" 2>/dev/null | grep "^/" | tail -n 1)
-          if [ -n "${'$'}p" ] && [ -x "${'$'}p" ]; then echo "${'$'}p"; exit 0; fi
-        done
-        for p in "${'$'}HOME/.local/bin/hc" /opt/homebrew/bin/hc /usr/local/bin/hc /usr/bin/hc; do
-          if [ -x "${'$'}p" ]; then echo "${'$'}p"; exit 0; fi
-        done
-        exit 1
-        """.trimIndent()
+        listOf(
+            "for s in \"\${SHELL:-sh}\" sh; do " +
+                "p=\$(\"\$s\" -lc 'command -v hc' </dev/null 2>/dev/null | grep '^/' | tail -n 1); " +
+                "if [ -n \"\$p\" ] && [ -x \"\$p\" ]; then echo \"\$p\"; exit 0; fi; " +
+                "done",
+            "for p in \"\$HOME/.local/bin/hc\" /opt/homebrew/bin/hc /usr/local/bin/hc /usr/bin/hc; do " +
+                "if [ -x \"\$p\" ]; then echo \"\$p\"; exit 0; fi; " +
+                "done",
+            "exit 1",
+        ).joinToString("; ")
 
     suspend fun locate(
         runner: CommandRunner,

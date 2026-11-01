@@ -27,12 +27,18 @@ class KeystoreSecretCipher(
 
     override fun decrypt(blob: ByteArray): ByteArray =
         guard {
-            val ivLen = blob[0].toInt()
+            val ivLen = blob.firstOrNull()?.toInt() ?: 0
+            if (ivLen !in MIN_IV..MAX_IV || blob.size < 1 + ivLen + TAG_BITS / 8) {
+                throw SecureStorageException("Sealed blob is malformed")
+            }
             val cipher = Cipher.getInstance(TRANSFORMATION)
             cipher.init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(TAG_BITS, blob, 1, ivLen))
             cipher.doFinal(blob, 1 + ivLen, blob.size - 1 - ivLen)
         }
 
+    // Synchronized: two first-use callers racing would each generate a key under [alias], and the
+    // blob sealed with the overwritten key could never be decrypted again.
+    @Synchronized
     private fun key(): SecretKey {
         val ks = KeyStore.getInstance(PROVIDER).apply { load(null) }
         (ks.getKey(alias, null) as? SecretKey)?.let { return it }
@@ -51,6 +57,8 @@ class KeystoreSecretCipher(
     private inline fun <T> guard(block: () -> T): T =
         try {
             block()
+        } catch (e: SecureStorageException) {
+            throw e
         } catch (e: KeyPermanentlyInvalidatedException) {
             throw SecureStorageException("Keystore key invalidated", e)
         } catch (e: GeneralSecurityException) {
@@ -65,5 +73,7 @@ class KeystoreSecretCipher(
         private const val PROVIDER = "AndroidKeyStore"
         private const val TRANSFORMATION = "AES/GCM/NoPadding"
         private const val TAG_BITS = 128
+        private const val MIN_IV = 12
+        private const val MAX_IV = 16
     }
 }

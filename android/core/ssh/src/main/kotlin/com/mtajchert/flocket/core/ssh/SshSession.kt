@@ -1,10 +1,11 @@
 package com.mtajchert.flocket.core.ssh
 
+import com.mtajchert.flocket.core.protocol.transport.TransportException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
 import net.schmizz.sshj.SSHClient
-import java.util.concurrent.TimeUnit
+import kotlin.coroutines.cancellation.CancellationException
 
 /** An authenticated SSH connection. Channels opened from it are independent. */
 class SshSession internal constructor(
@@ -12,15 +13,25 @@ class SshSession internal constructor(
 ) : CommandRunner {
     val isConnected: Boolean get() = client.isConnected && client.isAuthenticated
 
-    /** Starts [command] on an exec channel (no PTY). stdout is the transport; stderr is captured. */
+    /**
+     * Starts [command] on an exec channel (no PTY). stdout is the transport; stderr is captured.
+     * Every argument is POSIX single-quoted. Failures are [TransportException]. Opening the channel
+     * blocks up to the connection timeout and is not interrupted by cancellation.
+     */
     suspend fun exec(command: List<String>): SshExecTransport =
         withContext(Dispatchers.IO) {
-            val session = client.startSession()
+            val session =
+                try {
+                    client.startSession()
+                } catch (e: Exception) {
+                    throw TransportException("could not open channel: ${e.message}", e)
+                }
             try {
                 SshExecTransport(session, session.exec(ShellQuote.join(command)))
             } catch (e: Exception) {
                 runCatching { session.close() }
-                throw e
+                if (e is CancellationException) throw e
+                throw TransportException("could not start command: ${e.message}", e)
             }
         }
 
@@ -40,9 +51,8 @@ class SshSession internal constructor(
         }
     }
 
+    /** Disconnects. Safe to call from a cancelled coroutine (e.g. a `finally` block) and twice. */
     suspend fun close() {
-        withContext(Dispatchers.IO) {
-            withTimeoutOrNull(TimeUnit.SECONDS.toMillis(3)) { client.closeQuietly() }
-        }
+        withContext(NonCancellable + Dispatchers.IO) { client.closeQuietly() }
     }
 }

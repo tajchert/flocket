@@ -11,7 +11,6 @@ import org.bouncycastle.crypto.params.Ed25519KeyGenerationParameters
 import org.bouncycastle.crypto.params.Ed25519PrivateKeyParameters
 import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters
 import java.io.ByteArrayOutputStream
-import java.io.DataOutputStream
 import java.security.MessageDigest
 import java.security.PrivateKey
 import java.security.PublicKey
@@ -23,7 +22,7 @@ class KeyMaterial(
     val keyType: String,
     val publicKeyOpenSsh: String,
     val fingerprintSha256: String,
-    /** Unencrypted PEM (OpenSSH for ed25519, PKCS#8 otherwise). The caller must zero it. */
+    /** Unencrypted PEM (OpenSSH for ed25519, SEC1 for ECDSA, PKCS#8 for RSA). The caller must zero it. */
     val privateKeyPem: CharArray,
 )
 
@@ -39,7 +38,11 @@ object SshKeys {
         val pair = gen.generateKeyPair()
         val seed = (pair.private as Ed25519PrivateKeyParameters).encoded
         val pub = (pair.public as Ed25519PublicKeyParameters).encoded
-        return ed25519Material(seed, pub, comment)
+        try {
+            return ed25519Material(seed, pub, comment)
+        } finally {
+            seed.fill(0)
+        }
     }
 
     /**
@@ -58,13 +61,15 @@ object SshKeys {
             if (type == ED25519) {
                 val encoded = priv.encoded
                 val seed = encoded.copyOfRange(encoded.size - 32, encoded.size)
-                val pubRaw = ed25519Raw(blob)
-                AppResult.Success(ed25519Material(seed, pubRaw, comment))
+                try {
+                    AppResult.Success(ed25519Material(seed, ed25519Raw(blob), comment))
+                } finally {
+                    encoded.fill(0)
+                    seed.fill(0)
+                }
             } else {
-                val text = unencryptedPem(priv, pub)
-                AppResult.Success(
-                    KeyMaterial(type, publicLine(type, blob, comment), fingerprintOfBlob(blob), text.toCharArray()),
-                )
+                val pem = unencryptedPem(priv, pub)
+                AppResult.Success(KeyMaterial(type, publicLine(type, blob, comment), fingerprintOfBlob(blob), pem))
             }
         } catch (e: Exception) {
             AppResult.Failure(AppError.InvalidInput("privateKey", e.message?.take(200) ?: "unreadable key"))
@@ -95,7 +100,7 @@ object SshKeys {
     private fun unencryptedPem(
         priv: PrivateKey,
         pub: PublicKey,
-    ): String {
+    ): CharArray {
         val (label, der) =
             if (priv is java.security.interfaces.ECPrivateKey) {
                 val spki =
@@ -112,7 +117,11 @@ object SshKeys {
             } else {
                 "PRIVATE KEY" to priv.encoded
             }
-        return "-----BEGIN $label-----\n${b64Mime(der)}\n-----END $label-----\n"
+        try {
+            return pemChars(label, der)
+        } finally {
+            der.fill(0)
+        }
     }
 
     // Named-curve OID from the SSH key type; provider-encoded params may be explicit instead.
@@ -138,34 +147,84 @@ object SshKeys {
         pub: ByteArray,
         comment: String,
     ): KeyMaterial {
-        val blob = sshString(ED25519.toByteArray()) + sshString(pub)
+        val blob = WipingBuffer().apply { sshString(ED25519.toByteArray()).sshString(pub) }.toByteArray()
         val check = SecureRandom().nextInt()
-        val priv =
-            ByteArrayOutputStream()
-                .also { bos ->
-                    val o = DataOutputStream(bos)
-                    o.writeInt(check)
-                    o.writeInt(check)
-                    o.write(sshString(ED25519.toByteArray()))
-                    o.write(sshString(pub))
-                    o.write(sshString(seed + pub))
-                    o.write(sshString(comment.toByteArray()))
-                    var pad = 1
-                    while (bos.size() % 8 != 0) o.writeByte(pad++)
-                }.toByteArray()
-        val body =
-            ByteArrayOutputStream()
-                .also { bos ->
-                    bos.write("openssh-key-v1\u0000".toByteArray(Charsets.ISO_8859_1))
-                    bos.write(sshString("none".toByteArray()))
-                    bos.write(sshString("none".toByteArray()))
-                    bos.write(sshString(ByteArray(0)))
-                    DataOutputStream(bos).writeInt(1)
-                    bos.write(sshString(blob))
-                    bos.write(sshString(priv))
-                }.toByteArray()
-        val pem = "-----BEGIN OPENSSH PRIVATE KEY-----\n${b64Mime(body)}\n-----END OPENSSH PRIVATE KEY-----\n"
-        return KeyMaterial(ED25519, publicLine(ED25519, blob, comment), fingerprintOfBlob(blob), pem.toCharArray())
+        val keyPair = seed + pub
+        val priv = WipingBuffer()
+        val body = WipingBuffer()
+        try {
+            priv.int32(check).int32(check)
+            priv
+                .sshString(ED25519.toByteArray())
+                .sshString(pub)
+                .sshString(keyPair)
+                .sshString(comment.toByteArray())
+            var pad = 1
+            while (priv.size() % 8 != 0) priv.write(pad++)
+            body.write("openssh-key-v1\u0000".toByteArray(Charsets.ISO_8859_1))
+            body.sshString("none".toByteArray()).sshString("none".toByteArray()).sshString(ByteArray(0))
+            body.int32(1).sshString(blob)
+            priv.writeSshStringTo(body)
+            val pem = body.wipingBytes { pemChars("OPENSSH PRIVATE KEY", it) }
+            return KeyMaterial(ED25519, publicLine(ED25519, blob, comment), fingerprintOfBlob(blob), pem)
+        } finally {
+            keyPair.fill(0)
+            priv.wipe()
+            body.wipe()
+        }
+    }
+
+    /** PEM armour built straight into a [CharArray], so no String copy of the secret exists. */
+    private fun pemChars(
+        label: String,
+        der: ByteArray,
+    ): CharArray {
+        val b64 = Base64.getMimeEncoder(70, byteArrayOf('\n'.code.toByte())).encode(der)
+        val head = "-----BEGIN $label-----\n"
+        val tail = "\n-----END $label-----\n"
+        val out = CharArray(head.length + b64.size + tail.length)
+        head.toCharArray(out, 0)
+        for (i in b64.indices) out[head.length + i] = b64[i].toInt().toChar()
+        tail.toCharArray(out, head.length + b64.size)
+        b64.fill(0)
+        return out
+    }
+
+    /** ByteArrayOutputStream whose internal buffer can be zeroed. */
+    private class WipingBuffer : ByteArrayOutputStream() {
+        fun int32(v: Int) =
+            apply {
+                write(v ushr 24)
+                write(v ushr 16)
+                write(v ushr 8)
+                write(v)
+            }
+
+        fun sshString(bytes: ByteArray) =
+            apply {
+                int32(bytes.size)
+                write(bytes, 0, bytes.size)
+            }
+
+        /** Writes this buffer's content as an SSH string into [target] without an extra copy. */
+        fun writeSshStringTo(target: WipingBuffer) {
+            target.int32(count)
+            target.write(buf, 0, count)
+        }
+
+        fun <T> wipingBytes(use: (ByteArray) -> T): T {
+            val bytes = toByteArray()
+            try {
+                return use(bytes)
+            } finally {
+                bytes.fill(0)
+            }
+        }
+
+        fun wipe() {
+            buf.fill(0)
+            reset()
+        }
     }
 
     private fun publicLine(
@@ -173,15 +232,4 @@ object SshKeys {
         blob: ByteArray,
         comment: String,
     ) = "$type ${b64.encodeToString(blob)}" + if (comment.isNotEmpty()) " $comment" else ""
-
-    private fun sshString(bytes: ByteArray): ByteArray {
-        val bos = ByteArrayOutputStream()
-        DataOutputStream(bos).also {
-            it.writeInt(bytes.size)
-            it.write(bytes)
-        }
-        return bos.toByteArray()
-    }
-
-    private fun b64Mime(bytes: ByteArray): String = Base64.getMimeEncoder(70, "\n".toByteArray()).encodeToString(bytes)
 }
