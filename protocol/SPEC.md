@@ -4,13 +4,13 @@ Target: native Android (Kotlin) and later iOS clients that talk to **herdr-core*
 `ssh host hc connect`. This document is meant to be sufficient on its own; you should not need to read Rust.
 
 - **Protocol generation:** 1 (the API is marked preview).
-- **Verified against:** installed `hc 0.1.15` (wire captures in `fixtures/`, schema in `schema/hc-0.1.15.openrpc.json`).
+- **Verified against:** installed `hc 0.1.16` (schema in `schema/hc-0.1.16.openrpc.json`; first paint in `fixtures/attach-first-paint-0.1.16.hex`; FACTS behavior). The other wire captures in `fixtures/` were taken from `hc 0.1.15` (history; schema `schema/hc-0.1.15.openrpc.json`).
 - **Source read:** `herdrdev/herdr-core` @ `e07c2a1bedd62cf4787ee026ee23ee79c7d95491` (tag `v0.1.16`, released 2026-10-31).
-  The OpenRPC schema is byte-identical between 0.1.15 and 0.1.16 apart from `info.version`. §13 lists the behavior differences.
+  The OpenRPC schema is byte-identical between 0.1.15 and 0.1.16 apart from `info.version` (confirmed by diffing the two `hc schema` snapshots). §13 lists the behavior differences.
 - **Cross-checked:** `zzulanas/herdr-ios@a030501` (HerdrKit) and `eliasstravik/shepherdr@b420dd0` (server/core).
 
 Evidence tags used below:
-**[W]** observed on the 0.1.15 wire (fixture exists) · **[S]** read in the e07c2a1 source ·
+**[W]** observed on the wire (fixture exists; 0.1.15 unless a row says 0.1.16) · **[S]** read in the e07c2a1 source ·
 **[D]** stated in the official docs (`schema/README.md`, `docs/*.md`) · **[I]** inferred, not verified.
 Untagged statements are [S]+[W].
 
@@ -95,7 +95,7 @@ Error example [W]:
 3. Refuse if `result.framed != true`.
 4. Refuse if any method the app needs is missing from `result.methods` (required set, §4). Gate optional UI per method (e.g. hide "Run template" if `templates.list` is absent).
 5. Require `features ⊇ {framed, attach, events, status}`.
-6. **Do not** compare `version` for equality or reject newer patch/minor versions. Optionally enforce a *minimum* version (`>= 0.1.15`, semver compare, ignore pre-release/build suffixes) for known bug fixes, and show `version` in diagnostics.
+6. **Do not** compare `version` for equality or reject newer patch/minor versions. Flocket enforces a *minimum* version of **0.1.16** (semver compare of major.minor.patch, ignoring pre-release/build suffixes; newer always accepted; an empty or unparsable version is accepted) and shows `version` in diagnostics.
 7. Accept unknown fields everywhere, unknown event `type`s (ignore them), unknown status words, unknown `reason`s, unknown error `kind`s (fall back to `message`). Keep raw JSON of terminal records so unknown fields survive.
 8. The official evolution rule: the API only grows within a generation (no removed method/param/result field, no new required input, no input accepting less, no answer gaining a new kind of value). A real break bumps the generation. [D]
 
@@ -418,7 +418,7 @@ Labels are opaque `key=value` strings. Conventions observed (not enforced by cor
 ### 7.2 First paint
 
 The first DATA bytes reproduce the current screen for a fresh VT emulator of your size:
-- 0.1.16: starts with `0x18` (CAN, cancels any half-parsed sequence) [S]. 0.1.15: starts directly with `ESC [ ! p` (DECSTR soft reset) [W].
+- 0.1.16: starts with `0x18` (CAN, cancels any half-parsed sequence) [W 0.1.16: `fixtures/attach-first-paint-0.1.16.hex`]. 0.1.15: starts directly with `ESC [ ! p` (DECSTR soft reset) [W].
 - Then mode resets (`ESC[?2026l`, mouse/focus/bracketed-paste off, `ESC[?1049l`, kitty keys reset `ESC[=0;1u`, ...), `ESC[H ESC[2J`, tab stops, optional `history` scrollback lines, screen content, cursor, SGR, modes the program set, the title.
 - Then `ESC[?9001h` or `ESC[?9001l` (win32-input-mode requested or not; ConPTY on Windows requests it — a viewer that honors 9001 must then send keys in that encoding itself; the core never re-encodes keys).
 - Then the latest OSC 7501 report for the root and each record (`ESC]7501;state=…:id=…:app=…:title=<b64>:msg=<b64>ESC\`).
@@ -635,8 +635,8 @@ Timeouts: reads (`get`, `list`, `doc.get`) ~15 s and retryable; `send`/`keys` �
 
 | Area | 0.1.15 | 0.1.16 | Client impact |
 |---|---|---|---|
-| OpenRPC schema | — | identical except `info.version` | None. |
-| First paint / repaint | Starts `ESC[!p`… | Prefixed by `0x18` (CAN); may append a "continuation" for a half-written sequence; a viewer that attached mid-sequence is "recovering" and gets a repaint once the program reaches a clean boundary | Emulator must tolerate CAN and mid-stream repaints (it must anyway). |
+| OpenRPC schema | — | identical except `info.version` [W: diff of `hc schema` 0.1.15 vs 0.1.16] | None. |
+| First paint / repaint | Starts `ESC[!p`… | Prefixed by `0x18` (CAN) [W]; may append a "continuation" for a half-written sequence; a viewer that attached mid-sequence is "recovering" and gets a repaint once the program reaches a clean boundary | Emulator must tolerate CAN and mid-stream repaints (it must anyway). |
 | FACTS | Replaces the whole `Display` and makes the viewer active (can take size ownership) | Merges only provided fields; does not make the viewer active; applies only if you are the leader; re-answers color queries so programs see theme changes | Send full `Display` objects to work on both. |
 | `terminal.run` no argv | Machine's own shell (macOS login shell) | `shell = [...]` in host config.toml overrides it | None. |
 | Holder reconnection | — | Core reconnects to its holder after falling behind instead of freezing terminals | Fewer `holder_lost` losses. |
