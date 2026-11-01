@@ -157,7 +157,8 @@ journey_args() {
 
 # stdin is closed on purpose: `adb shell` otherwise waits on an inherited, open stdin and never returns.
 instrument() { # $@ = instrumentation args after `am instrument -w -r`
-  A shell am instrument -w -r "$@" "$TEST_ID/$RUNNER" </dev/null | tr -d '\r'
+  # A hung test must not hang the run (FLOCKET_JOURNEY_TIMEOUT s); the next pm clear kills what it left.
+  timeout "${FLOCKET_JOURNEY_TIMEOUT:-180}" adb -s "$SERIAL" shell am instrument -w -r "$@" "$TEST_ID/$RUNNER" </dev/null | tr -d '\r'
 }
 
 cmd_journey() {
@@ -194,7 +195,7 @@ cmd_journey() {
   while IFS= read -r t; do tests+=("$t"); done < <(
     instrument -e log true $sel_args $args |
       awk -F= '/^INSTRUMENTATION_STATUS: class=/ {c=$2} /^INSTRUMENTATION_STATUS: test=/ {print c "#" $2}' | sort -u)
-  ((${#tests[@]})) || die "no journey tests selected (${sels[*]:-all}${smoke:+, smoke})"
+  ((${#tests[@]})) || die "no journey tests selected (${sels[*]:-all}$( ((smoke)) && echo ", smoke"))"
 
   local passed=0 failed=0 start run name t0 secs out result reason
   local -a counts=()
@@ -208,7 +209,7 @@ cmd_journey() {
       keyboards_off
       out="$JOURNEYS/$name.txt"
       # shellcheck disable=SC2086
-      instrument -e class "$name" $args >"$out" || true
+      instrument -e class "$name" $args >"$out" || echo "INSTRUMENTATION_ABORTED: timed out or adb failed" >>"$out"
       secs="$(python3 -c "print('%.1f' % ($(now) - $t0))")"
       reason=""
       # An assumption failure (status code -4) is reported as OK too, so check it first: a skipped
