@@ -565,6 +565,35 @@ class CoreSessionTest {
         }
 
     @Test
+    fun `passive attach and re-attach send the core's size, not the viewer's`() =
+        runTest {
+            // hc 0.1.15 applies a resumed viewer's size when nobody leads (e.g. a headless terminal).
+            val host = FakeHost(backgroundScope).apply { terminals += FakeCore.terminal("t1", cols = 200, rows = 120) }
+            val s = host.session(this)
+            s.start()
+            s.awaitOnline()
+            val stream = s.attachOk()
+            val p = host.core.attachParams()
+            assertEquals(JsonPrimitive(true), p["resumed"])
+            assertEquals(200, p["cols"]!!.jsonPrimitive.content.toInt())
+            assertEquals(120, p["rows"]!!.jsonPrimitive.content.toInt())
+
+            val ch = host.core.attachChannelOf("t1")!!
+            assertTrue(stream.write("x".toByteArray()) is AppResult.Success)
+            runCurrent()
+            assertEquals(listOf("RESIZE"), host.core.controlKinds(ch))
+
+            s.stop()
+            s.start()
+            s.awaitOnline()
+            runCurrent()
+            val re = host.core.attachParams()
+            assertEquals(JsonPrimitive(true), re["resumed"])
+            assertEquals(200, re["cols"]!!.jsonPrimitive.content.toInt())
+            s.stop()
+        }
+
+    @Test
     fun `owner attach takes the size, observe never sends input or controls`() =
         runTest {
             val host = hostWith("t1")
