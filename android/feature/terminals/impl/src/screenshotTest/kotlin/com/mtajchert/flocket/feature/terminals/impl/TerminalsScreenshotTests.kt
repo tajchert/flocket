@@ -204,6 +204,21 @@ private fun TerminalsDenseDesktopLayoutScreenshot() =
 @PreviewTest
 @PreviewSidebar
 @Composable
+private fun TerminalsDenseFilteredScreenshot() =
+    Shot {
+        Dense {
+            TerminalsScreen(
+                stateFor(desktopWorkspace, ListControls(filter = TerminalFilter.Working)),
+                TerminalsActions(),
+                selected = TerminalRoute("studio", "t2"),
+                nowMs = NOW,
+            )
+        }
+    }
+
+@PreviewTest
+@PreviewSidebar
+@Composable
 private fun TerminalsDenseLabelsOnlyScreenshot() =
     Shot { Dense { TerminalsScreen(stateFor(labelsWorkspace), TerminalsActions(), nowMs = NOW) } }
 
