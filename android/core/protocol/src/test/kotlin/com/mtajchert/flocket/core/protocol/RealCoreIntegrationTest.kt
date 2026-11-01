@@ -69,6 +69,62 @@ class RealCoreIntegrationTest {
         workDir.deleteRecursively()
     }
 
+    /** SPEC §7.5 / §13: on hc 0.1.16 FACTS from a passive viewer does not take size ownership. */
+    @Test
+    fun `FACTS from a passive viewer does not take size ownership on 0_1_16`() =
+        runBlocking {
+            withTimeout(40.seconds) {
+                println("RealCoreIntegrationTest: FACTS test against isolated session $session")
+
+                fun transport() = ProcessTransport("hc", "connect", "--session", session, environment = env)
+                val a = CoreConnection.open(transport(), scope)
+                val b = CoreConnection.open(transport(), scope)
+                try {
+                    assertTrue("hc ${a.info.version} accepted", !CoreConnection.isOlderThanMinimum(a.info.version))
+                    val address =
+                        a
+                            .terminalRun(
+                                RunParams(argv = listOf("sh"), name = "it-facts", cwd = workDir.canonicalPath),
+                            ).terminal.address
+                    val owner = a.attach(AttachParams(address, 80, 24))
+                    val ownerDrain = scope.launch { owner.output.collect { } }
+                    assertEquals(80 to 24, a.terminalGet(address).let { it.cols to it.rows })
+
+                    // Passive viewer: attach resumed (not active), different size, then FACTS.
+                    val passive = b.attach(AttachParams(address, 120, 40, resumed = true))
+                    val passiveDrain = scope.launch { passive.output.collect { } }
+                    assertEquals(80 to 24, b.terminalGet(address).let { it.cols to it.rows })
+                    passive.facts(DisplayDto(fg = "#ffffff", bg = "#101010", cursor = "#ffffff", cell = listOf(9, 18)))
+                    kotlinx.coroutines.delay(750)
+                    assertEquals(
+                        "FACTS must not make a passive viewer the size owner",
+                        80 to 24,
+                        a.terminalGet(address).let { it.cols to it.rows },
+                    )
+
+                    // Positive control: a resize does take ownership, so the check above can fail.
+                    passive.resize(120, 40)
+                    var size = 0 to 0
+                    var tries = 0
+                    while (size != 120 to 40 && tries++ < 50) {
+                        kotlinx.coroutines.delay(100)
+                        size = a.terminalGet(address).let { it.cols to it.rows }
+                    }
+                    assertEquals("RESIZE makes the viewer active", 120 to 40, size)
+
+                    passive.close()
+                    owner.close()
+                    ownerDrain.cancel()
+                    passiveDrain.cancel()
+                    a.terminalKill(address)
+                    Unit
+                } finally {
+                    b.close()
+                    a.close()
+                }
+            }
+        }
+
     @Test
     fun `full journey against a real core run attach type resize detach kill rm`() =
         runBlocking {

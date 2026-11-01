@@ -31,6 +31,7 @@ anything on the host.
 | [`android/`](android/) | Android app: [README](android/README.md) · [agent guide](android/AGENTS.md) |
 | [`protocol/`](protocol/) | herdr-core [protocol spec](protocol/SPEC.md), schema snapshots and wire fixtures shared by every platform |
 | [`docs/decisions/`](docs/decisions/) | Architecture Decision Records |
+| [`docs/ROADMAP.md`](docs/ROADMAP.md) | Next milestones, with the code areas to start from |
 | [`docs/design/`](docs/design/) | Milestone design documents |
 | `ios/` | Future iOS app |
 

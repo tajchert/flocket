@@ -61,8 +61,9 @@ class TerminalsViewModelTest {
     private fun TestScope.vm(
         manager: FakeConnectionManager = manager(),
         settings: FakeHostSettingsRepository = FakeHostSettingsRepository(),
+        lastCwd: LastCwdStore = InMemoryLastCwdStore(),
     ): TerminalsViewModel {
-        val vm = TerminalsViewModel(manager, InMemoryLastCwdStore(), settings)
+        val vm = TerminalsViewModel(manager, lastCwd, settings)
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.uiState.collect {} }
         return vm
     }
@@ -399,6 +400,23 @@ class TerminalsViewModelTest {
             settings.update(studio) { it.copy(defaultWorkingDirectory = "~/code") }
             vm.openNewTerminal()
             assertEquals("~/code", (vm.dialog.value as TerminalDialog.NewTerminal).form.cwd)
+        }
+
+    @Test
+    fun `configured default folder wins over last used, which wins over home when none is set`() =
+        runTest {
+            val prefs = FakePreferencesRepository()
+            val settings = FakeHostSettingsRepository(prefs)
+            val last = InMemoryLastCwdStore().apply { put(studio, "~/last") }
+            val vm = vm(settings = settings, lastCwd = last)
+            vm.openNewTerminal()
+            advanceUntilIdle()
+            assertEquals("~/last", (vm.dialog.value as TerminalDialog.NewTerminal).form.cwd)
+
+            prefs.update { it.copy(terminal = it.terminal.copy(defaultWorkingDirectory = "~/work")) }
+            vm.openNewTerminal()
+            advanceUntilIdle()
+            assertEquals("~/work", (vm.dialog.value as TerminalDialog.NewTerminal).form.cwd)
         }
 
     @Test

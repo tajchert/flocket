@@ -12,6 +12,7 @@ shared by every platform. Read it first, then the guide for your platform:
 |---|---|
 | `protocol/` | The herdr-core wire protocol: `SPEC.md`, `hc schema` snapshots, and wire fixtures shared by every platform |
 | `docs/decisions/` | Architecture Decision Records (ADRs). These are binding. Read them before changing architecture. |
+| `docs/ROADMAP.md` | Next milestones: scope, open decisions, and where to start in the code |
 | `docs/design/` | Milestone design documents |
 | `docs/reference/` | Background research (the herdr-core handoff). Context only, not rules. |
 | `android/` | Native Android app (Kotlin, Compose). A self-contained Gradle project. |

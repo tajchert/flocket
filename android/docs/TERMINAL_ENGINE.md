@@ -79,9 +79,13 @@ Recorded 2026-11-01 on the `pixel` AVD (arm64-v8a, Apple Silicon host, debug bui
 
 The per-cell walk (about 6-8 C calls per cell) stays well under the 2 ms frame budget at tablet size, so the bulk `GHOSTTY_RENDER_STATE_ROW_DATA_CELLS_RAW` path is not used. Revisit it if a real device measures over about 2 ms for a fully dirty 200x60 snapshot. Physical mid-range phones are expected to be several times slower than this emulator. When the target is reused, `snapshot()` allocates nothing on the Kotlin side except the Strings of multi-code-point cells. Natively it reuses the grapheme vector and does not allocate per cell, except for clusters longer than 16 code points.
 
+## Grapheme clustering default
+
+`nCreate` sets DEC mode 2027 (`GHOSTTY_MODE_GRAPHEME_CLUSTER`) to true with `GHOSTTY_TERMINAL_OPT_MODE_DEFAULT`, which sets the current value and the value restored by RIS and DECSTR (herdr-core's first paint starts with a reset). Without it libghostty-vt spreads ZWJ emoji and flags over several cells; the Ghostty app also defaults to `grapheme-width-method = unicode`. Programs can still turn it off with `CSI ? 2027 l`.
+
 ## Known limitations
 
-- Grapheme clustering (mode 2027) is off by default in libghostty-vt, so emoji with modifiers/ZWJ occupy several cells unless the program enables it. Decide whether the viewer should force it on to match the host.
+- Grapheme clustering (mode 2027) is on by default (see Grapheme clustering default below).
 - Hyperlink targets (OSC 8) are flagged (`CellFlags.HYPERLINK`) but URIs are not exposed; selection, mouse reporting, focus events, kitty graphics and clipboard read are not wired.
 - OSC 52 writes are reported as events and acknowledged to the program; the UI decides whether to honor them.
 - ABIs: arm64-v8a and x86_64 only. The x86_64 library is built and checked statically but was not run on an x86_64 emulator (the dev machine is arm64; the `pixel` AVD is arm64-v8a).

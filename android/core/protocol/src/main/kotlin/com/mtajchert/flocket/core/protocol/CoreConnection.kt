@@ -777,6 +777,9 @@ class CoreConnection private constructor(
         internal const val CREDIT_BATCH = 32 * 1024
 
         const val GENERATION = 1
+
+        /** Oldest supported core (SPEC §2.2 item 6). A minimum only: newer is always accepted. */
+        const val MIN_CORE_VERSION = "0.1.16"
         val REQUIRED_FEATURES = setOf("framed", "attach", "events", "status")
         val REQUIRED_METHODS =
             setOf("hello", "events.subscribe", "terminal.list", "terminal.get", "terminal.attach", "doc.get")
@@ -869,7 +872,26 @@ class CoreConnection private constructor(
             }
         }
 
-        /** SPEC §2.2: generation, framed, features, methods. Never compares versions. */
+        /** Parses `major.minor.patch`, ignoring any `-pre` / `+build` suffix; null when unparsable. */
+        internal fun parseVersion(version: String): Triple<Int, Int, Int>? {
+            val core = version.trim().substringBefore('+').substringBefore('-')
+            val parts = core.split('.')
+            if (parts.size < 3) return null
+            val nums = parts.take(3).map { it.toIntOrNull() ?: return null }
+            return Triple(nums[0], nums[1], nums[2])
+        }
+
+        internal fun isOlderThanMinimum(version: String): Boolean {
+            val v = parseVersion(version) ?: return false
+            val min = parseVersion(MIN_CORE_VERSION)!!
+            return compareValuesBy(v, min, { it.first }, { it.second }, { it.third }) < 0
+        }
+
+        /**
+         * SPEC §2.2: generation, framed, features, methods, and a *minimum* core version
+         * ([MIN_CORE_VERSION]). Newer versions are always accepted and the version is never
+         * compared for equality. An empty or unparsable version is accepted (lenient).
+         */
         fun checkCompatible(hello: HelloResult): CoreInfo {
             fun bad(reason: String): Nothing =
                 throw CoreIncompatibleException(AppError.CoreIncompatible(reason, hello.version.ifEmpty { null }))
@@ -877,6 +899,9 @@ class CoreConnection private constructor(
                 GENERATION
             ) {
                 bad("core speaks protocol generation ${hello.generation}, the app needs $GENERATION")
+            }
+            if (isOlderThanMinimum(hello.version)) {
+                bad("hc ${hello.version} is too old; Flocket needs $MIN_CORE_VERSION or newer")
             }
             if (!hello.framed) bad("core did not switch to framed mode")
             val missingFeatures = REQUIRED_FEATURES - hello.features.toSet()

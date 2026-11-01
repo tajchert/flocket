@@ -13,12 +13,15 @@ import com.mtajchert.flocket.core.protocol.wire.FrameKind
 import com.mtajchert.flocket.core.protocol.wire.ProtocolException
 import com.mtajchert.flocket.core.protocol.wire.WireLimits
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -34,6 +37,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.put
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
@@ -82,6 +86,46 @@ class CoreConnectionTest {
             assertEquals("fakehost", conn.info.name)
             assertEquals(1, conn.info.generation)
             assertTrue(conn.info.supports("terminal.attach"))
+        }
+
+    private fun hello(version: String) =
+        com.mtajchert.flocket.core.protocol.dto.HelloResult(
+            features = CoreConnection.REQUIRED_FEATURES.toList(),
+            framed = true,
+            generation = CoreConnection.GENERATION,
+            methods = CoreConnection.REQUIRED_METHODS.toList(),
+            version = version,
+        )
+
+    @Test
+    fun `minimum core version 0_1_16 is enforced and newer or unparsable versions pass`() =
+        runTest {
+            for (ok in listOf("0.1.16", "0.1.17", "0.2.0", "1.0.0", "0.1.16-rc1", "0.1.16+abc", "")) {
+                assertEquals(ok, CoreConnection.checkCompatible(hello(ok)).version)
+            }
+            val ex = thrown<CoreIncompatibleException> { CoreConnection.checkCompatible(hello("0.1.15")) }
+            val err = ex.error as AppError.CoreIncompatible
+            assertEquals("0.1.15", err.coreVersion)
+            assertTrue(err.reason, err.reason.contains("0.1.15") && err.reason.contains("0.1.16"))
+        }
+
+    @Test
+    fun `a real 0_1_15 fixture hello is rejected as too old`() =
+        runTest {
+            val result =
+                Fixtures
+                    .lines("framed-session.decoded.jsonl")[1]
+                    .getValue("msg")
+                    .jsonObject
+                    .getValue("result")
+            val hello =
+                com.mtajchert.flocket.core.protocol.rpc.ProtocolJson.decodeFromJsonElement(
+                    com.mtajchert.flocket.core.protocol.dto.HelloResult
+                        .serializer(),
+                    result,
+                )
+            assertEquals("0.1.15", hello.version)
+            thrown<CoreIncompatibleException> { CoreConnection.checkCompatible(hello) }
         }
 
     @Test
@@ -723,7 +767,14 @@ class CoreConnectionTest {
     @Test
     fun `attach replies racing their timeout never leave a channel open`() =
         runBlocking(Dispatchers.Default) {
-            val scope = CoroutineScope(coroutineContext + SupervisorJob())
+            // A child of runBlocking, joined below: nothing from this real-thread test may outlive it, or a late
+            // failure is reported by the next runTest as UncaughtExceptionsBeforeTest (seen on slow CI runners).
+            val leaked = java.util.concurrent.ConcurrentLinkedQueue<Throwable>()
+            val scope =
+                CoroutineScope(
+                    coroutineContext + SupervisorJob(coroutineContext[Job]) +
+                        CoroutineExceptionHandler { _, e -> leaked += e },
+                )
             val core = fake(scope)
             val conn = CoreConnection.open(core.client, scope)
             repeat(200) { i ->
@@ -743,6 +794,7 @@ class CoreConnectionTest {
                     true
                 }
             assertEquals("channels left open: ${(1..allocated()).filter { it !in closed() }}", true, settled)
-            scope.cancel()
+            scope.coroutineContext[Job]!!.cancelAndJoin()
+            assertEquals("coroutines failed: ${leaked.map { it.stackTraceToString() }}", 0, leaked.size)
         }
 }

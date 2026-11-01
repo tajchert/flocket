@@ -6,6 +6,8 @@ import org.gradle.api.Project
 import org.gradle.api.artifacts.VersionCatalog
 import org.gradle.api.artifacts.VersionCatalogsExtension
 import org.gradle.api.tasks.testing.Test
+import org.gradle.api.tasks.testing.logging.TestExceptionFormat
+import org.gradle.api.tasks.testing.logging.TestLogEvent
 import org.gradle.kotlin.dsl.add
 import org.gradle.kotlin.dsl.getByType
 import org.gradle.kotlin.dsl.withType
@@ -60,6 +62,14 @@ internal fun Project.configureTestJvm() {
     tasks.withType<Test>().configureEach {
         // Skeleton modules have no tests yet; an empty test task is fine.
         failOnNoDiscoveredTests.set(false)
+        // Print the whole failure (causes and suppressed exceptions, e.g. coroutine leaks reported by
+        // runTest as UncaughtExceptionsBeforeTest), so a CI log alone is enough to diagnose it.
+        testLogging {
+            events(TestLogEvent.FAILED)
+            exceptionFormat = TestExceptionFormat.FULL
+            showCauses = true
+            showStackTraces = true
+        }
         jvmArgs(
             "--add-opens=java.base/java.io=ALL-UNNAMED",
             "--add-opens=java.base/java.lang=ALL-UNNAMED",

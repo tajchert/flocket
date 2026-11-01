@@ -1,6 +1,7 @@
 name: Android
 
 on:
+  workflow_dispatch:
   pull_request:
     paths: [android/**, protocol/**, .github/workflows/android.yml]
   push:
@@ -32,7 +33,7 @@ jobs:
           java-version: '21'
       - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
         with:
-          packages: 'platform-tools platforms;android-37 build-tools;36.0.0 ndk;30.0.16248370 cmake;4.1.2'
+          packages: 'platform-tools platforms;android-37.0 build-tools;36.0.0 ndk;30.0.16248370 cmake;4.1.2'
       - uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
       - name: Format check
         run: ./gradlew --no-daemon spotlessCheck
@@ -50,7 +51,75 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-  # TODO: device-tests job (emulator: Room migrations, Keystore, app journeys) once those tests exist.
+  instrumented:
+    # Only modules that have androidTest sources (not :benchmark). Needs KVM for a fast x86_64 emulator.
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Enable KVM
+        working-directory: .
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
+        with:
+          packages: 'platform-tools platforms;android-37.0 build-tools;36.0.0 ndk;30.0.16248370 cmake;4.1.2'
+      - uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+        with:
+          cache-read-only: true
+      - name: AVD cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        id: avd-cache
+        with:
+          path: |
+            ~/.android/avd/*
+            ~/.android/adb*
+          key: avd-api35-google_apis-x86_64
+      - name: Create AVD and generate snapshot for caching
+        if: steps.avd-cache.outputs.cache-hit != 'true'
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          force-avd-creation: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: false
+          script: echo "Generated AVD snapshot for caching."
+      - name: Instrumented tests
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          force-avd-creation: false
+          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: true
+          working-directory: android
+          script: >-
+            ./gradlew --no-daemon --stacktrace
+            :core:terminal-ghostty:connectedDebugAndroidTest
+            :core:terminal:connectedDebugAndroidTest
+            :feature:terminal:impl:connectedDebugAndroidTest
+      - name: Upload test reports on failure
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: instrumented-reports
+          path: |
+            android/**/build/reports/androidTests/**
+            android/**/build/outputs/androidTest-results/**
+          if-no-files-found: ignore
+          retention-days: 7
 
   screenshots:
     # Keep rendering on macOS to match the reviewed reference font environment.
@@ -69,7 +138,7 @@ jobs:
           java-version: '21'
       - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
         with:
-          packages: 'platform-tools platforms;android-37 build-tools;36.0.0 ndk;30.0.16248370 cmake;4.1.2'
+          packages: 'platform-tools platforms;android-37.0 build-tools;36.0.0 ndk;30.0.16248370 cmake;4.1.2'
       - uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
       - name: Validate reviewed screenshots
         run: ./gradlew --no-daemon validateDebugScreenshotTest
