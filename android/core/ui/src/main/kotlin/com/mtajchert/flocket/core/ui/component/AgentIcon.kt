@@ -26,17 +26,18 @@ private val GenericTile = Color(0xFF1C1D21)
 /**
  * The icon of a coding agent in a rounded tile, as on the desktop. [agentId] is an [AgentCatalog] id;
  * `null` or an unknown id draws the generic terminal tile. Icons come from LobeHub icons (MIT, see
- * `THIRD_PARTY_NOTICES.md`).
+ * `THIRD_PARTY_NOTICES.md`). [contentDescription] defaults to the agent name or "Terminal"; pass `null`
+ * where a text label next to the icon already names the terminal, so TalkBack does not read it twice.
  */
 @Composable
 fun AgentIcon(
     agentId: String?,
     modifier: Modifier = Modifier,
     size: Dp = 28.dp,
+    contentDescription: String? = agentIconDescription(agentId),
 ) {
     val agent = remember(agentId) { AgentCatalog.agents.firstOrNull { it.id == agentId } }
     val res = agentIconRes(agent?.id)
-    val description = agent?.name ?: stringResource(R.string.agent_icon_terminal)
     val tile = if (agent != null) Color(agent.tileArgb) else GenericTile
     // Tinted icons are drawn in white and recoloured; the others keep their own colours.
     val filter = if (agent != null && agent.tint && res != null) ColorFilter.tint(Color(agent.colorArgb)) else null
@@ -46,12 +47,17 @@ fun AgentIcon(
     ) {
         Image(
             painter = painterResource(res ?: R.drawable.ic_agent_terminal),
-            contentDescription = description,
+            contentDescription = contentDescription,
             colorFilter = if (res == null) null else filter,
             modifier = Modifier.padding(size / 6).size(size * 2 / 3),
         )
     }
 }
+
+/** The agent's name, or "Terminal" for the generic tile. */
+@Composable
+private fun agentIconDescription(agentId: String?): String =
+    AgentCatalog.agents.firstOrNull { it.id == agentId }?.name ?: stringResource(R.string.agent_icon_terminal)
 
 /**
  * The drawable of the desktop agent [id] (resource names use `_` for `-`), or null for an unknown id

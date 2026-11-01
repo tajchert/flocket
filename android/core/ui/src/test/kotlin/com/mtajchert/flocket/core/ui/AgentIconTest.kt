@@ -37,6 +37,18 @@ class AgentIconTest {
     }
 
     @Test
+    fun `AgentIcon with a null description is silent for TalkBack`() {
+        rule.setContent {
+            FlocketTheme {
+                AgentIcon("claude", contentDescription = null)
+                AgentIcon(null, contentDescription = null)
+            }
+        }
+        rule.onAllNodesWithContentDescription("Claude Code").assertCountEquals(0)
+        rule.onAllNodesWithContentDescription("Terminal").assertCountEquals(0)
+    }
+
+    @Test
     fun `every catalog agent either has an icon or falls back to the terminal tile`() {
         val missing = AgentCatalog.agents.filter { agentIconRes(it.id) == null }.map { it.id }
         // These have no LobeHub icon; they use the generic tile.
