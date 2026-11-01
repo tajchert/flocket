@@ -8,6 +8,7 @@
     <string name="action_forget_pinned_key">Forget pinned key…</string>
     <string name="action_cancel">Cancel</string>
     <string name="loading">Loading</string>
+    <string name="agent_icon_terminal">Terminal</string>
 
     <!-- UiError mapping (AppError -> text). Keep in sync with UiError.kt -->
     <string name="error_unreachable_title">Can’t reach the host</string>

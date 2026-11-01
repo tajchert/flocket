@@ -23,6 +23,8 @@ data class TerminalItem(
     /** Stable list key; unique across hosts, sessions and federated machines. */
     val key: String,
     val agentLabel: String,
+    /** The [com.mtajchert.flocket.core.model.AgentCatalog] id of the coding agent running here, if known. */
+    val agentId: String?,
     val name: String?,
     val status: AgentStatus,
     /** The terminal's title, else its `where` label, else empty. */
