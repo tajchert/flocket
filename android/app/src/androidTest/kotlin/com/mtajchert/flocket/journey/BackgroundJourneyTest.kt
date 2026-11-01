@@ -75,6 +75,9 @@ class BackgroundJourneyTest {
                 journey.returnToApp()
                 journey.awaitOnline()
                 journey.awaitTerminalScreen()
+                // Online is the host link; the terminal re-attaches just after it. Keys sent before that are dropped
+                // by design (product rule 3), so wait until the core sees the phone as the owner again.
+                journey.host.awaitSize(address, "the phone to re-attach as owner") { it != HEADLESS }
                 journey.typeAndExpect(address, "reattached-typing")
             }
 
