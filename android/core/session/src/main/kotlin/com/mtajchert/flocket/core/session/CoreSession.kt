@@ -67,6 +67,13 @@ interface CoreSession {
 
     suspend fun templates(): AppResult<List<TerminalTemplate>>
 
+    /**
+     * The absolute `$HOME` of the core's host, or of [machine] when given (`machine.exec`), cached
+     * per core and machine. [run] uses it to expand a leading `~` in the cwd, which herdr-core does
+     * not do itself (protocol/SPEC.md §12). `Unsupported` when the core lacks `machine.exec`.
+     */
+    suspend fun homeDirectory(machine: String? = null): AppResult<String>
+
     /** Plain-text screen/history (`terminal.read`), for previews — not for rendering. */
     suspend fun readText(
         address: TerminalAddress,

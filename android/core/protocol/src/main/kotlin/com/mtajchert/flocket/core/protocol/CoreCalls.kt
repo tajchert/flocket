@@ -2,6 +2,7 @@ package com.mtajchert.flocket.core.protocol
 
 import com.mtajchert.flocket.core.protocol.dto.DocGetResult
 import com.mtajchert.flocket.core.protocol.dto.DocSetResult
+import com.mtajchert.flocket.core.protocol.dto.ExecResult
 import com.mtajchert.flocket.core.protocol.dto.InterruptResult
 import com.mtajchert.flocket.core.protocol.dto.MachineViewDto
 import com.mtajchert.flocket.core.protocol.dto.ReadResult
@@ -198,6 +199,21 @@ suspend fun CoreConnection.machineList(timeout: Duration = CallTimeouts.READ): L
     call("machine.list", timeout = timeout).jsonObject["machines"]?.jsonArray.orEmpty().map {
         it.decode(MachineViewDto.serializer())
     }
+
+/** Run [argv] (no shell unless you pass one) on the core or on machine [on] (`machine.exec`). */
+suspend fun CoreConnection.machineExec(
+    argv: List<String>,
+    on: String? = null,
+    timeout: Duration = CallTimeouts.READ,
+): ExecResult =
+    call(
+        "machine.exec",
+        obj {
+            put("argv", buildJsonArray { argv.forEach { add(JsonPrimitive(it)) } })
+            on?.let { put("on", it) }
+        },
+        timeout,
+    ).decode(ExecResult.serializer())
 
 suspend fun CoreConnection.docGet(
     name: String,

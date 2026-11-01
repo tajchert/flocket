@@ -21,6 +21,7 @@ import com.mtajchert.flocket.core.protocol.EventSubscription
 import com.mtajchert.flocket.core.protocol.RunParams
 import com.mtajchert.flocket.core.protocol.dto.toModel
 import com.mtajchert.flocket.core.protocol.dto.toRecord
+import com.mtajchert.flocket.core.protocol.machineExec
 import com.mtajchert.flocket.core.protocol.machineList
 import com.mtajchert.flocket.core.protocol.rpc.RpcException
 import com.mtajchert.flocket.core.protocol.templatesList
@@ -32,6 +33,7 @@ import com.mtajchert.flocket.core.protocol.terminalRun
 import com.mtajchert.flocket.core.protocol.terminalSend
 import com.mtajchert.flocket.core.protocol.toAppError
 import com.mtajchert.flocket.core.protocol.transport.ByteTransport
+import com.mtajchert.flocket.core.protocol.wire.ProtocolException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -52,6 +54,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import java.util.Base64
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArraySet
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
@@ -86,6 +90,7 @@ class CoreSessionImpl(
     private val reducer = EventReducer(endpoint)
     private val epochs = AtomicLong(0)
     private val link = AtomicReference<Link?>(null)
+    private val homes = ConcurrentHashMap<Pair<String, String?>, String>()
     private val streams = CopyOnWriteArraySet<TerminalStreamImpl>()
     private val retrySignal = Channel<Unit>(Channel.CONFLATED)
 
@@ -597,7 +602,58 @@ class CoreSessionImpl(
 
     // ---- actions -------------------------------------------------------------------------------
 
-    override suspend fun run(request: RunRequest): AppResult<TerminalRecord> =
+    override suspend fun homeDirectory(machine: String?): AppResult<String> {
+        val l = link.get() ?: return AppResult.Failure(AppError.ConnectionLost)
+        val key = l.info.id to machine
+        homes[key]?.let { return AppResult.Success(it) }
+        val r =
+            read("machine.exec", CoreInfo.MACHINE_EXEC) { c ->
+                val e = c.machineExec(HOME_ARGV, machine, config.readTimeout)
+                val home =
+                    runCatching { String(Base64.getDecoder().decode(e.stdout), Charsets.UTF_8) }.getOrDefault("")
+                if (e.code != 0 || e.timedOut || !home.startsWith("/") || home.isBlank()) {
+                    throw ProtocolException("home directory lookup failed (code=${e.code})")
+                }
+                home
+            }
+        if (r is AppResult.Success) homes[key] = r.value
+        return r
+    }
+
+    /** Expands a leading `~` / `~/` (herdr-core does not). Null result = cannot expand. */
+    private suspend fun expandCwd(request: RunRequest): AppResult<String> {
+        val cwd = request.cwd
+        if (cwd != "~" && !cwd.startsWith("~/")) {
+            if (cwd.startsWith("~")) {
+                return AppResult.Failure(AppError.InvalidInput("cwd", "cannot expand $cwd; use an absolute folder"))
+            }
+            return AppResult.Success(cwd)
+        }
+        return when (val h = homeDirectory(request.machine)) {
+            is AppResult.Success -> {
+                val rest = cwd.removePrefix("~").trimStart('/')
+                AppResult.Success(if (rest.isEmpty()) h.value else h.value.trimEnd('/') + "/" + rest)
+            }
+
+            is AppResult.Failure -> {
+                AppResult.Failure(AppError.InvalidInput("cwd", "cannot resolve the home folder for \"~\""))
+            }
+        }
+    }
+
+    override suspend fun run(request: RunRequest): AppResult<TerminalRecord> {
+        val cwd =
+            when (val e = expandCwd(request)) {
+                is AppResult.Success -> e.value
+                is AppResult.Failure -> return e
+            }
+        return runExpanded(request, cwd)
+    }
+
+    private suspend fun runExpanded(
+        request: RunRequest,
+        cwd: String,
+    ): AppResult<TerminalRecord> =
         mutate("terminal.run", CoreInfo.TERMINAL_RUN) { c ->
             val argv = if (request.template != null) listOf(request.template) + request.argv else request.argv
             c
@@ -606,7 +662,7 @@ class CoreSessionImpl(
                         argv = argv,
                         line = if (request.template != null) null else request.line,
                         name = request.name,
-                        cwd = request.cwd,
+                        cwd = cwd,
                         on = request.machine,
                         env = RUN_ENV,
                         labels = request.labels,
@@ -708,6 +764,7 @@ class CoreSessionImpl(
 
     companion object {
         private const val TAG = "CoreSession"
+        private val HOME_ARGV = listOf("sh", "-c", "printf %s \"\$HOME\"")
 
         /** Terminal identity passed to every `terminal.run` (SPEC §4.4). */
         val RUN_ENV: Map<String, String> =

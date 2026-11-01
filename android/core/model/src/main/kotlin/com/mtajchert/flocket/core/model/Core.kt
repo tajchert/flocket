@@ -25,6 +25,7 @@ data class CoreInfo(
         const val TERMINAL_READ = "terminal.read"
         const val TEMPLATES_LIST = "templates.list"
         const val MACHINE_LIST = "machine.list"
+        const val MACHINE_EXEC = "machine.exec"
     }
 }
 

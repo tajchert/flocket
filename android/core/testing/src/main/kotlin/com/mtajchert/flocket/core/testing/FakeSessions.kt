@@ -76,6 +76,7 @@ class FakeCoreSession(
     var sendHandler: suspend (TerminalAddress, String, Boolean) -> AppResult<SendReceipt> = { _, _, _ -> unsupported() }
     var interruptHandler: suspend (TerminalAddress) -> AppResult<InterruptOutcome> = { unsupported() }
     var templatesHandler: suspend () -> AppResult<List<TerminalTemplate>> = { AppResult.Success(emptyList()) }
+    var homeHandler: suspend (String?) -> AppResult<String> = { AppResult.Success("/home/user") }
     val calls = mutableListOf<String>()
 
     override suspend fun run(request: RunRequest): AppResult<TerminalRecord> {
@@ -108,6 +109,11 @@ class FakeCoreSession(
     }
 
     override suspend fun templates(): AppResult<List<TerminalTemplate>> = templatesHandler()
+
+    override suspend fun homeDirectory(machine: String?): AppResult<String> {
+        calls += "home:$machine"
+        return homeHandler(machine)
+    }
 
     override suspend fun readText(
         address: TerminalAddress,
