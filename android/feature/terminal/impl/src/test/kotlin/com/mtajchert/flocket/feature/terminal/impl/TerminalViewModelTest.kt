@@ -7,6 +7,7 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.mtajchert.flocket.core.common.error.AppError
 import com.mtajchert.flocket.core.common.result.AppResult
+import com.mtajchert.flocket.core.data.UserPreferences
 import com.mtajchert.flocket.core.model.ConnectionState
 import com.mtajchert.flocket.core.model.Liveness
 import com.mtajchert.flocket.core.model.TerminalAddress
@@ -62,6 +63,7 @@ class TerminalViewModelTest {
         address: String = "t1",
         startedHere: Boolean = false,
         savedState: SavedStateHandle = SavedStateHandle(),
+        preferences: FakePreferencesRepository = FakePreferencesRepository(),
         attach: (suspend (TerminalAddress, AttachRequest) -> AppResult<TerminalStream>)? = null,
     ): TerminalViewModel {
         manager.overview.value // sessions are created with the overview
@@ -72,7 +74,7 @@ class TerminalViewModelTest {
                 route = TerminalRoute("studio", address, startedHere),
                 savedState = savedState,
                 connections = manager,
-                preferences = FakePreferencesRepository(),
+                preferences = preferences,
                 controllerFactory = {
                     TerminalController(
                         engineFactory = { c, r -> FakeTerminalEngine(c, r) },
@@ -146,9 +148,41 @@ class TerminalViewModelTest {
             goOnline()
             val vm = viewModel()
             advanceUntilIdle()
+            assertEquals(setOf<Any>(vm), manager.heldTerminals)
             streams.single().end.value = StreamEnd.ProgramEnded("exit", 3, null)
             advanceUntilIdle()
-            assertEquals(TerminalPhase.Exited(3, null), vm.uiState.value.phase)
+            assertEquals(TerminalPhase.Exited(3, null, "exit"), vm.uiState.value.phase)
+            // An ended terminal no longer keeps the app connected in the background.
+            assertTrue(manager.heldTerminals.isEmpty())
+        }
+
+    @Test
+    fun `notification permission is offered once while attached and only with keep-alive on`() =
+        runTest {
+            goOnline()
+            val prefs = FakePreferencesRepository()
+            val vm = viewModel(preferences = prefs)
+            val collector = backgroundScope.launch { vm.uiState.collect {} }
+            advanceUntilIdle()
+            assertTrue(vm.uiState.value.offerNotificationPermission)
+            vm.onNotificationPermissionAsked()
+            advanceUntilIdle()
+            assertTrue(!vm.uiState.value.offerNotificationPermission)
+            assertTrue(prefs.preferences.value.notificationPermissionAsked)
+            collector.cancel()
+        }
+
+    @Test
+    fun `notification permission is not offered when keep-alive is off`() =
+        runTest {
+            goOnline()
+            val prefs = FakePreferencesRepository(UserPreferences(keepConnectedInBackground = false))
+            val vm = viewModel(preferences = prefs)
+            val collector = backgroundScope.launch { vm.uiState.collect {} }
+            advanceUntilIdle()
+            assertEquals(TerminalPhase.Live, vm.uiState.value.phase)
+            assertTrue(!vm.uiState.value.offerNotificationPermission)
+            collector.cancel()
         }
 
     @Test
@@ -158,7 +192,8 @@ class TerminalViewModelTest {
             val vm = viewModel(address = "t6")
             advanceUntilIdle()
             assertTrue(attaches().isEmpty())
-            assertEquals(TerminalPhase.Exited(0, null), vm.uiState.value.phase)
+            assertEquals(TerminalPhase.Exited(0, null, "exit"), vm.uiState.value.phase)
+            assertTrue(manager.heldTerminals.isEmpty())
         }
 
     @Test

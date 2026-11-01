@@ -120,6 +120,8 @@ class SettingsViewModel
 
         fun setKeepScreenOn(enabled: Boolean) = update { it.copy(keepScreenOnInTerminal = enabled) }
 
+        fun setKeepConnected(enabled: Boolean) = update { it.copy(keepConnectedInBackground = enabled) }
+
         private fun update(transform: (UserPreferences) -> UserPreferences) {
             viewModelScope.launch {
                 (preferences.update(transform) as? AppResult.Failure)?.let {
@@ -157,7 +159,7 @@ class SettingsViewModel
                     is AppResult.Success -> {
                         dialogState.value = null
                         eventChannel.trySend(
-                            SettingsEvent.Info(UiText.Res(R.string.keys_generated, listOf(r.value.alias))),
+                            SettingsEvent.Info(UiText.Res(R.string.keys_generated, listOf(r.value.label))),
                         )
                     }
 
@@ -223,7 +225,7 @@ class SettingsViewModel
                     is AppResult.Success -> {
                         dialogState.value = null
                         eventChannel.trySend(
-                            SettingsEvent.Info(UiText.Res(R.string.keys_imported, listOf(result.value.alias))),
+                            SettingsEvent.Info(UiText.Res(R.string.keys_imported, listOf(result.value.label))),
                         )
                     }
 

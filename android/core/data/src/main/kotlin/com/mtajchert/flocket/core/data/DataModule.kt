@@ -30,6 +30,7 @@ import dagger.hilt.components.SingletonComponent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.map
 import javax.inject.Singleton
 
 /**
@@ -94,8 +95,21 @@ internal object DataModule {
         foreground: AppForeground,
         network: NetworkMonitor,
         @ApplicationScope scope: CoroutineScope,
+        // Bound by :app (the Android service lives there, next to the Activity it returns to).
+        keepAlive: KeepAliveService,
+        preferences: PreferencesRepository,
     ): ConnectionManager =
-        ConnectionManagerImpl(hosts, factory, connector, foreground, network, scope, logger = AndroidLogger)
+        ConnectionManagerImpl(
+            hosts,
+            factory,
+            connector,
+            foreground,
+            network,
+            scope,
+            keepAlive,
+            keepAliveEnabled = preferences.preferences.map { it.keepConnectedInBackground },
+            logger = AndroidLogger,
+        )
 
     @Provides
     @Singleton

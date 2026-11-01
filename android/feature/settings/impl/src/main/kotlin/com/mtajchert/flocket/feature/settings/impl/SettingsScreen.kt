@@ -79,6 +79,7 @@ class SettingsCallbacks(
     val onFontSize: (Float) -> Unit = {},
     val onExtraKeys: (Boolean) -> Unit = {},
     val onKeepScreenOn: (Boolean) -> Unit = {},
+    val onKeepConnected: (Boolean) -> Unit = {},
     val onGenerateKey: () -> Unit = {},
     val onImportKey: () -> Unit = {},
     val onDeleteKey: (KeyItem) -> Unit = {},
@@ -107,6 +108,7 @@ fun SettingsScreen(
             LazyColumn(contentPadding = PaddingValues(bottom = 32.dp)) {
                 item { AppearanceSection(state, callbacks, dynamicColorAvailable) }
                 item { TerminalSection(state, callbacks) }
+                item { ConnectionSection(state, callbacks) }
                 item { KeysSection(state.keys, callbacks) }
                 item { HostsSection(callbacks) }
                 item { AboutSection(appInfo, callbacks) }
@@ -246,6 +248,20 @@ private fun TerminalSection(
     )
 }
 
+@Composable
+internal fun ConnectionSection(
+    state: SettingsUiState,
+    callbacks: SettingsCallbacks,
+) {
+    SectionHeader(stringResource(R.string.section_connection))
+    SwitchRow(
+        stringResource(R.string.keep_connected),
+        stringResource(R.string.keep_connected_hint),
+        state.preferences.keepConnectedInBackground,
+        callbacks.onKeepConnected,
+    )
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun KeysSection(
@@ -301,7 +317,7 @@ private fun KeyCard(
                 Icon(Icons.Outlined.Key, null, tint = MaterialTheme.colorScheme.primary)
                 Column(Modifier.weight(1f).padding(start = 12.dp)) {
                     Text(
-                        item.key.alias,
+                        item.key.label,
                         style = MaterialTheme.typography.titleMedium,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -315,7 +331,7 @@ private fun KeyCard(
                 IconButton(onClick = { onDelete(item) }) {
                     Icon(
                         Icons.Outlined.DeleteOutline,
-                        stringResource(R.string.key_delete_description, item.key.alias),
+                        stringResource(R.string.key_delete_description, item.key.label),
                         tint = MaterialTheme.colorScheme.error,
                     )
                 }

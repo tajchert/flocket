@@ -219,7 +219,7 @@ private fun KeyPicker(
                             modifier = Modifier.padding(end = 12.dp),
                         )
                         Column {
-                            Text(key.alias, style = MaterialTheme.typography.bodyLarge)
+                            Text(key.label, style = MaterialTheme.typography.bodyLarge)
                             Text(
                                 stringResource(R.string.form_key_option, key.keyType, key.fingerprint),
                                 style = MaterialTheme.typography.bodySmall,

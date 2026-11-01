@@ -55,6 +55,20 @@ private fun SettingsNoKeysScreenshot() =
 @PreviewTest
 @Preview(name = "Phone", showBackground = true, widthDp = 412, heightDp = 892, apiLevel = 36)
 @Composable
+private fun ConnectionSectionScreenshot() =
+    Shot {
+        Column {
+            ConnectionSection(state, SettingsCallbacks())
+            ConnectionSection(
+                state.copy(preferences = state.preferences.copy(keepConnectedInBackground = false)),
+                SettingsCallbacks(),
+            )
+        }
+    }
+
+@PreviewTest
+@Preview(name = "Phone", showBackground = true, widthDp = 412, heightDp = 892, apiLevel = 36)
+@Composable
 private fun KeysSectionScreenshot() = Shot { Column { KeysSection(state.keys, SettingsCallbacks()) } }
 
 @PreviewTest

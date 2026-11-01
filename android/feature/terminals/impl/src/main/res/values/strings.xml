@@ -23,6 +23,7 @@
         <item quantity="one">%d terminal</item>
         <item quantity="other">%d terminals</item>
     </plurals>
+    <string name="host_terminal_count_filtered">%1$d shown · %2$d total</string>
     <string name="host_no_terminals">No terminals on this host yet.</string>
     <string name="host_no_matches">Nothing matches this filter on this host.</string>
     <string name="machine_header">Machine %1$s</string>

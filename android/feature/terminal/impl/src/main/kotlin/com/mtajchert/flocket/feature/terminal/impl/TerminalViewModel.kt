@@ -107,6 +107,8 @@ class TerminalViewModel
             val confirmKill: Boolean = false,
             /** Pinch result not yet confirmed by the preferences flow. */
             val fontSizeSp: Float? = null,
+            /** Answered in this screen; hides the prompt before the preferences write lands. */
+            val notificationAsked: Boolean = false,
         )
 
         private val sessionState: Flow<SessionState?> = session.flatMapLatest { it?.state ?: flowOf(null) }
@@ -140,6 +142,9 @@ class TerminalViewModel
                     keepScreenOn = prefs.keepScreenOnInTerminal,
                     clipboardRequest = loc.clipboardRequest,
                     confirmKill = loc.confirmKill,
+                    offerNotificationPermission =
+                        ph == TerminalPhase.Live && prefs.keepConnectedInBackground &&
+                            !prefs.notificationPermissionAsked && !loc.notificationAsked,
                 )
             }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), TerminalUiState(address = route.address))
 
@@ -177,7 +182,7 @@ class TerminalViewModel
                 val liveness = record?.liveness
                 if (liveness is Liveness.Finished && stream == null) {
                     // Nothing to attach to; show how it ended (the screen keeps whatever it has).
-                    phase.value = TerminalPhase.Exited(liveness.exitCode, liveness.signal)
+                    phase.value = TerminalPhase.Exited(liveness.exitCode, liveness.signal, liveness.reason)
                     return
                 }
                 if (phase.value != TerminalPhase.WaitingForShell) phase.value = TerminalPhase.Connecting
@@ -209,12 +214,16 @@ class TerminalViewModel
                             return
                         }
                         stream = st
+                        // While bound, leaving the app keeps the link up for a few minutes (ADR-0006).
+                        connections.holdTerminal(this)
                         savedState[KEY_ATTACHED] = true
                         controller.bind(st, mode)
                         phase.value = TerminalPhase.Live
-                        when (val end = st.end.filterNotNull().first()) {
+                        val end = st.end.filterNotNull().first()
+                        connections.releaseTerminal(this)
+                        when (end) {
                             is StreamEnd.ProgramEnded -> {
-                                phase.value = TerminalPhase.Exited(end.exitCode, end.signal)
+                                phase.value = TerminalPhase.Exited(end.exitCode, end.signal, end.reason)
                                 return
                             }
 
@@ -249,7 +258,7 @@ class TerminalViewModel
                                     s.state.value
                                         .terminal(address)
                                         ?.liveness as? Liveness.Finished
-                                phase.value = TerminalPhase.Exited(l?.exitCode, l?.signal)
+                                phase.value = TerminalPhase.Exited(l?.exitCode, l?.signal, l?.reason)
                                 return
                             }
 
@@ -381,6 +390,12 @@ class TerminalViewModel
             if (allow) send(TerminalScreenEvent.CopyToClipboard(text))
         }
 
+        /** The notification permission prompt was shown (any answer): never offer it again. */
+        fun onNotificationPermissionAsked() {
+            local.update { it.copy(notificationAsked = true) }
+            viewModelScope.launch { preferences.update { it.copy(notificationPermissionAsked = true) } }
+        }
+
         fun onFontSizeChange(sizeSp: Float) {
             local.update { it.copy(fontSizeSp = sizeSp) }
             fontSizes.value = sizeSp
@@ -403,6 +418,7 @@ class TerminalViewModel
         /** Only a real close lands here (never rotation): detach for good, then release the engine. */
         override fun onCleared() {
             cleared = true
+            connections.releaseTerminal(this)
             val s = stream
             stream = null
             appScope.launch {

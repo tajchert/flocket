@@ -27,6 +27,8 @@ internal class PreferencesRepositoryImpl(
             terminalFontSize = terminalFontSize,
             keepScreenOnInTerminal = keepScreenOnInTerminal,
             showExtraKeys = showExtraKeys,
+            notificationPermissionAsked = notificationPermissionAsked,
+            keepConnectedInBackground = keepConnectedInBackground,
         )
 
     private fun UserPreferences.toStored() =
@@ -37,5 +39,7 @@ internal class PreferencesRepositoryImpl(
             terminalFontSize,
             keepScreenOnInTerminal,
             showExtraKeys,
+            notificationPermissionAsked,
+            keepConnectedInBackground,
         )
 }

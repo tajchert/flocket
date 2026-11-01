@@ -171,4 +171,13 @@ class FakeConnectionManager(
         providedPasswords.update { it + hostId }
         sessions[hostId]?.retryNow()
     }
+
+    private val held = MutableStateFlow(emptySet<Any>())
+
+    /** Tokens of terminal screens currently held for background keep-alive. */
+    val heldTerminals: Set<Any> get() = held.value
+
+    override fun holdTerminal(token: Any) = held.update { it + token }
+
+    override fun releaseTerminal(token: Any) = held.update { it - token }
 }

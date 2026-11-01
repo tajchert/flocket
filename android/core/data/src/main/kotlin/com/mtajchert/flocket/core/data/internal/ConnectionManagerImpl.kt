@@ -5,6 +5,7 @@ import com.mtajchert.flocket.core.data.AppForeground
 import com.mtajchert.flocket.core.data.ConnectionManager
 import com.mtajchert.flocket.core.data.HostOverview
 import com.mtajchert.flocket.core.data.HostRepository
+import com.mtajchert.flocket.core.data.KeepAliveService
 import com.mtajchert.flocket.core.data.NetworkMonitor
 import com.mtajchert.flocket.core.data.NetworkState
 import com.mtajchert.flocket.core.model.ConnectionState
@@ -16,6 +17,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -33,8 +35,12 @@ import kotlin.coroutines.cancellation.CancellationException
  * - Hosts added/removed/edited create/stop/recreate sessions. Only fields that change *where or as whom* we
  *   connect (hostname, port, username, auth, hc session) recreate; label/hcPath edits just refresh [overview]
  *   (the transport factory reads the host fresh on every connect, so they apply on the next attempt).
- * - Foreground starts every session; going to the background stops them after [gracePeriodMs] unless the
- *   app returns first (screen lock + quick unlock must not reconnect).
+ * - Foreground starts every session. Going to the background (ADR-0006): with the user's keep-alive setting
+ *   on and at least one terminal screen held ([holdTerminal]) the [keepAlive] service starts and sessions stay up until the user returns, the
+ *   service ends ([keepAliveEnded]), the last terminal is released, or [keepAliveWindowMs] passes (just under
+ *   the platform's ~3 min `shortService` limit, so we stop before `onTimeout`). Without a terminal, or when
+ *   the platform refuses the service, sessions stop at once: Android 15+ cuts a background app's network
+ *   ~5 s later anyway, so waiting would only turn a clean detach into a dropped link.
  * - Regaining or changing the network retries sessions that are waiting in backoff.
  * - Each host's work runs in its own child job: one slow or failing host never blocks another.
  */
@@ -45,7 +51,10 @@ internal class ConnectionManagerImpl(
     foreground: AppForeground,
     network: NetworkMonitor,
     private val scope: CoroutineScope,
-    private val gracePeriodMs: Long = BACKGROUND_GRACE_MS,
+    private val keepAlive: KeepAliveService = NoKeepAlive,
+    private val keepAliveWindowMs: Long = KEEP_ALIVE_WINDOW_MS,
+    /** The user's app-level "Keep connected in background" setting; off means detach at once. */
+    keepAliveEnabled: Flow<Boolean> = flowOf(true),
     private val logger: Logger = Logger.None,
 ) : ConnectionManager {
     private class Entry(
@@ -56,7 +65,12 @@ internal class ConnectionManagerImpl(
     private val lock = Any()
     private var entries: Map<HostId, Entry> = emptyMap()
     private var active = false
-    private var graceJob: Job? = null
+    private var foreground = false
+    private val terminals = LinkedHashSet<Any>()
+    private var keepAliveRunning = false
+
+    @Volatile private var keepAliveAllowed = true
+    private var windowJob: Job? = null
     private var lastNetwork: NetworkState? = null
 
     private val roster = MutableStateFlow<List<Entry>>(emptyList())
@@ -79,6 +93,7 @@ internal class ConnectionManagerImpl(
         scope.launch { hostRepository.hosts.collect { reconcile(it) } }
         scope.launch { foreground.isForeground.distinctUntilChanged().collect { onForeground(it) } }
         scope.launch { network.state.distinctUntilChanged().collect { onNetwork(it) } }
+        scope.launch { keepAliveEnabled.collect { keepAliveAllowed = it } }
     }
 
     override fun session(hostId: HostId): CoreSession? = synchronized(lock) { entries[hostId]?.session }
@@ -151,30 +166,115 @@ internal class ConnectionManagerImpl(
             old.auth != new.auth ||
             old.session != new.session
 
+    override fun holdTerminal(token: Any) {
+        synchronized(lock) { terminals += token }
+    }
+
+    override fun releaseTerminal(token: Any) {
+        val expire =
+            synchronized(lock) {
+                terminals -= token
+                keepAliveRunning && terminals.isEmpty()
+            }
+        if (expire) endKeepAlive("last terminal closed")
+    }
+
+    override fun keepAliveEnded() {
+        val expire = synchronized(lock) { keepAliveRunning || (!foreground && active) }
+        if (expire) endKeepAlive("service ended")
+    }
+
     private fun onForeground(isForeground: Boolean) {
         val sessions: List<CoreSession>
+        val stopService: Boolean
+        val keepFor: Int
         synchronized(lock) {
-            graceJob?.cancel()
-            graceJob = null
+            foreground = isForeground
+            windowJob?.cancel()
+            windowJob = null
             if (isForeground) {
+                stopService = keepAliveRunning
+                keepAliveRunning = false
                 active = true
                 sessions = entries.values.map { it.session }
+                keepFor = 0
             } else {
+                stopService = false
                 sessions = emptyList()
-                graceJob =
-                    scope.launch {
-                        delay(gracePeriodMs)
-                        val toStop =
-                            synchronized(lock) {
-                                active = false
-                                graceJob = null
-                                entries.values.map { it.session }
-                            }
-                        toStop.forEach { s -> launch { safely("stop") { s.stop() } } }
+                // Never started (process start) or already detached: nothing to keep or stop.
+                keepFor =
+                    when {
+                        !active -> -1
+                        !keepAliveAllowed -> 0
+                        else -> terminals.size
                     }
             }
         }
-        sessions.forEach { s -> safely("start") { s.start() } }
+        if (isForeground) {
+            if (stopService) safely("keep-alive stop") { keepAlive.stop() }
+            sessions.forEach { s -> safely("start") { s.start() } }
+            return
+        }
+        when {
+            keepFor < 0 -> {
+                Unit
+            }
+
+            keepFor == 0 -> {
+                detachAll("background, no terminal open or keep-alive off")
+            }
+
+            else -> {
+                val started =
+                    try {
+                        keepAlive.start(keepFor)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        logger.error(TAG, { "keep-alive start failed" }, e)
+                        false
+                    }
+                if (!started) {
+                    detachAll("background, keep-alive not allowed")
+                    return
+                }
+                synchronized(lock) {
+                    // The user may have come back while start() ran.
+                    if (foreground) return@synchronized
+                    keepAliveRunning = true
+                    windowJob =
+                        scope.launch {
+                            delay(keepAliveWindowMs)
+                            endKeepAlive("window over")
+                        }
+                }
+                if (synchronized(lock) { foreground }) safely("keep-alive stop") { keepAlive.stop() }
+            }
+        }
+    }
+
+    /** Ends the background window: stop the service and detach every session cleanly. */
+    private fun endKeepAlive(why: String) {
+        val stopService =
+            synchronized(lock) {
+                if (foreground) return
+                windowJob?.cancel()
+                windowJob = null
+                keepAliveRunning.also { keepAliveRunning = false }
+            }
+        if (stopService) safely("keep-alive stop") { keepAlive.stop() }
+        detachAll(why)
+    }
+
+    private fun detachAll(why: String) {
+        val toStop =
+            synchronized(lock) {
+                if (foreground || !active) return
+                active = false
+                entries.values.map { it.session }
+            }
+        logger.info(TAG, { "detaching ${toStop.size} session(s): $why" })
+        toStop.forEach { s -> scope.launch { safely("stop") { s.stop() } } }
     }
 
     private fun onNetwork(state: NetworkState) {
@@ -209,8 +309,15 @@ internal class ConnectionManagerImpl(
         }
     }
 
+    private object NoKeepAlive : KeepAliveService {
+        override fun start(terminals: Int) = false
+
+        override fun stop() = Unit
+    }
+
     companion object {
-        const val BACKGROUND_GRACE_MS = 60_000L
+        /** Just under the ~3 min `shortService` timeout, so we stop first instead of hitting `onTimeout`. */
+        const val KEEP_ALIVE_WINDOW_MS = 170_000L
         private const val TAG = "ConnectionManager"
     }
 }

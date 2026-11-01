@@ -3,6 +3,7 @@ package com.mtajchert.flocket.core.data.internal
 import com.mtajchert.flocket.core.common.error.AppError
 import com.mtajchert.flocket.core.common.result.AppResult
 import com.mtajchert.flocket.core.data.AppForeground
+import com.mtajchert.flocket.core.data.KeepAliveService
 import com.mtajchert.flocket.core.data.NetworkMonitor
 import com.mtajchert.flocket.core.data.NetworkState
 import com.mtajchert.flocket.core.model.ConnectionState
@@ -69,6 +70,26 @@ class ConnectionManagerTest {
         }
     }
 
+    private class FakeKeepAlive : KeepAliveService {
+        var allowed = true
+        val starts = mutableListOf<Int>()
+        var stops = 0
+        var running = false
+
+        override fun start(terminals: Int): Boolean {
+            starts += terminals
+            running = allowed
+            return allowed
+        }
+
+        override fun stop() {
+            stops++
+            running = false
+        }
+    }
+
+    private val keepAlive = FakeKeepAlive()
+    private val keepAliveSetting = MutableStateFlow(true)
     private val fg = MutableStateFlow(false)
     private val net = MutableStateFlow(NetworkState(true, 1))
     private val sessions = mutableListOf<Rec>()
@@ -95,6 +116,8 @@ class ConnectionManagerTest {
                 override val state = net
             },
             backgroundScope,
+            keepAlive,
+            keepAliveEnabled = keepAliveSetting,
         )
 
     private suspend fun setHosts(vararg h: Host) {
@@ -144,7 +167,7 @@ class ConnectionManagerTest {
         }
 
     @Test
-    fun `foreground starts and background stops after exactly 60 seconds`() =
+    fun `foreground starts every session and background without a terminal stops them at once`() =
         runTest {
             val m = manager()
             setHosts(host("a"), host("b"))
@@ -159,34 +182,159 @@ class ConnectionManagerTest {
             assertEquals(1, sessionOf("c").starts)
             fg.value = false
             runCurrent()
-            advanceTimeBy(59_999)
-            assertEquals(0, sessionOf("a").stops)
-            advanceTimeBy(1)
-            runCurrent()
-            assertEquals(1, sessionOf("a").stops)
-            assertEquals(1, sessionOf("b").stops)
-            assertEquals(
-                1,
-                m.overview.value.size
-                    .minus(2),
-            )
+            assertEquals(listOf(1, 1, 1), listOf("a", "b", "c").map { sessionOf(it).stops })
+            assertTrue(keepAlive.starts.isEmpty())
+            assertEquals(3, m.overview.value.size)
         }
 
     @Test
-    fun `returning within the grace period cancels the stop`() =
+    fun `background with a terminal starts the service and keeps sessions`() =
         runTest {
-            manager()
+            val m = manager()
             setHosts(host("a"))
             fg.value = true
             runCurrent()
+            m.holdTerminal("t1")
+            m.holdTerminal("t2")
+            m.holdTerminal("t1")
+            fg.value = false
+            runCurrent()
+            assertEquals(listOf(2), keepAlive.starts)
+            advanceTimeBy(ConnectionManagerImpl.KEEP_ALIVE_WINDOW_MS - 1)
+            runCurrent()
+            assertEquals(0, sessionOf("a").stops)
+            assertTrue(keepAlive.running)
+        }
+
+    @Test
+    fun `returning within the window stops the service without reconnecting`() =
+        runTest {
+            val m = manager()
+            setHosts(host("a"))
+            fg.value = true
+            runCurrent()
+            m.holdTerminal("t")
             fg.value = false
             runCurrent()
             advanceTimeBy(30_000)
             fg.value = true
             runCurrent()
-            advanceTimeBy(120_000)
+            assertEquals(1, keepAlive.stops)
+            assertTrue(!keepAlive.running)
+            advanceTimeBy(600_000)
+            runCurrent()
             assertEquals(0, sessionOf("a").stops)
+            // start() is a no-op on a connected session; nothing was torn down.
             assertEquals(2, sessionOf("a").starts)
+        }
+
+    @Test
+    fun `window end stops the service and the sessions`() =
+        runTest {
+            val m = manager()
+            setHosts(host("a"))
+            fg.value = true
+            runCurrent()
+            m.holdTerminal("t")
+            fg.value = false
+            runCurrent()
+            advanceTimeBy(ConnectionManagerImpl.KEEP_ALIVE_WINDOW_MS)
+            runCurrent()
+            assertEquals(1, sessionOf("a").stops)
+            assertEquals(1, keepAlive.stops)
+            // Back in the foreground: a fresh start (passive reattach happens in the terminal screen).
+            fg.value = true
+            runCurrent()
+            assertEquals(2, sessionOf("a").starts)
+            assertEquals(1, keepAlive.stops)
+        }
+
+    @Test
+    fun `service timeout stops the sessions`() =
+        runTest {
+            val m = manager()
+            setHosts(host("a"))
+            fg.value = true
+            runCurrent()
+            m.holdTerminal("t")
+            fg.value = false
+            runCurrent()
+            advanceTimeBy(60_000)
+            m.keepAliveEnded()
+            runCurrent()
+            assertEquals(1, sessionOf("a").stops)
+            advanceTimeBy(600_000)
+            runCurrent()
+            assertEquals(1, sessionOf("a").stops)
+        }
+
+    @Test
+    fun `service not allowed stops the sessions at once`() =
+        runTest {
+            val m = manager()
+            setHosts(host("a"))
+            fg.value = true
+            runCurrent()
+            m.holdTerminal("t")
+            keepAlive.allowed = false
+            fg.value = false
+            runCurrent()
+            assertEquals(listOf(1), keepAlive.starts)
+            assertEquals(1, sessionOf("a").stops)
+        }
+
+    @Test
+    fun `closing the last terminal in the background ends the window`() =
+        runTest {
+            val m = manager()
+            setHosts(host("a"))
+            fg.value = true
+            runCurrent()
+            m.holdTerminal("t")
+            fg.value = false
+            runCurrent()
+            m.releaseTerminal("t")
+            runCurrent()
+            assertEquals(1, sessionOf("a").stops)
+            assertEquals(1, keepAlive.stops)
+        }
+
+    @Test
+    fun `keep-alive setting off detaches at once with no service`() =
+        runTest {
+            val m = manager()
+            setHosts(host("a"))
+            keepAliveSetting.value = false
+            fg.value = true
+            runCurrent()
+            m.holdTerminal("t")
+            fg.value = false
+            runCurrent()
+            assertTrue(keepAlive.starts.isEmpty())
+            assertEquals(1, sessionOf("a").stops)
+            // Turning it back on applies to the next background.
+            keepAliveSetting.value = true
+            fg.value = true
+            runCurrent()
+            fg.value = false
+            runCurrent()
+            assertEquals(listOf(1), keepAlive.starts)
+            assertEquals(1, sessionOf("a").stops)
+        }
+
+    @Test
+    fun `a released terminal does not keep the app connected`() =
+        runTest {
+            val m = manager()
+            setHosts(host("a"))
+            fg.value = true
+            runCurrent()
+            m.holdTerminal("t")
+            m.releaseTerminal("t")
+            fg.value = false
+            runCurrent()
+            assertTrue(keepAlive.starts.isEmpty())
+            assertEquals(1, sessionOf("a").stops)
         }
 
     @Test

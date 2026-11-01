@@ -377,8 +377,9 @@ private fun EndBanner(
                 icon = if (p.exitCode == 0) Icons.Outlined.CheckCircle else Icons.Outlined.ErrorOutline,
                 text =
                     when {
-                        p.exitCode != null -> stringResource(R.string.terminal_exited_code, p.exitCode)
+                        p.reason == REASON_KILLED -> stringResource(R.string.terminal_killed)
                         p.signal != null -> stringResource(R.string.terminal_exited_signal, p.signal)
+                        p.exitCode != null -> stringResource(R.string.terminal_exited_code, p.exitCode)
                         else -> stringResource(R.string.terminal_exited)
                     },
                 actions =
@@ -506,3 +507,6 @@ private fun ReconnectingChip(modifier: Modifier = Modifier) {
 }
 
 private const val CLIPBOARD_PREVIEW_CHARS = 2_000
+
+/** herdr-core's `reason` for a terminal ended by `terminal.kill`. */
+private const val REASON_KILLED = "killed"

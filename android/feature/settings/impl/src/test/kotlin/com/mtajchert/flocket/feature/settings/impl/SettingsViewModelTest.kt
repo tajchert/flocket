@@ -45,12 +45,14 @@ class SettingsViewModelTest {
             vm.setDynamicColor(false)
             vm.setShowExtraKeys(false)
             vm.setKeepScreenOn(false)
+            vm.setKeepConnected(false)
             vm.setTerminalFontSize(40f)
             val p = vm.uiState.value.preferences
             assertEquals(ThemePreference.Dark, p.theme)
             assertEquals(false, p.dynamicColor)
             assertEquals(false, p.showExtraKeys)
             assertEquals(false, p.keepScreenOnInTerminal)
+            assertEquals(false, p.keepConnectedInBackground)
             assertEquals(SettingsViewModel.MAX_FONT_SP, p.terminalFontSize)
         }
 

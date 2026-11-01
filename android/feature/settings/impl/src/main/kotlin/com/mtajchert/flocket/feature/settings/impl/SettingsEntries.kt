@@ -121,6 +121,7 @@ private fun SettingsRoute(
                 onFontSize = viewModel::setTerminalFontSize,
                 onExtraKeys = viewModel::setShowExtraKeys,
                 onKeepScreenOn = viewModel::setKeepScreenOn,
+                onKeepConnected = viewModel::setKeepConnected,
                 onGenerateKey = viewModel::requestGenerate,
                 onImportKey = { viewModel.requestImport() },
                 onDeleteKey = viewModel::requestDelete,

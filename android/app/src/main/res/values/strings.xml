@@ -4,4 +4,12 @@
     <string name="nav_terminals">Terminals</string>
     <string name="nav_hosts">Hosts</string>
     <string name="nav_settings">Settings</string>
+    <!-- Keep-alive foreground service (ADR-0006) -->
+    <string name="keep_alive_channel">Connection</string>
+    <string name="keep_alive_channel_description">Shown while Flocket keeps your open terminals connected in the background for a few minutes.</string>
+    <plurals name="keep_alive_title">
+        <item quantity="one">Flocket connected · %d terminal</item>
+        <item quantity="other">Flocket connected · %d terminals</item>
+    </plurals>
+    <string name="keep_alive_text">Keeping your terminal connected for a few minutes. Tap to return.</string>
 </resources>

@@ -10,6 +10,7 @@ dependencies {
     implementation(projects.core.session)
     implementation(projects.core.terminal)
     implementation(projects.core.terminalGhostty)
+    implementation(libs.androidx.activity.compose)
 
     screenshotTestImplementation(projects.core.testing)
     screenshotTestImplementation(projects.core.designsystem)

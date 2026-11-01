@@ -17,3 +17,18 @@ data class NetworkState(
     val isAvailable: Boolean,
     val networkId: Long? = null,
 )
+
+/**
+ * Port for the short foreground service that keeps open terminals connected for a few minutes while the app
+ * is in the background (ADR-0006). `:app` implements it with an Android `shortService`.
+ */
+interface KeepAliveService {
+    /**
+     * Starts (or refreshes) the service for [terminals] attached terminal screens. Returns false when the
+     * platform refuses the start (e.g. `ForegroundServiceStartNotAllowedException`); never throws.
+     */
+    fun start(terminals: Int): Boolean
+
+    /** Stops the service if it runs. Safe to call at any time, also before the service started. */
+    fun stop()
+}

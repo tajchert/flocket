@@ -123,7 +123,8 @@ The rules below are enforced by the build where possible.
   background app's network after about 5 s, so a plain grace timer cannot work. If a
   terminal is open when the user leaves the app, a short `shortService` foreground service
   (about 3 minutes) keeps the link alive ([ADR-0006](../decisions/0006-background-short-service.md)).
-  Otherwise sessions detach immediately. Terminals live on the host regardless.
+  Otherwise, or when the user turns off "Keep connected in background", sessions detach
+  immediately. Terminals live on the host regardless.
 - When the app returns to the foreground or the network comes back, the app reconnects
   with jittered exponential backoff, starts a new epoch, re-runs hello, re-subscribes,
   installs a fresh snapshot and re-attaches open terminals for a fresh first paint.
@@ -211,4 +212,3 @@ and screenshots exercise the whole app without SSH.
 - Convention plugins in `android/build-logic` replace per-module boilerplate.
 - Hilt for DI and Navigation 3 for navigation, both carried over from the template.
 - Room for hosts and pinned host keys, and DataStore for preferences.
-- The demo host exists only in debug builds.
