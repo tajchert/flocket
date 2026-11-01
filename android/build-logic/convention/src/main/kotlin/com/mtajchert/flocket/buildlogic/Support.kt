@@ -62,19 +62,28 @@ internal fun Project.configureTestJvm() {
     tasks.withType<Test>().configureEach {
         // Skeleton modules have no tests yet; an empty test task is fine.
         failOnNoDiscoveredTests.set(false)
-        // Print the whole failure (causes and suppressed exceptions, e.g. coroutine leaks reported by
-        // runTest as UncaughtExceptionsBeforeTest), so a CI log alone is enough to diagnose it.
+        jvmArgs(
+            "--add-opens=java.base/java.io=ALL-UNNAMED",
+            "--add-opens=java.base/java.lang=ALL-UNNAMED",
+            "--add-exports=java.base/jdk.internal.access=ALL-UNNAMED",
+        )
+    }
+    configureTestLogging()
+}
+
+/**
+ * Print the whole failure (message, causes and suppressed exceptions, e.g. coroutine leaks that runTest
+ * reports as UncaughtExceptionsBeforeTest), so a CI log alone is enough to diagnose it. Used by every
+ * module type; a module may add more events (passed/skipped) on top.
+ */
+internal fun Project.configureTestLogging() {
+    tasks.withType<Test>().configureEach {
         testLogging {
             events(TestLogEvent.FAILED)
             exceptionFormat = TestExceptionFormat.FULL
             showCauses = true
             showStackTraces = true
         }
-        jvmArgs(
-            "--add-opens=java.base/java.io=ALL-UNNAMED",
-            "--add-opens=java.base/java.lang=ALL-UNNAMED",
-            "--add-exports=java.base/jdk.internal.access=ALL-UNNAMED",
-        )
     }
 }
 
