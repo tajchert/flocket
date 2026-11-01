@@ -286,6 +286,6 @@ private fun TerminalPaneSwitcherScreenshot() =
     StripShot(
         TabStripUi(
             tabsOf("agents", "logs", selected = 0),
-            panesOf("claude", "codex", "zsh", selected = 1),
+            panesOf("claude", "codex", "zsh", selected = 0),
         ),
     )
