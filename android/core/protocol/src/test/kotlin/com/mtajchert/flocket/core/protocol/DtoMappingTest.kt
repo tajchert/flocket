@@ -5,6 +5,7 @@ import com.mtajchert.flocket.core.model.AgentStatus
 import com.mtajchert.flocket.core.model.CoreEndpoint
 import com.mtajchert.flocket.core.model.HostId
 import com.mtajchert.flocket.core.model.Liveness
+import com.mtajchert.flocket.core.protocol.dto.ExecResult
 import com.mtajchert.flocket.core.protocol.dto.TerminalDto
 import com.mtajchert.flocket.core.protocol.dto.toRecord
 import com.mtajchert.flocket.core.protocol.rpc.ProtocolJson
@@ -50,6 +51,17 @@ class DtoMappingTest {
                 """{$base,"state":"finished","pid":9,"exit_code":3,"signal":null,"reason":"exited","finished_ms":99}""",
             ).toRecord(endpoint)
         assertEquals(Liveness.Finished("exited", 3, null, 99), r.liveness)
+    }
+
+    @Test
+    fun `exec result decodes an integer signal`() {
+        val r =
+            ProtocolJson.decodeFromString(
+                ExecResult.serializer(),
+                """{"stdout":"","stderr":"","code":null,"signal":9}""",
+            )
+        assertEquals(9, r.signal)
+        assertNull(r.code)
     }
 
     @Test

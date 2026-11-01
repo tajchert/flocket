@@ -121,6 +121,18 @@ class CoreSessionTransferTest {
         }
 
     @Test
+    fun `putFile with a blank path in the reply is a protocol error`() =
+        runTest {
+            val host = host()
+            host.configure = { c ->
+                c.handlers["terminal.put"] = { buildJsonObject { put("bytes", 3) } }
+            }
+            val s = online(host)
+            assertTrue(s.putFile(t3, "a.png", png).errorOrNull() is AppError.Protocol)
+            s.stop()
+        }
+
+    @Test
     fun `putFile opens a sibling on the main transport when it offers one`() =
         runTest {
             val main = FakeCore(backgroundScope)

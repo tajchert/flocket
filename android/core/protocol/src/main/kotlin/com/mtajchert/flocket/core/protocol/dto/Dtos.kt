@@ -191,7 +191,7 @@ data class ExecResult(
     @SerialName("timed_out") val timedOut: Boolean = false,
     val ms: Long = 0,
     val code: Int? = null,
-    val signal: String? = null,
+    val signal: Int? = null,
 )
 
 /** `terminal.put` result: where the file landed (next to the terminal, on its machine). */
