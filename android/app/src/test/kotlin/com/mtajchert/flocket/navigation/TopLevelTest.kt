@@ -17,6 +17,18 @@ class TopLevelTest {
     }
 
     @Test
+    fun `terminal also hides the rail in focus mode and on compact height`() {
+        assertTrue(terminal.isFullScreen(singlePane = false, focusMode = true))
+        assertTrue(terminal.isFullScreen(singlePane = false, compactHeight = true))
+        assertFalse(terminal.isFullScreen(singlePane = false, focusMode = false, compactHeight = false))
+    }
+
+    @Test
+    fun `focus mode and compact height never hide the rail on a list`() {
+        assertFalse(TerminalsRoute.isFullScreen(singlePane = false, focusMode = true, compactHeight = true))
+    }
+
+    @Test
     fun `top-level lists keep the navigation bar, onboarding never shows it`() {
         assertFalse(TerminalsRoute.isFullScreen(singlePane = true))
         assertTrue(OnboardingRoute.isFullScreen(singlePane = false))

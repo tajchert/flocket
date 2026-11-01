@@ -87,7 +87,12 @@ private fun TerminalRouteEntry(
         hiltViewModel<TerminalViewModel, TerminalViewModel.Factory>(key = "${key.hostId}/${key.address}") {
             it.create(key)
         }
-    TerminalRouteContent(viewModel, onClose = navigator::back)
+    TerminalRouteContent(
+        viewModel,
+        onClose = navigator::back,
+        // Passive attach (startedHere = false): switching tabs or panes never resizes a terminal.
+        onOpenTerminal = { address -> navigator.navigate(TerminalRoute(key.hostId, address)) },
+    )
 }
 
 /** Wires a [TerminalViewModel] to the screen and the platform (clipboard, keep-screen-on, keyboard). */
@@ -99,8 +104,11 @@ fun TerminalRouteContent(
     viewModel: TerminalViewModel,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
+    onOpenTerminal: (address: String) -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val tabStrip by viewModel.tabStrip.collectAsStateWithLifecycle()
+    val openTerminal by rememberUpdatedState(onOpenTerminal)
     val snackbar = remember { SnackbarHostState() }
     val context = LocalContext.current
     val view = LocalView.current
@@ -162,6 +170,7 @@ fun TerminalRouteContent(
         remember(viewModel, surfaceState) {
             TerminalActions(
                 onBack = { close() },
+                onOpenTerminal = { openTerminal(it) },
                 onFit = viewModel::fitToScreen,
                 onPaste = {
                     val text =
@@ -198,6 +207,7 @@ fun TerminalRouteContent(
                 onToggleKeyboard = { if (imeVisible) surfaceState.hideKeyboard() else surfaceState.showKeyboard() },
             ),
         snackbarHostState = snackbar,
+        tabStrip = tabStrip,
         extraKeys = { TerminalExtraKeys(viewModel.controller) },
     ) { modifier ->
         TerminalSurface(

@@ -5,13 +5,16 @@ package com.mtajchert.flocket.feature.terminal.impl
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -20,6 +23,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.MenuOpen
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.ContentPaste
@@ -29,6 +33,7 @@ import androidx.compose.material.icons.outlined.HourglassEmpty
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Keyboard
 import androidx.compose.material.icons.outlined.LinkOff
+import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.PowerSettingsNew
 import androidx.compose.material.icons.outlined.StopCircle
@@ -72,11 +77,15 @@ import com.mtajchert.flocket.core.model.ConnectionState
 import com.mtajchert.flocket.core.ui.component.AgentStatusChip
 import com.mtajchert.flocket.core.ui.component.ConnectionStateBadge
 import com.mtajchert.flocket.core.ui.error.asString
+import com.mtajchert.flocket.core.ui.nav.LocalPaneLayout
+import com.mtajchert.flocket.core.ui.nav.LocalSidebarToggle
 
 /** Everything the screen can ask for. Defaults are no-ops (previews, screenshot tests). */
 @Immutable
 data class TerminalActions(
     val onBack: () -> Unit = {},
+    /** Open another terminal of the same host (tab strip). */
+    val onOpenTerminal: (address: String) -> Unit = {},
     val onFit: () -> Unit = {},
     val onPaste: () -> Unit = {},
     val onCopy: () -> Unit = {},
@@ -97,7 +106,7 @@ data class TerminalActions(
  * The terminal screen chrome. [terminal] is the body slot: the live `TerminalSurface` in the app,
  * a `TerminalSnapshot` in screenshot tests. [extraKeys] sits under it, above the IME.
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun TerminalScreen(
     state: TerminalUiState,
@@ -105,9 +114,13 @@ fun TerminalScreen(
     modifier: Modifier = Modifier,
     snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
     showBack: Boolean = true,
+    tabStrip: TabStripUi? = null,
     extraKeys: @Composable () -> Unit = {},
     terminal: @Composable (Modifier) -> Unit,
 ) {
+    val layout = LocalPaneLayout.current
+    // A landscape phone has no room for the strip above the IME.
+    val stripVisible = tabStrip != null && tabStrip.isVisible && !(layout.compactHeight && WindowInsets.isImeVisible)
     Scaffold(
         modifier = modifier,
         topBar = { TerminalTopBar(state, actions, showBack) },
@@ -121,6 +134,7 @@ fun TerminalScreen(
                 .consumeWindowInsets(inner)
                 .imePadding(),
         ) {
+            if (stripVisible && tabStrip != null) TerminalTabStrip(tabStrip, actions.onOpenTerminal)
             if (state.freshShell) {
                 StateBanner(
                     icon = Icons.Outlined.Info,
@@ -229,9 +243,23 @@ private fun TerminalTopBar(
     actions: TerminalActions,
     showBack: Boolean,
 ) {
+    val layout = LocalPaneLayout.current
+    val sidebar = LocalSidebarToggle.current
     TopAppBar(
         navigationIcon = {
-            if (showBack) {
+            if (layout.multiPane) {
+                // The sidebar is already beside the terminal: no back arrow, a hide/show toggle instead.
+                IconButton(
+                    onClick = { sidebar.setSidebarVisible(!layout.sidebarVisible) },
+                    modifier = Modifier.testTag("terminal_sidebar_toggle"),
+                ) {
+                    if (layout.sidebarVisible) {
+                        Icon(Icons.AutoMirrored.Outlined.MenuOpen, stringResource(R.string.terminal_sidebar_hide))
+                    } else {
+                        Icon(Icons.Outlined.Menu, stringResource(R.string.terminal_sidebar_show))
+                    }
+                }
+            } else if (showBack) {
                 IconButton(onClick = actions.onBack) {
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.terminal_back))
                 }
