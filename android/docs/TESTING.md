@@ -50,7 +50,7 @@ Other tasks:
 ./gradlew :benchmark:connectedNonMinifiedReleaseAndroidTest
 ```
 
-End-to-end against a real `hc` over SSH on an emulator (manual): [journeys/E2E_SMOKE.md](journeys/E2E_SMOKE.md), using `scripts/dev-sshd.sh`.
+End-to-end against a real `hc` over SSH on an emulator: `scripts/e2e-device.sh up` sets up a connected app in one command; see [journeys/E2E_SMOKE.md](journeys/E2E_SMOKE.md).
 
 CI (`.github/workflows/android.yml`): the `instrumented` job runs `connectedDebugAndroidTest` for the modules with `androidTest` sources (`:core:terminal-ghostty`, `:core:terminal`, `:feature:terminal:impl`) on an API 35 `google_apis` x86_64 emulator with KVM and a cached AVD, after `build` passes. Add new device-test modules to its task list. Reports upload as `instrumented-reports` on failure.
 

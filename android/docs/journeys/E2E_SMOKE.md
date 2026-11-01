@@ -24,6 +24,15 @@ or lifecycle handling. Unit and screenshot tests are described in [TESTING.md](.
 
 ## Harness
 
+**Fast path:** `scripts/e2e-device.sh up` does steps 1-2 below (emulator, sshd, install, onboarding,
+host, trust) in one command, then `hc`, `tap`, `type`, `ui`, `shot` and `down` drive the rest. Run
+it without arguments for usage. It disables the keyboards (Gboard reorders injected keys), hides any
+keyboard the system turns back on after a boot or `pm clear`, and grants the notification permission
+so the first-terminal prompt does not swallow input. To test that prompt itself, revoke it with
+`adb -s emulator-5580 shell pm revoke com.mtajchert.flocket.debug android.permission.POST_NOTIFICATIONS`.
+
+The manual equivalent:
+
 ```bash
 cd android
 export FLOCKET_SSHD_DIR=/some/scratch/dir/e2e-sshd    # default: $TMPDIR/flocket-dev-sshd
