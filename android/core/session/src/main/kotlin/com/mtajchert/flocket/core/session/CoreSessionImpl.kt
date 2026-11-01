@@ -8,6 +8,7 @@ import com.mtajchert.flocket.core.model.ConnectionState
 import com.mtajchert.flocket.core.model.CoreEndpoint
 import com.mtajchert.flocket.core.model.CoreInfo
 import com.mtajchert.flocket.core.model.DesktopLayout
+import com.mtajchert.flocket.core.model.LayoutRef
 import com.mtajchert.flocket.core.model.Liveness
 import com.mtajchert.flocket.core.model.MachineInfo
 import com.mtajchert.flocket.core.model.MachineState
@@ -23,6 +24,7 @@ import com.mtajchert.flocket.core.protocol.CoreNotification
 import com.mtajchert.flocket.core.protocol.EventSubscription
 import com.mtajchert.flocket.core.protocol.RunParams
 import com.mtajchert.flocket.core.protocol.docGet
+import com.mtajchert.flocket.core.protocol.docSet
 import com.mtajchert.flocket.core.protocol.dto.toModel
 import com.mtajchert.flocket.core.protocol.dto.toRecord
 import com.mtajchert.flocket.core.protocol.machineExec
@@ -897,6 +899,51 @@ class CoreSessionImpl(
             it.terminalRead(address.value, historyLines, config.readTimeout).text
         }
 
+    override suspend fun renameInLayout(
+        ref: LayoutRef,
+        name: String,
+    ): AppResult<Unit> {
+        val doc = HerdrAppLayoutParser.DOCUMENT
+        var attempt = 0
+        while (true) {
+            attempt++
+            val current =
+                when (val r = read("doc.get", CoreInfo.DOC_GET) { it.docGet(doc, ref.machine, config.readTimeout) }) {
+                    is AppResult.Success -> r.value
+                    is AppResult.Failure -> return r
+                }
+            val edited =
+                when (val e = HerdrAppLayoutEdit.rename(current.value, ref.spaceId, ref.tabId, name)) {
+                    is HerdrAppLayoutEdit.Result.Edited -> e.value
+                    HerdrAppLayoutEdit.Result.Gone -> return notFound(ref, notALayout = false)
+                    HerdrAppLayoutEdit.Result.NotALayout -> return notFound(ref, notALayout = true)
+                }
+            // A conflicted write was not applied, so applying the change again is not a replay (SPEC §9).
+            val written =
+                mutate(
+                    "doc.set",
+                    CoreInfo.DOC_SET,
+                ) { it.docSet(doc, edited, current.version, ref.machine, config.readTimeout) }
+            when (written) {
+                is AppResult.Success -> return AppResult.Success(Unit)
+                is AppResult.Failure -> if (!written.error.isConflict() || attempt >= RENAME_ATTEMPTS) return written
+            }
+        }
+    }
+
+    /** Gone and not-a-layout are both `not_found`: there is no such space or tab to rename (no new AppError). */
+    private fun notFound(
+        ref: LayoutRef,
+        notALayout: Boolean,
+    ): AppResult<Nothing> {
+        val doc = ref.machine?.let { "$it's ${HerdrAppLayoutParser.DOCUMENT}" } ?: HerdrAppLayoutParser.DOCUMENT
+        val what = if (ref.tabId == null) "space ${ref.spaceId}" else "tab ${ref.tabId} of space ${ref.spaceId}"
+        val message = if (notALayout) "$doc is not a desktop layout" else "$what is not in $doc"
+        return AppResult.Failure(AppError.Rpc(AppError.Rpc.NOT_FOUND, message))
+    }
+
+    private fun AppError.isConflict() = this is AppError.Rpc && kind == AppError.Rpc.CONFLICT
+
     /** At most once: never retried; a written-then-lost call is `OutcomeUnknown`. */
     private suspend fun <T> mutate(
         operation: String,
@@ -944,6 +991,9 @@ class CoreSessionImpl(
     companion object {
         private const val TAG = "CoreSession"
         private val HOME_ARGV = listOf("sh", "-c", "printf %s \"\$HOME\"")
+
+        /** `doc.get` + `doc.set` rounds for one rename before a `conflict` is reported (SPEC §9.1). */
+        private const val RENAME_ATTEMPTS = 3
 
         /** Terminal identity passed to every `terminal.run` (SPEC §4.4). */
         val RUN_ENV: Map<String, String> =

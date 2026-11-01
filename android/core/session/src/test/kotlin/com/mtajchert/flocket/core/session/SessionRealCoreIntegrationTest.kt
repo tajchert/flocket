@@ -4,7 +4,9 @@ import com.mtajchert.flocket.core.common.result.AppResult
 import com.mtajchert.flocket.core.common.result.getOrThrow
 import com.mtajchert.flocket.core.model.CoreEndpoint
 import com.mtajchert.flocket.core.model.HostId
+import com.mtajchert.flocket.core.model.LayoutRef
 import com.mtajchert.flocket.core.protocol.CoreConnection
+import com.mtajchert.flocket.core.protocol.docGet
 import com.mtajchert.flocket.core.protocol.docSet
 import com.mtajchert.flocket.core.protocol.testing.ProcessTransport
 import kotlinx.coroutines.CoroutineScope
@@ -211,6 +213,68 @@ class SessionRealCoreIntegrationTest {
                         .panes
                         .map { it.value },
                 )
+                writer.close()
+                s.stop()
+            }
+        }
+
+    @Test
+    fun `rename writes the herdr-app document and the layout refetch shows it`() =
+        runBlocking {
+            withTimeout(60.seconds) {
+                // Play the desktop app: seed the synthetic layout on a second connection to the isolated session.
+                val writer =
+                    CoreConnection.open(
+                        ProcessTransport("hc", "connect", "--session", session, environment = env),
+                        scope,
+                    )
+                val doc =
+                    Json
+                        .parseToJsonElement(
+                            File(System.getProperty("flocket.fixtures.dir"), "herdr-app-layout.json")
+                                .readText(),
+                        ).jsonObject["value"]!!
+                val v1 = writer.docSet(HerdrAppLayoutParser.DOCUMENT, doc, version = 0).version
+                val s =
+                    CoreSessionImpl(
+                        CoreEndpoint(HostId("it"), session),
+                        {
+                            AppResult.Success(
+                                ProcessTransport("hc", "connect", "--session", session, environment = env),
+                            )
+                        },
+                        scope,
+                        config = SessionConfig(backoffBase = 0.2.seconds),
+                    )
+                s.start()
+                s.awaitOnline()
+                s.state.mapNotNull { it.desktopLayout }.first()
+
+                assertEquals(AppResult.Success(Unit), s.renameInLayout(LayoutRef(null, "sp1a2b", "tb02"), " tests "))
+                // No local edit: the core's doc event makes the session read the document again.
+                s.state.first { st ->
+                    st.desktopLayout
+                        ?.spaces
+                        ?.get(0)
+                        ?.tabs
+                        ?.get(1)
+                        ?.name == "tests"
+                }
+
+                // The stored document is the seed with only that name changed (as JSON values: the core
+                // sorts keys and normalises numbers itself).
+                val stored = writer.docGet(HerdrAppLayoutParser.DOCUMENT)
+                assertEquals(v1 + 1, stored.version)
+                val expected =
+                    (
+                        HerdrAppLayoutEdit.rename(
+                            doc,
+                            "sp1a2b",
+                            "tb02",
+                            "tests",
+                        ) as HerdrAppLayoutEdit.Result.Edited
+                    ).value
+                assertEquals(expected, stored.value)
                 writer.close()
                 s.stop()
             }

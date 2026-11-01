@@ -62,6 +62,7 @@ private fun groupScope(
     val prefix = machine?.let { "$it:" }.orEmpty()
     val placed = HashSet<TerminalAddress>()
     val spaces = mutableListOf<SpaceDraft>()
+    val seenSpaceIds = HashSet<String>()
 
     // 1. Desktop layout.
     layout?.spaces?.forEachIndexed { si, ds ->
@@ -74,8 +75,12 @@ private fun groupScope(
                 source = SpaceSource.Desktop,
                 machine = machine,
             )
+        // A blank or repeated document id cannot be addressed, so it gets no ref.
+        space.hasDocumentId = ds.id.isNotBlank() && seenSpaceIds.add(ds.id)
+        val seenTabIds = HashSet<String>()
         ds.tabs.forEachIndexed { ti, dt ->
             val tab = space.tab(dt.id.ifBlank { "#$ti" }, dt.name.trim())
+            if (dt.id.isNotBlank() && seenTabIds.add(dt.id)) tab.documentTabId = dt.id
             for (local in dt.panes) {
                 if (local.isRemote) continue
                 val p = if (machine == null) local else TerminalAddress("$machine/${local.value}")
@@ -181,6 +186,9 @@ private class TabDraft(
 ) {
     val panes = mutableListOf<TerminalAddress>()
     var activePane: TerminalAddress? = null
+
+    /** Set only for a tab that came from a usable `herdr-app` tab id. */
+    var documentTabId: String? = null
 }
 
 private class SpaceDraft(
@@ -192,6 +200,9 @@ private class SpaceDraft(
     val machine: String?,
 ) {
     val tabs = mutableListOf<TabDraft>()
+
+    /** True only for a desktop space whose [id] is non-blank and first in its scope. */
+    var hasDocumentId = false
     private val tabKeys = KeyAllocator()
     private val byId = HashMap<String, TabDraft>()
 
@@ -233,6 +244,10 @@ private class SpaceDraft(
                     activePane = t.activePane,
                     topState = t.panes.mapNotNull { records[it] }.topState(),
                     number = i + 1,
+                    layoutRef =
+                        t.documentTabId
+                            ?.takeIf { hasDocumentId }
+                            ?.let { LayoutRef(machine, id, it) },
                 )
             }
         val shown = shownFolder(records)
@@ -245,6 +260,8 @@ private class SpaceDraft(
             tabs = builtTabs,
             topState = builtTabs.flatMap { it.panes }.mapNotNull { records[it] }.topState(),
             number = 0,
+            layoutRef = if (hasDocumentId) LayoutRef(machine, id) else null,
+            givenName = name,
         )
     }
 }

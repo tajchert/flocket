@@ -497,4 +497,83 @@ class WorkspaceGroupingTest {
         assertNull(folderName(""))
         assertNull(folderName(null))
     }
+
+    @Test
+    fun `desktop spaces and their document tabs carry layout refs`() {
+        val terms = listOf(term("t1"), term("t2"))
+        val w = buildWorkspace(terms, layout(space("sp1", tab("tb1", "t1"), tab("tb2", "t2"), name = " web ")))
+        val sp = w.spaces[0]
+        assertEquals(LayoutRef(null, "sp1"), sp.layoutRef)
+        assertEquals("web", sp.givenName)
+        assertEquals(listOf(LayoutRef(null, "sp1", "tb1"), LayoutRef(null, "sp1", "tb2")), sp.tabs.map { it.layoutRef })
+    }
+
+    @Test
+    fun `implicit, label-only and folder tabs have no layout ref`() {
+        val terms =
+            listOf(
+                term("t1", cwd = "/work"),
+                term("t2", cwd = "/work"),
+                term("t3", space = "sp1", tab = "tbX"),
+                term("t4", space = "lab"),
+                term("t5", cwd = "/elsewhere"),
+            )
+        val w = buildWorkspace(terms, layout(space("sp1", tab("tb1", "t1"), folder = "/work")))
+        val byKey = w.spaces.associateBy { it.key }
+        val sp1 = byKey.getValue("desktop:sp1")
+        assertEquals(LayoutRef(null, "sp1"), sp1.layoutRef)
+        val refs = sp1.tabs.associate { it.key to it.layoutRef }
+        assertEquals(LayoutRef(null, "sp1", "tb1"), refs["tb1"])
+        assertNull(refs["tbX"])
+        assertNull(refs["all"])
+        assertEquals(3, sp1.tabs.size)
+        assertNull(byKey.getValue("label:lab").layoutRef)
+        assertNull(w.spaces.single { it.source == SpaceSource.Folder }.layoutRef)
+    }
+
+    @Test
+    fun `a label tab matching a document tab id is that document tab`() {
+        val terms = listOf(term("t1"), term("t2", space = "sp1", tab = "tb1"))
+        val w = buildWorkspace(terms, layout(space("sp1", tab("tb1", "t1"))))
+        val tab =
+            w.spaces
+                .single()
+                .tabs
+                .single()
+        assertEquals(a("t1", "t2"), tab.panes)
+        assertEquals(LayoutRef(null, "sp1", "tb1"), tab.layoutRef)
+    }
+
+    @Test
+    fun `machine layouts set the machine in layout refs`() {
+        val w =
+            buildWorkspace(
+                listOf(term("rohan/t7")),
+                null,
+                machineLayouts = mapOf("rohan" to layout(space("rs", tab("rt", "t7")))),
+            )
+        val sp = w.spaces.single()
+        assertEquals(LayoutRef("rohan", "rs"), sp.layoutRef)
+        assertEquals(LayoutRef("rohan", "rs", "rt"), sp.tabs.single().layoutRef)
+    }
+
+    @Test
+    fun `blank or repeated document ids give no layout ref after the first`() {
+        val terms = listOf(term("t1"), term("t2"), term("t3"), term("t4"), term("t5"), term("t6"))
+        val l =
+            layout(
+                space("", tab("a", "t1")),
+                space("d", tab("", "t2"), tab("x", "t3"), tab("x", "t4")),
+                space("d", tab("y", "t5")),
+            )
+        val w = buildWorkspace(terms, l)
+        assertEquals(listOf(null, LayoutRef(null, "d"), null), w.spaces.map { it.layoutRef })
+        assertEquals(listOf(null, LayoutRef(null, "d", "x")), w.spaces[1].tabs.map { it.layoutRef })
+        assertNull(
+            w.spaces[2]
+                .tabs
+                .single()
+                .layoutRef,
+        )
+    }
 }

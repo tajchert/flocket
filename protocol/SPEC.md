@@ -549,13 +549,25 @@ Sequence numbers, channels and stream state are per connection. After any reconn
 - Refetch watched documents after: subscribing, reconnecting, `missed`, a remote machine (re)connect (signalled by `missed`), and every relevant `doc` event.
 - API-only (no CLI verb).
 
-### 9.1 `herdr-app` document (read-only for us)
+### 9.1 `herdr-app` document (we only rename)
 
-The desktop app (herdr-app) stores its spaces/tabs/pane layout in the document named **`herdr-app`**. Core never interprets it. Shape as used by HerdrKit (unofficial, [I]): `{"spaces":[{"id":"sp…","name":"","folder":"/path","look":{...}?,"tabs":[{"id":"tb…","name":"","root":<node>}]}], ...}` where a node is `{"id", "children":[node…]?, "size":{"weight":0.5}?, "active":"<child id>"?, "title"?, "content":{"terminal":"t7"} | {"mod":"…","props":{…}}}`; terminals also carry labels `herdr.space`/`herdr.tab`. **Our app must treat it as read-only** (import grouping hints at most), tolerate its absence (`{value:null, version:0}` [W]), unknown fields and shape changes. Store our own grouping in labels and/or our own document, e.g. `flocket` (preserve unknown fields, CAS on version).
+The desktop app (herdr-app) stores its spaces/tabs/pane layout in the document named **`herdr-app`**. Core never interprets it. Shape as used by HerdrKit (unofficial, [I]): `{"spaces":[{"id":"sp…","name":"","folder":"/path","look":{...}?,"tabs":[{"id":"tb…","name":"","root":<node>}]}], ...}` where a node is `{"id", "children":[node…]?, "size":{"weight":0.5}?, "active":"<child id>"?, "title"?, "content":{"terminal":"t7"} | {"mod":"…","props":{…}}}`; terminals also carry labels `herdr.space`/`herdr.tab`. **Our app reads it and makes one kind of write only** ([ADR-0008](../docs/decisions/0008-rename-in-desktop-layout.md)): it may set the `name` string of one existing space or tab, found by `id` (a tab inside its space). It never moves, adds, removes or otherwise changes anything else. It tolerates the document's absence (`{value:null, version:0}` [W]), unknown fields and shape changes. Store our own grouping in labels and/or our own document, e.g. `flocket` (preserve unknown fields, CAS on version).
+
+Renaming a space or tab (the same rule for a federated machine's document, with `on: <machine>` on both calls):
+1. `doc.get {name:"herdr-app"}`.
+2. In the returned JSON tree, find the space by `id` (the first one, if an id repeats) and, for a tab, the tab by `id` inside that space. Replace only its `name` with the trimmed new name. An empty name is written as `""`: the desktop then shows the automatic name again (its own `tab.rename`/`space.rename` work the same way). Keep every other field, unknown ones included.
+3. `doc.set {name, value, version}` with the version read in step 1.
+4. `conflict` → back to step 1 and apply the same change by id to the fresh document; at most 3 attempts in total, then report the conflict. This is not a replay: a conflicted write was not applied.
+5. The id is no longer in the document, or the value is not a layout (`null`, not an object, no `spaces` array) → fail as gone, without writing.
+6. The link drops after `doc.set` was sent → the outcome is unknown: never resend; re-read the document.
+7. Show the result from the normal `doc` event / refetch, not from the local edit. The desktop expects other writers: on simultaneous edits the newest accepted document wins (its docs, [I]).
+
+The core keeps the meaning of a document, not its bytes: it stores JSON with sorted keys and normalised numbers (`1.50` comes back as `1.5`); large integers survive [W: hc 0.1.16]. Compare documents as JSON values, never as text.
 
 Further details from the Herdr.app 0.x bundle (field names and its built-in docs, [I]; synthetic example in `fixtures/herdr-app-layout.json`):
 - Each machine keeps its own spaces in its own core's `herdr-app` document (read remote ones with `on`). Federated terminals never appear in the local document.
 - [W] (hc 0.1.16, machine added with `hc machine add --via "sh -c" --session <other>`): `doc.get {name:"herdr-app", on:"rohan"}` returns rohan's own document, and a `doc.set` made on rohan reaches the local subscriber as a `doc` event with `"machine":"rohan"`.
+- [W] (hc 0.1.16, same setup): `doc.set {name:"herdr-app", on:"rohan", …}` writes rohan's own document (read back directly on rohan's session), and a stale `version` there returns `conflict` like a local write. So a federated machine's spaces and tabs are renamed exactly like local ones.
 - A node may carry `"type"`: `"row"`, `"column"`, `"stack"` or `"block"`. `size` is `{"weight": n}` or `{"px": n}`. `active` names the shown child of a `stack`. Content kinds seen besides `terminal` and `mod`: `agent`, `context`, `tab` (treat all unknown kinds as non-terminal panes).
 - Focus, zoom and the selected space/tab are per screen (the desktop's `view.json`), not in the document: the `active` chain is the best available hint for the focused pane.
 - Unnamed spaces are shown after their first terminal's live folder (repo, else folder, `~` at home); unnamed tabs by their 1-based place. A terminal with labels `herdr.space=<id>`/`herdr.tab=<id>` is adopted into that space/tab (a new tab when `herdr.tab` is missing).

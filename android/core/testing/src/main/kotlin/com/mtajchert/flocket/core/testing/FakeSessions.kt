@@ -8,6 +8,7 @@ import com.mtajchert.flocket.core.data.HostRepository
 import com.mtajchert.flocket.core.model.CoreEndpoint
 import com.mtajchert.flocket.core.model.Host
 import com.mtajchert.flocket.core.model.HostId
+import com.mtajchert.flocket.core.model.LayoutRef
 import com.mtajchert.flocket.core.model.TerminalAddress
 import com.mtajchert.flocket.core.model.TerminalRecord
 import com.mtajchert.flocket.core.model.TerminalTemplate
@@ -78,6 +79,7 @@ class FakeCoreSession(
     var templatesHandler: suspend () -> AppResult<List<TerminalTemplate>> = { AppResult.Success(emptyList()) }
     var homeHandler: suspend (String?) -> AppResult<String> = { AppResult.Success("/home/user") }
     var attachHandler: suspend (TerminalAddress, AttachRequest) -> AppResult<TerminalStream> = { _, _ -> unsupported() }
+    var renameHandler: suspend (LayoutRef, String) -> AppResult<Unit> = { _, _ -> unsupported() }
     val calls: MutableList<String> = java.util.Collections.synchronizedList(mutableListOf())
 
     override suspend fun run(request: RunRequest): AppResult<TerminalRecord> {
@@ -114,6 +116,14 @@ class FakeCoreSession(
     override suspend fun homeDirectory(machine: String?): AppResult<String> {
         calls += "home:$machine"
         return homeHandler(machine)
+    }
+
+    override suspend fun renameInLayout(
+        ref: LayoutRef,
+        name: String,
+    ): AppResult<Unit> {
+        calls += "rename:${ref.machine}:${ref.spaceId}:${ref.tabId}:$name"
+        return renameHandler(ref, name)
     }
 
     override suspend fun readText(

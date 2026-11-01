@@ -5,6 +5,7 @@ import com.mtajchert.flocket.core.model.ConnectionState
 import com.mtajchert.flocket.core.model.CoreEndpoint
 import com.mtajchert.flocket.core.model.CoreInfo
 import com.mtajchert.flocket.core.model.DesktopLayout
+import com.mtajchert.flocket.core.model.LayoutRef
 import com.mtajchert.flocket.core.model.MachineInfo
 import com.mtajchert.flocket.core.model.TerminalAddress
 import com.mtajchert.flocket.core.model.TerminalRecord
@@ -80,6 +81,24 @@ interface CoreSession {
         address: TerminalAddress,
         historyLines: Int = 0,
     ): AppResult<String>
+
+    /**
+     * Sets the name of a space ([LayoutRef.tabId] null) or tab in its machine's `herdr-app` (SPEC §9.1,
+     * ADR-0008). [name] is trimmed; an empty name writes `""` (the desktop's automatic name again).
+     *
+     * A compare-and-set write of the one changed `name`, read and written with `on` = [LayoutRef.machine].
+     * A `conflict` re-reads and re-applies by id, 3 attempts in total. The new name shows up through the
+     * normal `doc` event refetch of [SessionState.desktopLayout] / [SessionState.machineLayouts].
+     *
+     * Failures: `Rpc(not_found)` when the space or tab is gone or the document is not a layout (no write);
+     * `Rpc(conflict)` after 3 conflicting attempts; `OutcomeUnknown("doc.set")` when the link dropped after
+     * the write was sent (never resent); `ConnectionLost` when offline; other core errors (`unavailable`,
+     * `machine_unknown`, `needs_update`, …) as `Rpc`.
+     */
+    suspend fun renameInLayout(
+        ref: LayoutRef,
+        name: String,
+    ): AppResult<Unit>
 
     /**
      * Open a durable stream on a terminal (requires Online). See [AttachRequest.mode] for size
