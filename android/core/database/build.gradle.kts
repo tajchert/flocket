@@ -8,4 +8,6 @@ plugins {
 dependencies {
     implementation(projects.core.model)
     implementation(libs.kotlinx.coroutines.android)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.test.ext.junit)
 }

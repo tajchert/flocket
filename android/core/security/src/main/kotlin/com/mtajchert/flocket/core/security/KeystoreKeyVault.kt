@@ -34,9 +34,10 @@ class KeystoreKeyVault(
         alias: String,
         pem: CharArray,
         passphrase: CharArray?,
+        comment: String,
     ): AppResult<DeviceKey> =
         store(alias) {
-            when (val r = SshKeys.import(pem, passphrase, comment = alias)) {
+            when (val r = SshKeys.import(pem, passphrase, comment = comment.ifBlank { alias })) {
                 is AppResult.Success -> r.value
                 is AppResult.Failure -> return@store r
             }
@@ -81,6 +82,7 @@ class KeystoreKeyVault(
     ): AppResult<DeviceKey> =
         io {
             if (alias.isBlank()) return@io AppResult.Failure(AppError.InvalidInput("alias", "must not be blank"))
+            if (exists(alias)) return@io AppResult.Failure(AppError.InvalidInput("alias", "already exists"))
             val produced = produce()
             if (produced is AppResult.Failure) return@io produced
             val material = produced as KeyMaterial
@@ -92,6 +94,8 @@ class KeystoreKeyVault(
                 val key =
                     DeviceKey(alias, material.publicKeyOpenSsh, material.fingerprintSha256, material.keyType, nowMs())
                 synchronized(lock) {
+                    // Re-check under the lock: never overwrite an existing key.
+                    if (exists(alias)) return@io AppResult.Failure(AppError.InvalidInput("alias", "already exists"))
                     dir.mkdirs()
                     atomicWrite(File(dir, fileId(alias) + ENC), sealed)
                     writeMeta(File(dir, fileId(alias) + META), key)
@@ -121,6 +125,9 @@ class KeystoreKeyVault(
 
     private fun fileId(alias: String): String =
         Base64.getUrlEncoder().withoutPadding().encodeToString(alias.toByteArray(Charsets.UTF_8))
+
+    private fun exists(alias: String): Boolean =
+        File(dir, fileId(alias) + ENC).exists() || File(dir, fileId(alias) + META).exists()
 
     private fun atomicWrite(
         target: File,
