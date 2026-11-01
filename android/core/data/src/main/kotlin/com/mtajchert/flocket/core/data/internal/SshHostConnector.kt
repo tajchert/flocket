@@ -122,14 +122,17 @@ internal class SshHostConnector(
 
         val credentials: SshCredentials =
             when (val auth = host.auth) {
-                is HostAuth.Key ->
+                is HostAuth.Key -> {
                     when (val pem = vault.loadPrivateKeyPem(auth.keyAlias)) {
                         is AppResult.Success -> SshCredentials.PrivateKey(pem.value)
                         is AppResult.Failure -> return pem
                     }
+                }
 
                 HostAuth.Password -> {
-                    val pw = passwords[hostId] ?: return AppResult.Failure(AppError.AuthFailed(host.username, listOf("password")))
+                    val pw =
+                        passwords[hostId]
+                            ?: return AppResult.Failure(AppError.AuthFailed(host.username, listOf("password")))
                     SshCredentials.Password(pw.copyOf())
                 }
             }
@@ -145,7 +148,10 @@ internal class SshHostConnector(
             }
         val ssh =
             when (link) {
-                is AppResult.Success -> link.value
+                is AppResult.Success -> {
+                    link.value
+                }
+
                 is AppResult.Failure -> {
                     // A rejected password is forgotten so the UI asks again instead of looping.
                     if (link.error is AppError.AuthFailed && host.auth is HostAuth.Password) clearPassword(hostId)
@@ -156,7 +162,10 @@ internal class SshHostConnector(
         try {
             val path =
                 when (val located = HcLocator.locate(ssh, host.hcPath)) {
-                    is AppResult.Success -> located.value
+                    is AppResult.Success -> {
+                        located.value
+                    }
+
                     is AppResult.Failure -> {
                         closeQuietly(ssh)
                         return located

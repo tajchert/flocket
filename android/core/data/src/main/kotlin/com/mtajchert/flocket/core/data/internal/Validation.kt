@@ -24,15 +24,43 @@ internal fun validateHost(
     session: String?,
 ): AppError.InvalidInput? =
     when {
-        label.isBlank() -> invalid("label", "must not be blank")
-        hostname.isBlank() -> invalid("hostname", "must not be blank")
-        hostname.any { it.isWhitespace() } -> invalid("hostname", "must not contain spaces")
-        port !in 1..65535 -> invalid("port", "must be between 1 and 65535")
-        username.isBlank() -> invalid("username", "must not be blank")
-        auth is HostAuth.Key && auth.keyAlias.isBlank() -> invalid("auth", "a key must be selected")
-        hcPath != null && !hcPath.startsWith("/") -> invalid("hcPath", "must be an absolute path")
-        session != null && !SESSION_NAME.matches(session) ->
+        label.isBlank() -> {
+            invalid("label", "must not be blank")
+        }
+
+        hostname.isBlank() -> {
+            invalid("hostname", "must not be blank")
+        }
+
+        hostname.any { it.isWhitespace() } -> {
+            invalid("hostname", "must not contain spaces")
+        }
+
+        port !in 1..65535 -> {
+            invalid("port", "must be between 1 and 65535")
+        }
+
+        username.isBlank() -> {
+            invalid("username", "must not be blank")
+        }
+
+        auth is HostAuth.Key && auth.keyAlias.isBlank() -> {
+            invalid("auth", "a key must be selected")
+        }
+
+        hcPath != null && !hcPath.startsWith("/") -> {
+            invalid("hcPath", "must be an absolute path")
+        }
+
+        session != null && !SESSION_NAME.matches(session) -> {
             invalid("session", "use lowercase letters, digits, '.', '_' or '-' (max 32)")
-        session != null && ID_SHAPED.matches(session) -> invalid("session", "must not look like a terminal id")
-        else -> null
+        }
+
+        session != null && ID_SHAPED.matches(session) -> {
+            invalid("session", "must not look like a terminal id")
+        }
+
+        else -> {
+            null
+        }
     }

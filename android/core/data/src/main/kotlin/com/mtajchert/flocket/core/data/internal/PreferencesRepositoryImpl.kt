@@ -30,5 +30,12 @@ internal class PreferencesRepositoryImpl(
         )
 
     private fun UserPreferences.toStored() =
-        StoredPreferences(onboardingCompleted, theme.name, dynamicColor, terminalFontSize, keepScreenOnInTerminal, showExtraKeys)
+        StoredPreferences(
+            onboardingCompleted,
+            theme.name,
+            dynamicColor,
+            terminalFontSize,
+            keepScreenOnInTerminal,
+            showExtraKeys,
+        )
 }

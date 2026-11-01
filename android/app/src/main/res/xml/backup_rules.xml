@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <full-backup-content>
-    <!-- Exclude sensitive data from backup -->
+    <!-- Key vault: ciphertext sealed by a device-bound Keystore key is useless after a restore. -->
+    <exclude domain="file" path="vault" />
     <exclude domain="sharedpref" path="." />
+    <!-- Hosts + pinned host keys (databases/) and preferences (files/datastore/) are backed up. -->
 </full-backup-content>

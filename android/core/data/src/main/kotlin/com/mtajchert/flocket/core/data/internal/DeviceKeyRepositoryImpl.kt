@@ -42,5 +42,11 @@ internal class DeviceKeyRepositoryImpl(
         return vault.import(newAlias(), privateKeyPem, passphrase, name).onSuccess { version.update { it + 1 } }
     }
 
-    override suspend fun delete(alias: String): AppResult<Unit> = vault.delete(alias).onSuccess { version.update { it + 1 } }
+    override suspend fun delete(alias: String): AppResult<Unit> =
+        vault.delete(alias).onSuccess {
+            version.update {
+                it +
+                    1
+            }
+        }
 }

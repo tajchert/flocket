@@ -3,7 +3,6 @@ package com.mtajchert.flocket.core.data.internal
 import com.mtajchert.flocket.core.common.logging.Logger
 import com.mtajchert.flocket.core.data.AppForeground
 import com.mtajchert.flocket.core.data.ConnectionManager
-import com.mtajchert.flocket.core.data.CoreSessionFactory
 import com.mtajchert.flocket.core.data.HostOverview
 import com.mtajchert.flocket.core.data.HostRepository
 import com.mtajchert.flocket.core.data.NetworkMonitor
@@ -12,6 +11,7 @@ import com.mtajchert.flocket.core.model.ConnectionState
 import com.mtajchert.flocket.core.model.Host
 import com.mtajchert.flocket.core.model.HostId
 import com.mtajchert.flocket.core.session.CoreSession
+import com.mtajchert.flocket.core.session.CoreSessionFactory
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
@@ -103,13 +103,22 @@ internal class ConnectionManagerImpl(
                 val prev = old[host.id]
                 next[host.id] =
                     when {
-                        prev == null -> newEntry(host).also { if (active) toStart += it.session }
-                        prev.host == host -> prev
+                        prev == null -> {
+                            newEntry(host).also { if (active) toStart += it.session }
+                        }
+
+                        prev.host == host -> {
+                            prev
+                        }
+
                         needsNewSession(prev.host, host) -> {
                             toStop += prev.session
                             newEntry(host).also { if (active) toStart += it.session }
                         }
-                        else -> Entry(host, prev.session)
+
+                        else -> {
+                            Entry(host, prev.session)
+                        }
                     }
             }
             for ((id, e) in old) {

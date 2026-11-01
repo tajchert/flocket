@@ -3,6 +3,7 @@ package com.mtajchert.flocket.core.data
 import android.content.Context
 import android.net.ConnectivityManager
 import com.mtajchert.flocket.core.common.logging.Logger
+import com.mtajchert.flocket.core.common.time.Clock
 import com.mtajchert.flocket.core.data.internal.AndroidLogger
 import com.mtajchert.flocket.core.data.internal.ConnectionManagerImpl
 import com.mtajchert.flocket.core.data.internal.ConnectivityNetworkMonitor
@@ -19,6 +20,8 @@ import com.mtajchert.flocket.core.database.HostDao
 import com.mtajchert.flocket.core.database.PinnedHostKeyDao
 import com.mtajchert.flocket.core.datastore.PreferencesDataSource
 import com.mtajchert.flocket.core.security.KeyVault
+import com.mtajchert.flocket.core.session.CoreSessionFactory
+import com.mtajchert.flocket.core.session.DefaultCoreSessionFactory
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -30,12 +33,12 @@ import kotlinx.coroutines.SupervisorJob
 import javax.inject.Singleton
 
 /**
- * Binds the data-layer interfaces. NOT bound here: [CoreSessionFactory] (`:app` binds it to the session layer).
+ * Binds the data-layer interfaces. Binds the session layer's DefaultCoreSessionFactory.
  * `ConnectionManager` only starts working once something injects it, so `:app` should inject it at startup.
  */
 @Module
 @InstallIn(SingletonComponent::class)
-object DataModule {
+internal object DataModule {
     @Provides
     @Singleton
     @ApplicationScope
@@ -61,7 +64,8 @@ object DataModule {
 
     @Provides
     @Singleton
-    fun providePreferencesRepository(source: PreferencesDataSource): PreferencesRepository = PreferencesRepositoryImpl(source)
+    fun providePreferencesRepository(source: PreferencesDataSource): PreferencesRepository =
+        PreferencesRepositoryImpl(source)
 
     @Provides
     @Singleton
@@ -79,8 +83,7 @@ object DataModule {
     @Singleton
     fun provideNetworkMonitor(
         @ApplicationContext context: Context,
-    ): NetworkMonitor =
-        ConnectivityNetworkMonitor(context.getSystemService(ConnectivityManager::class.java))
+    ): NetworkMonitor = ConnectivityNetworkMonitor(context.getSystemService(ConnectivityManager::class.java))
 
     @Provides
     @Singleton
@@ -91,7 +94,14 @@ object DataModule {
         foreground: AppForeground,
         network: NetworkMonitor,
         @ApplicationScope scope: CoroutineScope,
-    ): ConnectionManager = ConnectionManagerImpl(hosts, factory, connector, foreground, network, scope, logger = AndroidLogger)
+    ): ConnectionManager =
+        ConnectionManagerImpl(hosts, factory, connector, foreground, network, scope, logger = AndroidLogger)
+
+    @Provides
+    @Singleton
+    fun provideCoreSessionFactory(
+        @ApplicationScope scope: CoroutineScope,
+    ): CoreSessionFactory = DefaultCoreSessionFactory(scope, Clock.System, AndroidLogger)
 
     @Provides
     @Singleton

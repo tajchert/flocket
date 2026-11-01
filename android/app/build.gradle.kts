@@ -39,9 +39,6 @@ dependencies {
     implementation(projects.feature.hosts.api)
     implementation(projects.feature.hosts.impl)
 
-    // TEMPORARY: debug builds bind in-memory fakes until :core:data provides the real implementations.
-    debugImplementation(projects.core.testing)
-
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.core.splashscreen)
