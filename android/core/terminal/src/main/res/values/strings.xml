@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="terminal_selection_start_handle">Selection start handle</string>
+    <string name="terminal_selection_end_handle">Selection end handle</string>
+</resources>
