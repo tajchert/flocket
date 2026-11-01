@@ -209,8 +209,8 @@ cmd_journey() {
       awk -F= '/^INSTRUMENTATION_STATUS: class=/ {c=$2} /^INSTRUMENTATION_STATUS: test=/ {print c "#" $2}' | sort -u)
   ((${#tests[@]})) || die "no journey tests selected (${sels[*]:-all}$( ((smoke)) && echo ", smoke"))"
 
-  local passed=0 failed=0 start run name t0 secs out result reason
-  local -a counts=()
+  local passed=0 failed=0 ignored=0 start run name t0 secs out result reason
+  local -a counts=() ignored_names=()
   start="$(now)"
   for ((run = 1; run <= repeat; run++)); do
     ((repeat > 1)) && echo "--- run $run/$repeat"
@@ -232,14 +232,19 @@ cmd_journey() {
       # journey means the runner args did not arrive, which must never look like a pass.
       if grep -q '^INSTRUMENTATION_STATUS_CODE: -4' "$out"; then
         result=FAIL; reason=" (skipped: missing args)"
+      elif grep -q '^INSTRUMENTATION_STATUS_CODE: -3' "$out"; then
+        # @Ignore'd (status code -3): reported on its own, neither a pass nor a failure.
+        result=IGNORED
       elif grep -q '^OK (1 test' "$out"; then
         result=PASS
       else
         result=FAIL
       fi
-      printf '%-4s %5ss  %s%s\n' "$result" "$secs" "$name" "$reason"
+      printf '%-7s %5ss  %s%s\n' "$result" "$secs" "$name" "$reason"
       if [[ $result == PASS ]]; then
         passed=$((passed + 1)); counts+=("$name")
+      elif [[ $result == IGNORED ]]; then
+        ignored=$((ignored + 1)); ignored_names+=("$name")
       else
         failed=$((failed + 1))
         # First stack= line, then the failure text; capped so a failure stays readable.
@@ -252,10 +257,14 @@ cmd_journey() {
   if ((repeat > 1)); then
     echo "--- passes per test (of $repeat)"
     for name in "${tests[@]}"; do
-      printf '%d/%d  %s\n' "$(printf '%s\n' ${counts[@]+"${counts[@]}"} | grep -cxF "$name")" "$repeat" "$name"
+      if printf '%s\n' ${ignored_names[@]+"${ignored_names[@]}"} | grep -qxF "$name"; then
+        printf 'ignored  %s\n' "$name"
+      else
+        printf '%d/%d  %s\n' "$(printf '%s\n' ${counts[@]+"${counts[@]}"} | grep -cxF "$name")" "$repeat" "$name"
+      fi
     done
   fi
-  echo "journeys: $passed passed, $failed failed in $(python3 -c "print(round($(now) - $start))")s"
+  echo "journeys: $passed passed, $failed failed, $ignored ignored in $(python3 -c "print(round($(now) - $start))")s"
   ((failed == 0))
 }
 
