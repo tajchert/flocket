@@ -33,11 +33,11 @@ class TerminalTabStripModelTest {
         vararg panes: String,
         active: String? = null,
         state: AgentState? = null,
-    ) = WorkspaceTab(key, key.uppercase(), panes.map(::addr), active?.let(::addr), state)
+    ) = WorkspaceTab(key, key.uppercase(), panes.map(::addr), active?.let(::addr), state, 1)
 
     private fun workspace(vararg tabs: WorkspaceTab) =
         Workspace(
-            listOf(WorkspaceSpace("desktop:s1", "api", "/code/api", SpaceSource.Desktop, null, tabs.toList(), null)),
+            listOf(WorkspaceSpace("desktop:s1", "api", "/code/api", SpaceSource.Desktop, null, tabs.toList(), null, 1)),
         )
 
     @Test

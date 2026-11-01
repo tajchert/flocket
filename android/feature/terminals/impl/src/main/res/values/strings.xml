@@ -126,4 +126,6 @@
     <string name="new_terminal_keep">Keep this terminal</string>
     <string name="new_terminal_keep_hint">If its program is lost, replace it with a fresh shell instead of finishing.</string>
     <string name="new_terminal_cancel">Cancel</string>
+    <string name="workspace_space_fallback">Space %1$d</string>
+    <string name="workspace_tab_fallback">Tab %1$d</string>
 </resources>

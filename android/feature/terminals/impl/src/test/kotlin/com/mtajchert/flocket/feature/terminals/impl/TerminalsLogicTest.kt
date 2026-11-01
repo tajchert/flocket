@@ -19,7 +19,7 @@ class TerminalsLogicTest {
         name: String,
         vararg panes: String,
         top: AgentState? = null,
-    ) = WorkspaceTab(key, name, panes.map(::TerminalAddress), null, top)
+    ) = WorkspaceTab(key, name, panes.map(::TerminalAddress), null, top, 1)
 
     private fun space(
         key: String,
@@ -29,7 +29,7 @@ class TerminalsLogicTest {
         vararg tabs: WorkspaceTab,
         machine: String? = null,
         source: SpaceSource = SpaceSource.Desktop,
-    ) = WorkspaceSpace(key, name, folder, source, machine, tabs.toList(), top)
+    ) = WorkspaceSpace(key, name, folder, source, machine, tabs.toList(), top, 1)
 
     // Studio sample: t1 working, t2 blocked, t3 done, t4 idle, t5 no status, t6 finished; rohan/t7 error.
     private val workspace =
