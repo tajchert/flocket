@@ -34,6 +34,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.put
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
@@ -82,6 +83,46 @@ class CoreConnectionTest {
             assertEquals("fakehost", conn.info.name)
             assertEquals(1, conn.info.generation)
             assertTrue(conn.info.supports("terminal.attach"))
+        }
+
+    private fun hello(version: String) =
+        com.mtajchert.flocket.core.protocol.dto.HelloResult(
+            features = CoreConnection.REQUIRED_FEATURES.toList(),
+            framed = true,
+            generation = CoreConnection.GENERATION,
+            methods = CoreConnection.REQUIRED_METHODS.toList(),
+            version = version,
+        )
+
+    @Test
+    fun `minimum core version 0_1_16 is enforced and newer or unparsable versions pass`() =
+        runTest {
+            for (ok in listOf("0.1.16", "0.1.17", "0.2.0", "1.0.0", "0.1.16-rc1", "0.1.16+abc", "")) {
+                assertEquals(ok, CoreConnection.checkCompatible(hello(ok)).version)
+            }
+            val ex = thrown<CoreIncompatibleException> { CoreConnection.checkCompatible(hello("0.1.15")) }
+            val err = ex.error as AppError.CoreIncompatible
+            assertEquals("0.1.15", err.coreVersion)
+            assertTrue(err.reason, err.reason.contains("0.1.15") && err.reason.contains("0.1.16"))
+        }
+
+    @Test
+    fun `a real 0_1_15 fixture hello is rejected as too old`() =
+        runTest {
+            val result =
+                Fixtures
+                    .lines("framed-session.decoded.jsonl")[1]
+                    .getValue("msg")
+                    .jsonObject
+                    .getValue("result")
+            val hello =
+                com.mtajchert.flocket.core.protocol.rpc.ProtocolJson.decodeFromJsonElement(
+                    com.mtajchert.flocket.core.protocol.dto.HelloResult
+                        .serializer(),
+                    result,
+                )
+            assertEquals("0.1.15", hello.version)
+            thrown<CoreIncompatibleException> { CoreConnection.checkCompatible(hello) }
         }
 
     @Test
