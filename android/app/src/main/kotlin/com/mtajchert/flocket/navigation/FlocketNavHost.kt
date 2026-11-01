@@ -3,12 +3,16 @@ package com.mtajchert.flocket.navigation
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfoV2
 import androidx.compose.material3.adaptive.layout.calculatePaneScaffoldDirective
 import androidx.compose.material3.adaptive.navigation3.rememberListDetailSceneStrategy
+import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffold
+import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffoldDefaults
+import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteType
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -23,62 +27,109 @@ import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import androidx.navigation3.ui.NavDisplay
 import com.mtajchert.flocket.R
-import kotlinx.serialization.Serializable
-
-/** Placeholder start destination until the feature modules contribute their entries. */
-@Serializable
-data object HomeRoute : NavKey
+import com.mtajchert.flocket.core.ui.nav.EntryProviderInstaller
+import com.mtajchert.flocket.core.ui.nav.Navigator
+import com.mtajchert.flocket.feature.onboarding.api.OnboardingRoute
 
 /**
- * Navigation 3 host for the whole app.
+ * Navigation 3 host for the whole app: owns the single back stack, hands features a [Navigator] and
+ * collects their entries from the Hilt-provided [installers]. See docs/ARCHITECTURE.md (Navigation).
  *
- * A single back stack drives every window size. [rememberListDetailSceneStrategy] lets destinations that
- * declare a list or detail pane role render side by side on wide windows (tablet, unfolded foldable) and one
- * at a time on a phone; features never branch on screen size themselves.
- *
- * Features contribute entries from their `:impl` modules with an extension on `EntryProviderScope<NavKey>`:
- * ```kotlin
- * entryProvider = entryProvider {
- *     homeEntry()
- *     hostsEntries(onNavigate = { backStack.add(it) }, onBack = { backStack.removeLastOrNull() })
- * }
- * ```
+ * The root of the back stack is the selected top-level destination; switching tabs replaces the stack.
+ * [NavigationSuiteScaffold] shows a bottom bar on compact windows and a rail on wider ones, and hides
+ * itself on full-screen routes (see [isFullScreen]).
  */
 @OptIn(ExperimentalMaterial3AdaptiveApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun FlocketNavHost(
+    installers: Set<EntryProviderInstaller>,
+    showOnboarding: Boolean,
     modifier: Modifier = Modifier,
-    backStack: NavBackStack<NavKey> = rememberNavBackStack(HomeRoute),
+    backStack: NavBackStack<NavKey> = rememberNavBackStack(if (showOnboarding) OnboardingRoute else TerminalsRoute),
 ) {
+    val navigator = remember(backStack) { BackStackNavigator(backStack) }
+
     // The spacer override removes the gap between panes (b/418201867); drop it once fixed upstream.
-    val windowAdaptiveInfo = currentWindowAdaptiveInfoV2()
+    val adaptiveInfo = currentWindowAdaptiveInfoV2()
     val directive =
-        remember(windowAdaptiveInfo) {
-            calculatePaneScaffoldDirective(windowAdaptiveInfo).copy(horizontalPartitionSpacerSize = 0.dp)
+        remember(adaptiveInfo) {
+            calculatePaneScaffoldDirective(adaptiveInfo).copy(horizontalPartitionSpacerSize = 0.dp)
         }
     val listDetailStrategy = rememberListDetailSceneStrategy<NavKey>(directive = directive)
 
-    NavDisplay(
-        backStack = backStack,
+    val current = backStack.lastOrNull()
+    val selectedRoot = backStack.firstOrNull()
+    val layoutType =
+        if (current.isFullScreen()) {
+            NavigationSuiteType.None
+        } else {
+            NavigationSuiteScaffoldDefaults.calculateFromAdaptiveInfo(adaptiveInfo)
+        }
+
+    NavigationSuiteScaffold(
         modifier = modifier,
-        onBack = { if (backStack.size > 1) backStack.removeLastOrNull() },
-        sceneStrategies = listOf(listDetailStrategy),
-        // Overriding the decorators replaces the defaults, so the saveable-state one is listed too.
-        entryDecorators =
-            listOf(
-                rememberSaveableStateHolderNavEntryDecorator(),
-                rememberViewModelStoreNavEntryDecorator(),
-            ),
-        entryProvider =
-            entryProvider {
-                entry<HomeRoute> { HomePlaceholder() }
-            },
-    )
+        layoutType = layoutType,
+        navigationSuiteItems = {
+            TopLevelDestinations.forEach { destination ->
+                item(
+                    selected = destination.key == selectedRoot,
+                    onClick = { navigator.selectTopLevel(destination.key) },
+                    icon = { Icon(destination.icon, contentDescription = null) },
+                    label = { Text(stringResource(destination.label)) },
+                )
+            }
+        },
+    ) {
+        NavDisplay(
+            backStack = backStack,
+            onBack = { navigator.back() },
+            sceneStrategies = listOf(listDetailStrategy),
+            // Overriding the decorators replaces the defaults, so the saveable-state one is listed too.
+            entryDecorators =
+                listOf(
+                    rememberSaveableStateHolderNavEntryDecorator(),
+                    rememberViewModelStoreNavEntryDecorator(),
+                ),
+            entryProvider =
+                entryProvider {
+                    entry<TerminalsRoute> { Placeholder(R.string.placeholder_terminals) }
+                    entry<SettingsRoute> { Placeholder(R.string.placeholder_settings) }
+                    installers.forEach { it.install(this, navigator) }
+                },
+        )
+    }
+}
+
+private class BackStackNavigator(
+    private val backStack: NavBackStack<NavKey>,
+) : Navigator {
+    override fun navigate(key: NavKey) {
+        if (backStack.lastOrNull() != key) backStack.add(key)
+    }
+
+    override fun back() {
+        if (backStack.size > 1) backStack.removeLastOrNull()
+    }
+
+    override fun goHome() = replaceRoot(TerminalsRoute)
+
+    fun selectTopLevel(key: NavKey) {
+        if (backStack.size == 1 && backStack.first() == key) return
+        replaceRoot(key)
+    }
+
+    private fun replaceRoot(key: NavKey) {
+        backStack.add(key)
+        while (backStack.size > 1) backStack.removeAt(0)
+    }
 }
 
 @Composable
-private fun HomePlaceholder(modifier: Modifier = Modifier) {
-    Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Text(text = stringResource(R.string.app_name), style = MaterialTheme.typography.headlineMedium)
+private fun Placeholder(
+    text: Int,
+    modifier: Modifier = Modifier,
+) {
+    Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Text(text = stringResource(text), style = MaterialTheme.typography.titleMedium)
     }
 }
