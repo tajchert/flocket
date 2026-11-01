@@ -168,6 +168,16 @@ class FakeCore(
         pump(s)
     }
 
+    /**
+     * First paint of a fresh attach. Like the real core, output for a channel the client already closed
+     * (an attach that timed out on the client and was CLOSEd before its reply) is dropped, not an error.
+     */
+    private suspend fun firstPaint(channel: Int) {
+        val s = streams[channel] ?: return
+        s.queue.add(Item.Bytes(config.firstPaint))
+        pump(s)
+    }
+
     /** Close a stream after its queued output is delivered (needs credit, SPEC gotcha #5). [reason] null = empty CLOSE. */
     suspend fun closeStream(
         channel: Int,
@@ -431,9 +441,9 @@ class FakeCore(
                 if (method == "terminal.attach" && handlers[method] == null) {
                     val (channel, body) = prepareAttach(params)
                     result = body
-                    if (config.paintBeforeReply) streamOutput(channel, config.firstPaint)
+                    if (config.paintBeforeReply) firstPaint(channel)
                     writeFrame(FrameCodec.data(0, replyBody(id, result).toString().toByteArray()))
-                    if (!config.paintBeforeReply) streamOutput(channel, config.firstPaint)
+                    if (!config.paintBeforeReply) firstPaint(channel)
                     return
                 }
                 result = (handlers[method] ?: defaultHandler(method)).invoke(params)

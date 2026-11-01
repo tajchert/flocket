@@ -29,5 +29,6 @@ class JvmLibraryConventionPlugin : Plugin<Project> {
                 }
             }
             addUnitTestDependencies()
+            configureTestLogging()
         }
 }
