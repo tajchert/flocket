@@ -95,14 +95,26 @@ entry="{\"id\":\"$id\",\"terminal\":\"$(esc "$HC_TERMINAL_ID")\",\"paths\":[$pat
 [ "$have_note" -eq 1 ] && [ -n "$note" ] && entry="$entry,\"note\":\"$(esc "$note")\""
 entry="$entry,\"at\":$at}"
 
-# rpc REQUEST: one request, one reply line on stdout (empty when none arrived). The
+# rpc REQUEST: one request; sets $reply to the reply line (empty when none arrived). It must
+# not run in a command substitution, or the signal trap would not be the main shell's. The
 # core cancels work when its caller goes away, so stdin stays open until the reply line
 # has arrived, the connection ended, or RPC_WAIT seconds passed.
 RPC_WAIT=10
+# rpc_cleanup: stop the background hc connect, close the FIFO, remove the temp dir.
+rpc_cleanup() {
+  [ -n "${rpid:-}" ] && kill "$rpid" 2>/dev/null
+  exec 3>&-
+  [ -n "${rdir:-}" ] && rm -rf "$rdir"
+  rpid=
+  rdir=
+}
 rpc() {
+  reply=
   rdir=$(mktemp -d "${TMPDIR:-/tmp}/flocket-share.XXXXXX") || return 0
   mkfifo "$rdir/in" || { rm -rf "$rdir"; return 0; }
   exec 3<>"$rdir/in"
+  rpid=
+  trap 'rpc_cleanup; exit 3' HUP INT TERM
   "$HC" connect <"$rdir/in" 3>&- >"$rdir/out" 2>/dev/null &
   rpid=$!
   printf '%s\n' "$1" >&3
@@ -116,8 +128,9 @@ rpc() {
   exec 3>&-
   kill "$rpid" 2>/dev/null
   wait "$rpid" 2>/dev/null
-  head -n 1 "$rdir/out"
-  rm -rf "$rdir"
+  reply=$(head -n 1 "$rdir/out")
+  rpc_cleanup
+  trap - HUP INT TERM
 }
 
 unreachable() { fail3 "could not reach the herdr core${1:+ ($1)}"; }
@@ -125,7 +138,7 @@ unreachable() { fail3 "could not reach the herdr core${1:+ ($1)}"; }
 attempt=0
 while [ "$attempt" -lt "$RETRIES" ]; do
   attempt=$((attempt + 1))
-  reply=$(rpc '{"jsonrpc":"2.0","id":1,"method":"doc.get","params":{"name":"flocket-share"}}')
+  rpc '{"jsonrpc":"2.0","id":1,"method":"doc.get","params":{"name":"flocket-share"}}'
   case $reply in
     '{"id":1,"jsonrpc":"2.0","result":{"value":'*',"version":'[0-9]*'}}') ;;
     *) unreachable "unexpected reply to doc.get" ;;
@@ -149,7 +162,7 @@ while [ "$attempt" -lt "$RETRIES" ]; do
     esac
   fi
 
-  reply=$(rpc "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"doc.set\",\"params\":{\"name\":\"flocket-share\",\"version\":$version,\"value\":$new}}")
+  rpc "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"doc.set\",\"params\":{\"name\":\"flocket-share\",\"version\":$version,\"value\":$new}}"
   case $reply in
     *'"result":{"version":'*)
       printf 'shared %s file(s) to Flocket\n' "$count"

@@ -151,5 +151,28 @@ case $out in
 esac
 check "10 HC_BIN=false exits 3 with sandbox hint" $(( rc == 3 && hint == 0 ? 0 : 1 )) "rc=$rc out=$out"
 
+# 11. TERM while waiting for a reply: temp dir removed, no process left behind
+ttmp=$(mktemp -d /tmp/flocket-share-sig.XXXXXX)
+cat >"$ttmp/fakehc" <<FAKE
+#!/bin/sh
+echo \$\$ >"$ttmp/pid"
+exec sleep 100
+FAKE
+chmod +x "$ttmp/fakehc"
+mkdir "$ttmp/tmp"
+HC_BIN="$ttmp/fakehc" HC_TERMINAL_ID=t1 TMPDIR="$ttmp/tmp" sh "$HELPER" report.png >/dev/null 2>&1 &
+hpid=$!
+sleep 1
+kill -TERM "$hpid" 2>/dev/null
+wait "$hpid" 2>/dev/null
+rc=$?
+sleep 1
+left=$(ls -A "$ttmp/tmp" | wc -l | tr -d ' ')
+alive=1
+if [ -s "$ttmp/pid" ] && ! kill -0 "$(cat "$ttmp/pid")" 2>/dev/null; then alive=0; fi
+check "11 TERM cleans up temp dir and fake hc" $(( rc == 3 && left == 0 && alive == 0 ? 0 : 1 )) "rc=$rc left=$left fake_gone=$((1-alive))"
+[ -s "$ttmp/pid" ] && kill "$(cat "$ttmp/pid")" 2>/dev/null
+rm -rf "$ttmp"
+
 echo
 if [ $fail -eq 0 ]; then echo "all $pass cases passed"; else echo "$fail failed, $pass passed"; exit 1; fi
