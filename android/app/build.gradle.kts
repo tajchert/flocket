@@ -38,6 +38,11 @@ dependencies {
     implementation(projects.feature.onboarding.impl)
     implementation(projects.feature.hosts.api)
     implementation(projects.feature.hosts.impl)
+    implementation(projects.feature.terminals.api)
+    implementation(projects.feature.terminals.impl)
+    implementation(projects.feature.terminal.api)
+    implementation(projects.feature.settings.api)
+    implementation(projects.feature.settings.impl)
 
     // TEMPORARY: debug builds bind in-memory fakes until :core:data provides the real implementations.
     debugImplementation(projects.core.testing)

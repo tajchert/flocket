@@ -11,15 +11,10 @@ import com.mtajchert.flocket.R
 import com.mtajchert.flocket.feature.hosts.api.HostEditRoute
 import com.mtajchert.flocket.feature.hosts.api.HostsRoute
 import com.mtajchert.flocket.feature.onboarding.api.OnboardingRoute
+import com.mtajchert.flocket.feature.settings.api.LicensesRoute
+import com.mtajchert.flocket.feature.settings.api.SettingsRoute
+import com.mtajchert.flocket.feature.terminals.api.TerminalsRoute
 import kotlinx.serialization.Serializable
-
-/** Start destination. Placeholder until `feature:terminals:impl` contributes the real entry. */
-@Serializable
-data object TerminalsRoute : NavKey
-
-/** Placeholder until `feature:settings:impl` contributes the real entry. */
-@Serializable
-data object SettingsRoute : NavKey
 
 /** A destination of the navigation bar (compact) or rail (medium and expanded). */
 data class TopLevelDestination(
@@ -36,4 +31,4 @@ val TopLevelDestinations =
     )
 
 /** Routes that cover the whole window; the navigation bar/rail is hidden while one is on top. */
-fun NavKey?.isFullScreen(): Boolean = this is OnboardingRoute || this is HostEditRoute
+fun NavKey?.isFullScreen(): Boolean = this is OnboardingRoute || this is HostEditRoute || this is LicensesRoute

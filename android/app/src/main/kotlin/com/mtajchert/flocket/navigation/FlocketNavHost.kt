@@ -9,6 +9,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfoV2
 import androidx.compose.material3.adaptive.layout.calculatePaneScaffoldDirective
+import androidx.compose.material3.adaptive.navigation3.ListDetailSceneStrategy
 import androidx.compose.material3.adaptive.navigation3.rememberListDetailSceneStrategy
 import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffold
 import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffoldDefaults
@@ -30,6 +31,8 @@ import com.mtajchert.flocket.R
 import com.mtajchert.flocket.core.ui.nav.EntryProviderInstaller
 import com.mtajchert.flocket.core.ui.nav.Navigator
 import com.mtajchert.flocket.feature.onboarding.api.OnboardingRoute
+import com.mtajchert.flocket.feature.terminal.api.TerminalRoute
+import com.mtajchert.flocket.feature.terminals.api.TerminalsRoute
 
 /**
  * Navigation 3 host for the whole app: owns the single back stack, hands features a [Navigator] and
@@ -92,8 +95,10 @@ fun FlocketNavHost(
                 ),
             entryProvider =
                 entryProvider {
-                    entry<TerminalsRoute> { Placeholder(R.string.placeholder_terminals) }
-                    entry<SettingsRoute> { Placeholder(R.string.placeholder_settings) }
+                    // Placeholder until `feature:terminal:impl` contributes the interactive terminal screen.
+                    entry<TerminalRoute>(metadata = ListDetailSceneStrategy.detailPane()) { key ->
+                        TerminalPlaceholder(key)
+                    }
                     installers.forEach { it.install(this, navigator) }
                 },
         )
@@ -103,8 +108,14 @@ fun FlocketNavHost(
 private class BackStackNavigator(
     private val backStack: NavBackStack<NavKey>,
 ) : Navigator {
+    override val current: NavKey? get() = backStack.lastOrNull()
+
     override fun navigate(key: NavKey) {
-        if (backStack.lastOrNull() != key) backStack.add(key)
+        val last = backStack.lastOrNull()
+        if (last == key) return
+        // Picking another terminal in a two-pane layout swaps the detail pane instead of piling up the back stack.
+        if (key is TerminalRoute && last is TerminalRoute && backStack.size > 1) backStack.removeLastOrNull()
+        backStack.add(key)
     }
 
     override fun back() {
@@ -125,11 +136,14 @@ private class BackStackNavigator(
 }
 
 @Composable
-private fun Placeholder(
-    text: Int,
+private fun TerminalPlaceholder(
+    key: TerminalRoute,
     modifier: Modifier = Modifier,
 ) {
     Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Text(text = stringResource(text), style = MaterialTheme.typography.titleMedium)
+        Text(
+            text = stringResource(R.string.placeholder_terminal, key.address),
+            style = MaterialTheme.typography.titleMedium,
+        )
     }
 }
