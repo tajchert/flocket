@@ -73,6 +73,14 @@ class TerminalViewSelectionTest {
     }
 
     @Test
+    fun `long press on blank space past the text selects nothing`() {
+        longPress(view.cellCenter(col = 25, row = 0))
+        assertNull(view.selectedText())
+        longPress(view.cellCenter(col = 5, row = 3))
+        assertNull(view.selectedText())
+    }
+
+    @Test
     fun `dragging the end handle extends the selection across rows`() {
         longPress(view.cellCenter(col = 0, row = 0))
         assertEquals("cd", view.selectedText())
