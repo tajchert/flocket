@@ -17,6 +17,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -49,7 +50,7 @@ fun ShareCard(
                         if (share.fileCount == 1) {
                             stringResource(R.string.share_card_title_one, share.name)
                         } else {
-                            stringResource(R.string.share_card_title_many, share.fileCount)
+                            pluralStringResource(R.plurals.share_card_title_many, share.fileCount, share.fileCount)
                         },
                     style = MaterialTheme.typography.titleSmall,
                     maxLines = 1,

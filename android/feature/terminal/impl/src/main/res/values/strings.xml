@@ -82,13 +82,19 @@
 
     <!-- Agent shares (share/) -->
     <string name="share_card_title_one">Shared %1$s</string>
-    <string name="share_card_title_many">Shared %1$d files</string>
+    <plurals name="share_card_title_many">
+        <item quantity="one">Shared %1$d file</item>
+        <item quantity="other">Shared %1$d files</item>
+    </plurals>
     <string name="share_card_open">Open</string>
     <string name="share_card_dismiss">Dismiss</string>
     <string name="share_action_shared_files">Shared files</string>
     <string name="share_sheet_title">Shared files</string>
     <string name="share_sheet_empty">Nothing shared yet</string>
-    <string name="share_files_count">%1$d files</string>
+    <plurals name="share_files_count">
+        <item quantity="one">%1$d file</item>
+        <item quantity="other">%1$d files</item>
+    </plurals>
     <string name="share_time_just_now">Just now</string>
     <string name="share_viewer_close">Close</string>
     <string name="share_viewer_back">Back to the file list</string>
@@ -119,7 +125,7 @@
     <string name="transfer_uploading">Uploading %1$s…</string>
     <string name="transfer_cancel">Cancel upload</string>
     <string name="transfer_unknown">%1$s may not have been uploaded. Nothing was pasted.</string>
-    <string name="transfer_unknown_hint">Check before trying again: it may already be there.</string>
+    <string name="transfer_send_unknown">%1$s may not have been written. Check the folder before sending again.</string>
     <string name="transfer_sent_format">Sent to %1$s</string>
     <string name="transfer_send_title">Send file to folder</string>
     <string name="transfer_send_folder">Folder</string>

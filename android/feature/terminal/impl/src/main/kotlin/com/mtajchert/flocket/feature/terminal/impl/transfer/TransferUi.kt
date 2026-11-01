@@ -230,17 +230,11 @@ fun SendToFolderDialog(
                     }
 
                     phase is TransferPhase.OutcomeUnknown -> {
-                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text(
-                                stringResource(R.string.transfer_unknown, phase.name),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.error,
-                            )
-                            Text(
-                                stringResource(R.string.transfer_unknown_hint),
-                                style = MaterialTheme.typography.bodySmall,
-                            )
-                        }
+                        Text(
+                            stringResource(R.string.transfer_send_unknown, phase.name),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.error,
+                        )
                     }
 
                     phase is TransferPhase.Failed -> {

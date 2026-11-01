@@ -16,6 +16,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -66,7 +67,7 @@ fun SharedFilesContent(
                             ) {
                                 share.name
                             } else {
-                                stringResource(R.string.share_files_count, share.fileCount)
+                                pluralStringResource(R.plurals.share_files_count, share.fileCount, share.fileCount)
                             },
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
