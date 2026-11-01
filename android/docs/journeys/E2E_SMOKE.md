@@ -8,16 +8,16 @@ the steps that stay manual. How to run them: [TESTING.md](../TESTING.md#device-j
 
 | Step | Automated by | Status |
 |---|---|---|
-| 1-2 Onboarding, key, host, trust | `OnboardingJourneyTest` | automated |
-| 3-4 Live list, new terminal, typing | `TerminalJourneyTest` | automated |
-| 5 Passive open keeps size | - | planned |
-| 6a Rotation (passive keeps the other viewer's size, owner follows the grid) | `RotationJourneyTest` | automated |
-| 6b Fold / unfold | - | manual |
-| 6c Lock / unlock | - | manual |
-| 6d Background and return | - | planned (lifecycle journeys) |
-| 6e Network off / on | - | planned (lifecycle journeys) |
-| 6f Process death | - | planned (needs a driver outside the app process) |
-| 6g sshd link killed | - | planned (lifecycle journeys) |
+| 1-2 Onboarding, key, host, trust | `OnboardingJourneyTest` | automated, `@Smoke` |
+| 3-4 Live list, new terminal, typing | `TerminalJourneyTest` | automated, `@Smoke` |
+| 5 Open fits the phone; another viewer keeps the size until the first key (ADR-0007) | `PassiveOpenJourneyTest` | automated, `@Smoke` |
+| 6a Rotation: owner follows the grid, passive keeps the other viewer's size, list survives | `RotationJourneyTest` | automated |
+| 6b Fold / unfold | - | manual (the `pixel` AVD is not foldable) |
+| 6c' Lock / unlock with a terminal open | `LockJourneyTest` | automated |
+| 6d / 6h Background and return (keep-alive on), 6j from the list, 6k keep-alive off | `BackgroundJourneyTest` | automated (short dwell; the > 60 s and ~3 min window cases 6d/6i stay manual) |
+| 6e Network off / on, keys typed offline not replayed | `NetworkJourneyTest` | automated |
+| 6f Process death | - | manual: `am instrument` force-stops the app when it starts and ends, which drops the saved state; needs a separate UiAutomator driver module |
+| 6g sshd link killed, keys typed while down not replayed | `SshLinkJourneyTest` | automated |
 | 7 Smoothness (flood, gfxinfo) | - | manual |
 | 8 Kill, exit banner, Remove | `TerminalJourneyTest` | automated |
 
@@ -62,8 +62,9 @@ revoke it with `adb -s <serial> shell pm revoke com.mtajchert.flocket.debug andr
    size becomes the phone grid, e.g. 52x39).
 4. Type `echo hello-flocket` + Enter; `hc read <t>` shows it. `top` redraws; sticky Ctrl + `c`
    from the extra keys stops it.
-5. Open `macsh` (headless 200x120) from the list: `hc get` still says 200x120 (passive, scaled to
-   fit); the first key resizes it to the phone grid.
+5. Open `macsh` (headless 200x120) from the list: since ADR-0007 the phone takes the size at once
+   (`hc get` shows the phone grid). When another viewer takes it (`hc attach` on the Mac), the phone
+   goes passive and leaves that size until its first key, tap or return.
 6. Lifecycle: see the matrix. With a terminal open, leaving the app starts the `shortService`
    keep-alive (ADR-0006): `adb shell dumpsys activity services com.mtajchert.flocket.debug` shows
    `TerminalKeepAliveService` with `isForeground=true types=0x00000800`, and `dumpsys netpolicy`
