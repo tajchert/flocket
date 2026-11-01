@@ -1,13 +1,17 @@
 package com.mtajchert.flocket.core.session
 
 import com.mtajchert.flocket.core.common.error.AppError
+import com.mtajchert.flocket.core.common.result.AppResult
+import com.mtajchert.flocket.core.common.result.errorOrNull
 import com.mtajchert.flocket.core.model.ConnectionState
 import com.mtajchert.flocket.core.model.DesktopLayout
+import com.mtajchert.flocket.core.model.LayoutRef
 import com.mtajchert.flocket.core.model.TerminalAddress
 import com.mtajchert.flocket.core.protocol.testing.FakeCore
 import com.mtajchert.flocket.core.protocol.testing.FakeCoreConfig
 import com.mtajchert.flocket.core.protocol.testing.FakeRpcError
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
@@ -16,8 +20,12 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.long
 import kotlinx.serialization.json.put
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -25,6 +33,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 
 /** `herdr-app` document tracking in [CoreSessionImpl] (SPEC §9, §9.1). */
@@ -304,5 +313,261 @@ class CoreSessionLayoutTest {
                     .tabs[0]
                     .panes[0],
             )
+        }
+
+    // ---- rename (SPEC §9.1, ADR-0008) -----------------------------------------------------------
+
+    /** A two-space document: `sp` with tabs `tb` and `tb2`, then `sp2`; [tabs] overrides `sp`'s tab ids. */
+    private fun layoutDoc(vararg tabs: String = arrayOf("tb", "tb2")): JsonElement =
+        Json.parseToJsonElement(
+            """{"spaces":[{"id":"sp","name":"main","look":{"color":"#4f9dff"},"tabs":[""" +
+                tabs.joinToString(",") { """{"id":"$it","name":"","root":{"content":{"terminal":"t1"}}}""" } +
+                """]},{"id":"sp2","name":"infra","tabs":[]}],"future":1}""",
+        )
+
+    private fun nameOf(
+        value: JsonElement,
+        space: Int,
+        tab: Int? = null,
+    ): String {
+        val s = value.jsonObject["spaces"]!!.jsonArray[space].jsonObject
+        val o = if (tab == null) s else s["tabs"]!!.jsonArray[tab].jsonObject
+        return o["name"]!!.jsonPrimitive.content
+    }
+
+    /**
+     * A host whose cores serve `herdr-app` from [doc] at [version] and accept a `doc.set` only at the current
+     * version (then bump it), like the real core; [onSet] runs first and may throw a [FakeRpcError].
+     */
+    private fun TestScope.hostWithLayout(
+        doc: AtomicReference<JsonElement>,
+        version: AtomicInteger = AtomicInteger(5),
+        onSet: suspend (FakeCore, JsonObject) -> Unit = { _, _ -> },
+    ) = FakeHost(backgroundScope).apply {
+        terminals += FakeCore.terminal("t1")
+        configure = { c ->
+            c.handlers["doc.get"] = { reply(doc.get(), version.get().toLong()) }
+            c.handlers["doc.set"] = { p ->
+                onSet(c, p)
+                val v = p["version"]!!.jsonPrimitive.long
+                if (v != version.get().toLong()) {
+                    throw FakeRpcError("conflict", "document \"herdr-app\" is at version ${version.get()}, not $v")
+                }
+                doc.set(p["value"]!!)
+                buildJsonObject { put("version", version.incrementAndGet()) }
+            }
+        }
+    }
+
+    private fun FakeCore.docSets() = callsOf("doc.set")
+
+    /** Online, with the session's own first `herdr-app` read done, so tests count only the rename's calls. */
+    private suspend fun TestScope.startWithLayout(s: CoreSession) {
+        s.start()
+        s.awaitOnline()
+        eventually("first layout read") { s.state.value.desktopLayout != null }
+        runCurrent()
+    }
+
+    @Test
+    fun `rename sends doc set with the read version and the edited document`() =
+        runTest {
+            val doc = AtomicReference(layoutDoc())
+            val host = hostWithLayout(doc)
+            val s = host.session(this)
+            startWithLayout(s)
+            val before = doc.get()
+            assertEquals(AppResult.Success(Unit), s.renameInLayout(LayoutRef(null, "sp", "tb2"), " tests "))
+            val set = host.core.docSets().single()
+            assertEquals("herdr-app", set.params["name"]!!.jsonPrimitive.content)
+            assertEquals(5L, set.params["version"]!!.jsonPrimitive.long)
+            assertFalse(set.params.containsKey("on"))
+            val value = set.params["value"]!!
+            assertEquals("tests", nameOf(value, 0, 1))
+            // Only that name changed: compare as JSON with the name put back.
+            val restored =
+                HerdrAppLayoutEdit.rename(value, "sp", "tb2", "") as HerdrAppLayoutEdit.Result.Edited
+            assertEquals(before, restored.value)
+            // A space rename edits the space's own name.
+            assertEquals(AppResult.Success(Unit), s.renameInLayout(LayoutRef(null, "sp2"), "ops"))
+            val second = host.core.docSets()[1]
+            assertEquals(6L, second.params["version"]!!.jsonPrimitive.long)
+            assertEquals("ops", nameOf(second.params["value"]!!, 1))
+            assertEquals("tests", nameOf(second.params["value"]!!, 0, 1))
+            s.stop()
+        }
+
+    @Test
+    fun `rename of a federated space reads and writes with on`() =
+        runTest {
+            val doc = AtomicReference(layoutDoc())
+            val host = hostWithLayout(doc)
+            val s = host.session(this)
+            startWithLayout(s)
+            val localReads = host.core.docGets().size
+            assertEquals(AppResult.Success(Unit), s.renameInLayout(LayoutRef("rohan", "sp"), "remote"))
+            val get =
+                host.core
+                    .docGets()
+                    .drop(localReads)
+                    .single()
+            assertEquals("rohan", get.params["on"]!!.jsonPrimitive.content)
+            val set = host.core.docSets().single()
+            assertEquals("rohan", set.params["on"]!!.jsonPrimitive.content)
+            assertEquals("remote", nameOf(set.params["value"]!!, 0))
+            s.stop()
+        }
+
+    @Test
+    fun `conflict re-reads and re-applies, at most 3 attempts`() =
+        runTest {
+            val doc = AtomicReference(layoutDoc())
+            val version = AtomicInteger(5)
+            val conflicts = AtomicInteger(2)
+            // The desktop writes in between: renames tab `tb` and reorders the tabs; we re-apply by id.
+            val host =
+                hostWithLayout(doc, version) { _, _ ->
+                    if (conflicts.getAndDecrement() > 0) {
+                        doc.set(
+                            HerdrAppLayoutEdit
+                                .rename(layoutDoc("tb2", "tb"), "sp", "tb", "desk${version.get()}")
+                                .let { (it as HerdrAppLayoutEdit.Result.Edited).value },
+                        )
+                        version.incrementAndGet()
+                    }
+                }
+            val s = host.session(this)
+            startWithLayout(s)
+            val reads = host.core.docGets().size
+            assertEquals(AppResult.Success(Unit), s.renameInLayout(LayoutRef(null, "sp", "tb2"), "mine"))
+            assertEquals(3, host.core.docGets().size - reads)
+            val sets = host.core.docSets()
+            assertEquals(3, sets.size)
+            assertEquals(listOf(5L, 6L, 7L), sets.map { it.params["version"]!!.jsonPrimitive.long })
+            // Applied to tab tb2 (now first), keeping the desktop's own rename of tb (now second).
+            assertEquals("mine", nameOf(doc.get(), 0, 0))
+            assertEquals("desk6", nameOf(doc.get(), 0, 1))
+            s.stop()
+        }
+
+    @Test
+    fun `three conflicts in a row fail with conflict`() =
+        runTest {
+            val doc = AtomicReference(layoutDoc())
+            val host =
+                hostWithLayout(
+                    doc,
+                ) { _, _ -> throw FakeRpcError("conflict", "document \"herdr-app\" is at version 9, not 5") }
+            val s = host.session(this)
+            startWithLayout(s)
+            val reads = host.core.docGets().size
+            val error = s.renameInLayout(LayoutRef(null, "sp", "tb"), "x").errorOrNull()
+            assertEquals(AppError.Rpc.CONFLICT, (error as AppError.Rpc).kind)
+            assertEquals(3, host.core.docGets().size - reads)
+            assertEquals(3, host.core.docSets().size)
+            s.stop()
+        }
+
+    @Test
+    fun `conflict then tab removed is gone`() =
+        runTest {
+            val doc = AtomicReference(layoutDoc())
+            val version = AtomicInteger(5)
+            val host =
+                hostWithLayout(doc, version) { _, _ ->
+                    // The desktop closes tab tb2 in the same moment.
+                    doc.set(layoutDoc("tb"))
+                    version.incrementAndGet()
+                }
+            val s = host.session(this)
+            startWithLayout(s)
+            val reads = host.core.docGets().size
+            val error = s.renameInLayout(LayoutRef(null, "sp", "tb2"), "x").errorOrNull()
+            assertEquals(AppError.Rpc.NOT_FOUND, (error as AppError.Rpc).kind)
+            assertEquals(2, host.core.docGets().size - reads)
+            assertEquals(1, host.core.docSets().size)
+            assertEquals(layoutDoc("tb"), doc.get())
+            s.stop()
+        }
+
+    @Test
+    fun `a missing space or a document that is not a layout is not found, without a write`() =
+        runTest {
+            val doc = AtomicReference(layoutDoc())
+            val host = hostWithLayout(doc)
+            val s = host.session(this)
+            startWithLayout(s)
+            assertEquals(
+                AppError.Rpc.NOT_FOUND,
+                (s.renameInLayout(LayoutRef(null, "gone"), "x").errorOrNull() as AppError.Rpc).kind,
+            )
+            doc.set(JsonNull)
+            assertEquals(
+                AppError.Rpc.NOT_FOUND,
+                (s.renameInLayout(LayoutRef(null, "sp"), "x").errorOrNull() as AppError.Rpc).kind,
+            )
+            assertTrue(host.core.docSets().isEmpty())
+            s.stop()
+        }
+
+    @Test
+    fun `link dropped after doc set is OutcomeUnknown and never resent`() =
+        runTest {
+            val doc = AtomicReference(layoutDoc())
+            val dropped = AtomicInteger(0)
+            val host =
+                hostWithLayout(doc) { c, _ ->
+                    if (dropped.getAndIncrement() == 0) {
+                        c.dropConnection()
+                        awaitCancellation()
+                    }
+                }
+            val s = host.session(this)
+            startWithLayout(s)
+            assertEquals(AppError.OutcomeUnknown("doc.set"), s.renameInLayout(LayoutRef(null, "sp"), "x").errorOrNull())
+            s.awaitConnection { it is ConnectionState.Reconnecting }
+            s.awaitOnline()
+            runCurrent()
+            assertEquals(2, host.cores.size)
+            assertEquals(1, host.cores.sumOf { it.docSets().size })
+            // The new link re-reads the document (SPEC §9: after subscribing).
+            eventually { host.cores[1].docGets().isNotEmpty() }
+            s.stop()
+        }
+
+    @Test
+    fun `rename while disconnected fails fast without a call`() =
+        runTest {
+            val doc = AtomicReference(layoutDoc())
+            val host = hostWithLayout(doc)
+            val s = host.session(this)
+            assertEquals(AppError.ConnectionLost, s.renameInLayout(LayoutRef(null, "sp"), "x").errorOrNull())
+            assertTrue(host.cores.isEmpty())
+        }
+
+    @Test
+    fun `remote unavailable is passed through without a write`() =
+        runTest {
+            val doc = AtomicReference(layoutDoc())
+            val host = hostWithLayout(doc)
+            val configure = host.configure
+            host.configure = { c ->
+                configure(c)
+                val local = c.handlers["doc.get"]!!
+                c.handlers["doc.get"] = { p ->
+                    if (p["on"]?.jsonPrimitive?.content ==
+                        "rohan"
+                    ) {
+                        throw FakeRpcError("unavailable", "rohan is not connected")
+                    }
+                    local(p)
+                }
+            }
+            val s = host.session(this)
+            startWithLayout(s)
+            val error = s.renameInLayout(LayoutRef("rohan", "sp", "tb"), "x").errorOrNull()
+            assertEquals(AppError.Rpc.UNAVAILABLE, (error as AppError.Rpc).kind)
+            assertTrue(host.core.docSets().isEmpty())
+            s.stop()
         }
 }
