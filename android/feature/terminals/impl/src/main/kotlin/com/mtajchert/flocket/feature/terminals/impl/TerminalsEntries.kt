@@ -23,6 +23,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.mtajchert.flocket.core.ui.component.RenameDialog
 import com.mtajchert.flocket.core.ui.error.UiErrorAction
 import com.mtajchert.flocket.core.ui.nav.EntryProviderInstaller
 import com.mtajchert.flocket.core.ui.nav.Navigator
@@ -131,6 +132,7 @@ private fun TerminalsRoute(
                 onRemove = viewModel::remove,
                 onInterrupt = viewModel::interrupt,
                 onSendText = viewModel::requestSend,
+                onRename = viewModel::requestRename,
                 onNewTerminal = { viewModel.openNewTerminal() },
                 onAddHost = { navigator.navigate(HostEditRoute(null)) },
                 onHostAction = viewModel::onHostAction,
@@ -174,6 +176,17 @@ private fun TerminalsRoute(
                         onCancel = viewModel::dismissDialog,
                     )
                 },
+            )
+        }
+
+        is TerminalDialog.Rename -> {
+            RenameDialog(
+                isTab = d.ref.tabId != null,
+                text = d.text,
+                placeholder = d.placeholder,
+                onTextChange = viewModel::updateRename,
+                onSave = viewModel::confirmRename,
+                onDismiss = viewModel::dismissDialog,
             )
         }
 

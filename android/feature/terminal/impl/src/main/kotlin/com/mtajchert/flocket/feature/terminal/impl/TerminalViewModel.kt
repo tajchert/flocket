@@ -11,7 +11,9 @@ import com.mtajchert.flocket.core.data.PreferencesRepository
 import com.mtajchert.flocket.core.model.ClipboardWritePolicy
 import com.mtajchert.flocket.core.model.ConnectionState
 import com.mtajchert.flocket.core.model.HostId
+import com.mtajchert.flocket.core.model.LayoutRef
 import com.mtajchert.flocket.core.model.Liveness
+import com.mtajchert.flocket.core.model.MachineState
 import com.mtajchert.flocket.core.model.TerminalAddress
 import com.mtajchert.flocket.core.session.AttachMode
 import com.mtajchert.flocket.core.session.AttachRequest
@@ -22,6 +24,7 @@ import com.mtajchert.flocket.core.session.StreamEnd
 import com.mtajchert.flocket.core.session.TerminalStream
 import com.mtajchert.flocket.core.terminal.controller.TerminalController
 import com.mtajchert.flocket.core.ui.error.UiText
+import com.mtajchert.flocket.core.ui.error.toRenameText
 import com.mtajchert.flocket.core.ui.error.toUiError
 import com.mtajchert.flocket.feature.terminal.api.TerminalRoute
 import dagger.assisted.Assisted
@@ -107,6 +110,7 @@ class TerminalViewModel
             val freshShell: Boolean = false,
             val clipboardRequest: String? = null,
             val confirmKill: Boolean = false,
+            val rename: RenameUi? = null,
             /** Pinch result not yet confirmed by the preferences flow. */
             val fontSizeSp: Float? = null,
             /** Answered in this screen; hides the prompt before the preferences write lands. */
@@ -147,6 +151,7 @@ class TerminalViewModel
                     bell = terminal.bell,
                     clipboardRequest = loc.clipboardRequest,
                     confirmKill = loc.confirmKill,
+                    rename = loc.rename,
                     offerNotificationPermission =
                         ph == TerminalPhase.Live && prefs.keepConnectedInBackground &&
                             !prefs.notificationPermissionAsked && !loc.notificationAsked,
@@ -160,8 +165,16 @@ class TerminalViewModel
          */
         val tabStrip: StateFlow<TabStripUi?> =
             sessionState
-                .map { st -> st?.let { buildTabStrip(it.terminals, it.desktopLayout, address, it.machineLayouts) } }
-                .distinctUntilChanged()
+                .map { st ->
+                    st?.let {
+                        buildTabStrip(
+                            it.terminals,
+                            it.desktopLayout,
+                            address,
+                            it.machineLayouts,
+                        )?.renameable(it)
+                    }
+                }.distinctUntilChanged()
                 .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
         init {
@@ -368,6 +381,52 @@ class TerminalViewModel
             }
         }
 
+        /** Opens the rename dialog for a tab; refused with a message while the host or machine is not reachable. */
+        fun requestRename(
+            ref: LayoutRef,
+            current: String,
+            placeholder: String,
+        ) {
+            if (!canRename(ref)) {
+                val text = AppError.ConnectionLost.toRenameText(ref, hostLabel())
+                if (text != null) send(TerminalScreenEvent.Message(text))
+                return
+            }
+            local.update { it.copy(rename = RenameUi(ref, placeholder, current)) }
+        }
+
+        fun updateRename(text: String) = local.update { l -> l.copy(rename = l.rename?.copy(text = text)) }
+
+        fun dismissRename() = local.update { it.copy(rename = null) }
+
+        /** Writes the name (empty = automatic name). Never resent when the link drops: the outcome is shown. */
+        fun confirmRename() {
+            val r = local.value.rename ?: return
+            local.update { it.copy(rename = null) }
+            val s = session.value ?: return
+            viewModelScope.launch {
+                val failure = (s.renameInLayout(r.ref, r.text.trim()) as? AppResult.Failure)?.error ?: return@launch
+                val text = failure.toRenameText(r.ref, hostLabel())
+                if (text != null) send(TerminalScreenEvent.Message(text)) else report(failure)
+            }
+        }
+
+        private fun hostLabel(): String =
+            connections.overview.value
+                .firstOrNull { it.host.id == hostId }
+                ?.host
+                ?.label
+                .orEmpty()
+
+        private fun canRename(ref: LayoutRef): Boolean {
+            val st = session.value?.state?.value ?: return false
+            return st.connection is ConnectionState.Online &&
+                (
+                    ref.machine == null ||
+                        st.machines.firstOrNull { it.name == ref.machine }?.state == MachineState.Connected
+                )
+        }
+
         fun requestKill() = local.update { it.copy(confirmKill = true) }
 
         fun dismissKill() = local.update { it.copy(confirmKill = false) }
@@ -491,3 +550,21 @@ private fun com.mtajchert.flocket.core.model.TerminalRecord.recordTitle(): Strin
         where
             ?: name.orEmpty()
     }
+
+/** The strip with the rename targets removed while writes are impossible (stale host, unreachable machine). */
+private fun TabStripUi.renameable(state: SessionState): TabStripUi {
+    val online = state.connection is ConnectionState.Online
+    return copy(
+        tabs =
+            tabs.map { tab ->
+                val ref = tab.layoutRef
+                val reachable =
+                    online &&
+                        (
+                            ref?.machine == null ||
+                                state.machines.firstOrNull { it.name == ref.machine }?.state == MachineState.Connected
+                        )
+                if (reachable) tab else tab.copy(layoutRef = null)
+            },
+    )
+}

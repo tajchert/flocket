@@ -30,6 +30,7 @@ import com.mtajchert.flocket.core.ui.component.ImportKeyDialog
 import com.mtajchert.flocket.core.ui.component.ImportKeyDialogState
 import com.mtajchert.flocket.core.ui.component.LoadingState
 import com.mtajchert.flocket.core.ui.component.PublicKeyCard
+import com.mtajchert.flocket.core.ui.component.RenameDialog
 import com.mtajchert.flocket.core.ui.component.StaleDataBanner
 import com.mtajchert.flocket.core.ui.error.toUiError
 import com.mtajchert.flocket.core.ui.hostform.HostForm
@@ -181,6 +182,36 @@ private fun ImportKeyDialogScreenshot() =
             onSource = {},
             onPickFile = {},
             onConfirm = {},
+            onDismiss = {},
+        )
+    }
+
+@PreviewTest
+@PreviewComponentThemes
+@Composable
+private fun RenameTabDialogScreenshot() =
+    Shot {
+        RenameDialog(
+            isTab = true,
+            text = "agents",
+            placeholder = "2",
+            onTextChange = {},
+            onSave = {},
+            onDismiss = {},
+        )
+    }
+
+@PreviewTest
+@PreviewComponentThemes
+@Composable
+private fun RenameSpaceDialogEmptyScreenshot() =
+    Shot {
+        RenameDialog(
+            isTab = false,
+            text = "",
+            placeholder = "flocket",
+            onTextChange = {},
+            onSave = {},
             onDismiss = {},
         )
     }

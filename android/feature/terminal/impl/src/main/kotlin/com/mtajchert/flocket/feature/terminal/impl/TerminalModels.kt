@@ -3,6 +3,7 @@ package com.mtajchert.flocket.feature.terminal.impl
 import com.mtajchert.flocket.core.model.AgentStatus
 import com.mtajchert.flocket.core.model.BellMode
 import com.mtajchert.flocket.core.model.ConnectionState
+import com.mtajchert.flocket.core.model.LayoutRef
 import com.mtajchert.flocket.core.model.TerminalColorScheme
 import com.mtajchert.flocket.core.ui.error.UiError
 import com.mtajchert.flocket.core.ui.error.UiText
@@ -66,6 +67,7 @@ data class TerminalUiState(
     /** A program asked to set the clipboard (OSC 52): ask before copying. */
     val clipboardRequest: String? = null,
     val confirmKill: Boolean = false,
+    val rename: RenameUi? = null,
     /**
      * Attached and the notification permission was never asked: the route may ask once (ADR-0006, the
      * keep-alive notification). The route still checks the platform state before showing anything.
@@ -77,6 +79,14 @@ data class TerminalUiState(
     /** Input-affecting actions (paste, interrupt, kill, keyboard) make sense only on a live stream. */
     val canInteract: Boolean get() = phase == TerminalPhase.Live && streamConnected
 }
+
+/** The open rename dialog for a tab of the strip. */
+data class RenameUi(
+    val ref: LayoutRef,
+    /** The tab's automatic name, shown when the field is empty. */
+    val placeholder: String,
+    val text: String,
+)
 
 /** One-shot messages for the snackbar, and navigation. */
 sealed interface TerminalScreenEvent {

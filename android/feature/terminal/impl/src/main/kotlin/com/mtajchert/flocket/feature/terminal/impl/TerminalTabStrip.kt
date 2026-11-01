@@ -1,7 +1,7 @@
 package com.mtajchert.flocket.feature.terminal.impl
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -38,7 +38,9 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.mtajchert.flocket.core.model.AgentState
+import com.mtajchert.flocket.core.model.LayoutRef
 import com.mtajchert.flocket.core.ui.component.AgentIcon
+import com.mtajchert.flocket.core.ui.R as CoreUiR
 
 /** The whole strip is this tall, so it costs one text row on a landscape phone. */
 private val StripHeight = 40.dp
@@ -53,6 +55,8 @@ fun TerminalTabStrip(
     strip: TabStripUi,
     onOpen: (address: String) -> Unit,
     modifier: Modifier = Modifier,
+    /** Long-press on a renameable tab: its desktop tab, current given name and automatic name. */
+    onRename: (ref: LayoutRef, current: String, placeholder: String) -> Unit = { _, _, _ -> },
 ) {
     Row(
         modifier =
@@ -77,15 +81,15 @@ fun TerminalTabStrip(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 items(strip.tabs, key = { it.key }) { tab ->
+                    val fallback = stringResource(R.string.workspace_tab_fallback, tab.number)
                     StripChip(
-                        tab.name.ifBlank {
-                            stringResource(R.string.workspace_tab_fallback, tab.number)
-                        },
+                        tab.name.ifBlank { fallback },
                         tab.state,
                         tab.selected,
                         "terminal_tab",
                         showIcon = true,
                         agentId = tab.agentId,
+                        onLongClick = tab.layoutRef?.let { ref -> { onRename(ref, tab.name, fallback) } },
                     ) { onOpen(tab.target) }
                 }
             }
@@ -118,6 +122,7 @@ private fun StripChip(
     tag: String,
     showIcon: Boolean = false,
     agentId: String? = null,
+    onLongClick: (() -> Unit)? = null,
     onClick: () -> Unit,
 ) {
     val scheme = MaterialTheme.colorScheme
@@ -130,8 +135,11 @@ private fun StripChip(
             Modifier
                 .bringIntoViewRequester(requester)
                 .height(StripHeight)
-                .clickable(onClick = onClick)
-                .semantics(mergeDescendants = true) {
+                .combinedClickable(
+                    onClick = onClick,
+                    onLongClickLabel = onLongClick?.let { stringResource(CoreUiR.string.menu_rename_tab) },
+                    onLongClick = onLongClick,
+                ).semantics(mergeDescendants = true) {
                     role = Role.Tab
                     this.selected = selected
                     contentDescription = described

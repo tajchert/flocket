@@ -5,6 +5,7 @@ import com.mtajchert.flocket.core.model.AgentCatalog
 import com.mtajchert.flocket.core.model.AgentState
 import com.mtajchert.flocket.core.model.AgentStatus
 import com.mtajchert.flocket.core.model.DesktopLayout
+import com.mtajchert.flocket.core.model.LayoutRef
 import com.mtajchert.flocket.core.model.Liveness
 import com.mtajchert.flocket.core.model.TerminalAddress
 import com.mtajchert.flocket.core.model.TerminalRecord
@@ -39,6 +40,8 @@ data class StripTab(
     val number: Int = 1,
     /** The catalog id of the agent in the [target] pane, if known. */
     val agentId: String? = null,
+    /** The desktop tab this is, when it can be renamed right now; null for implicit tabs or an unreachable host. */
+    val layoutRef: LayoutRef? = null,
 )
 
 @Immutable
@@ -85,6 +88,7 @@ fun buildTabStrip(
                 // The open terminal stays the target of its own tab, so re-tapping it is a no-op.
                 target = if (tab.key == currentTab.key) current.value else target.value,
                 number = tab.number,
+                layoutRef = tab.layoutRef,
                 agentId =
                     byAddress[
                         if (tab.key ==

@@ -10,6 +10,19 @@
     <string name="loading">Loading</string>
     <string name="agent_icon_terminal">Terminal</string>
 
+    <!-- Rename a space or tab (written to the desktop layout) -->
+    <string name="rename_tab_title">Rename tab</string>
+    <string name="rename_space_title">Rename space</string>
+    <string name="rename_save">Save</string>
+    <string name="rename_hint_auto">Leave empty to use “%1$s”</string>
+    <string name="rename_error_conflict">The desktop changed this layout at the same time. Try again.</string>
+    <string name="rename_error_gone_tab">This tab was closed on the desktop.</string>
+    <string name="rename_error_gone_space">This space was closed on the desktop.</string>
+    <string name="rename_error_unreachable">Can\'t rename now: %1$s isn\'t reachable.</string>
+    <string name="rename_outcome_unknown">Connection dropped while renaming; showing the name the desktop has now.</string>
+    <string name="menu_rename_tab">Rename tab…</string>
+    <string name="menu_rename_space">Rename space…</string>
+
     <!-- UiError mapping (AppError -> text). Keep in sync with UiError.kt -->
     <string name="error_unreachable_title">Can’t reach the host</string>
     <string name="error_unreachable_message">Flocket couldn’t open a connection to %1$s. Check that the machine is on, that you’re on the same network or Tailscale, and that the address and port are right.</string>

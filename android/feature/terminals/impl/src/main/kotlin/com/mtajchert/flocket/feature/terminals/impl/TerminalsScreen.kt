@@ -4,7 +4,7 @@ package com.mtajchert.flocket.feature.terminals.impl
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -72,6 +72,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.mtajchert.flocket.core.model.AgentState
 import com.mtajchert.flocket.core.model.HostId
+import com.mtajchert.flocket.core.model.LayoutRef
 import com.mtajchert.flocket.core.model.MachineState
 import com.mtajchert.flocket.core.model.TerminalSort
 import com.mtajchert.flocket.core.ui.component.CenteredContent
@@ -83,6 +84,7 @@ import com.mtajchert.flocket.core.ui.component.rememberNowMs
 import com.mtajchert.flocket.core.ui.error.UiErrorAction
 import com.mtajchert.flocket.core.ui.nav.LocalPaneLayout
 import com.mtajchert.flocket.feature.terminal.api.TerminalRoute
+import com.mtajchert.flocket.core.ui.R as CoreUiR
 
 /** Everything the screen can ask for; the route wires it to the ViewModel. Defaults keep previews and tests terse. */
 @Immutable
@@ -97,6 +99,8 @@ class TerminalsActions(
     val onRemove: (TerminalItem) -> Unit = {},
     val onInterrupt: (TerminalItem) -> Unit = {},
     val onSendText: (TerminalItem) -> Unit = {},
+    /** Rename a desktop space or tab: host, target, current given name, automatic name. */
+    val onRename: (HostId, LayoutRef, String, String) -> Unit = { _, _, _, _ -> },
     val onNewTerminal: () -> Unit = {},
     val onAddHost: () -> Unit = {},
     val onHostAction: (HostId, UiErrorAction) -> Unit = { _, _ -> },
@@ -381,6 +385,7 @@ private fun TerminalList(
                                 modifier = Modifier.padding(start = 12.dp),
                                 dense = dense,
                                 place = placeText(row.place),
+                                placeInfo = row.place,
                             )
                         }
                     }
@@ -388,6 +393,13 @@ private fun TerminalList(
                         val spaceKey = "${group.hostId.value}/${section.machine.orEmpty()}/${space.key}"
                         val isCollapsed = spaceKey in collapsed
                         item(key = "space:$spaceKey", contentType = "space") {
+                            val placeholder =
+                                space.autoName.ifBlank {
+                                    stringResource(
+                                        R.string.workspace_space_fallback,
+                                        space.number,
+                                    )
+                                }
                             SpaceHeader(
                                 space,
                                 isCollapsed,
@@ -396,19 +408,23 @@ private fun TerminalList(
                                     collapsed =
                                         if (spaceKey in collapsed) collapsed - spaceKey else collapsed + spaceKey
                                 },
+                                onRename =
+                                    space.layoutRef?.takeIf { space.canRename }?.let { ref ->
+                                        { actions.onRename(group.hostId, ref, space.givenName, placeholder) }
+                                    },
                             )
                         }
                         if (!isCollapsed) {
                             space.tabs.forEach { tab ->
                                 if (space.showTabLabels) {
                                     item(key = "tab:$spaceKey/${tab.key}", contentType = "tab") {
+                                        val fallback = stringResource(R.string.workspace_tab_fallback, tab.number)
                                         TabLabel(
-                                            tab.name.ifBlank {
-                                                stringResource(
-                                                    R.string.workspace_tab_fallback,
-                                                    tab.number,
-                                                )
-                                            },
+                                            tab.name.ifBlank { fallback },
+                                            onRename =
+                                                tab.layoutRef?.takeIf { tab.canRename }?.let { ref ->
+                                                    { actions.onRename(group.hostId, ref, tab.name, fallback) }
+                                                },
                                         )
                                     }
                                 }
@@ -545,6 +561,8 @@ private fun SpaceHeader(
     collapsed: Boolean,
     dense: Boolean,
     onToggle: () -> Unit,
+    /** Long-press action; null when the space can't be renamed (folder space, stale host, unreachable machine). */
+    onRename: (() -> Unit)? = null,
 ) {
     val scheme = MaterialTheme.colorScheme
     val statusText =
@@ -564,8 +582,12 @@ private fun SpaceHeader(
     Row(
         Modifier
             .fillMaxWidth()
-            .clickable(onClickLabel = toggleLabel, onClick = onToggle)
-            .semantics(mergeDescendants = true) { stateDescription = statusText }
+            .combinedClickable(
+                onClickLabel = toggleLabel,
+                onClick = onToggle,
+                onLongClickLabel = onRename?.let { stringResource(CoreUiR.string.menu_rename_space) },
+                onLongClick = onRename,
+            ).semantics(mergeDescendants = true) { stateDescription = statusText }
             .padding(start = 16.dp, end = 8.dp, top = if (dense) 6.dp else 10.dp, bottom = if (dense) 6.dp else 10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -599,14 +621,30 @@ private fun SpaceHeader(
 }
 
 @Composable
-private fun TabLabel(name: String) {
+private fun TabLabel(
+    name: String,
+    onRename: (() -> Unit)? = null,
+) {
     Text(
         name,
         style = MaterialTheme.typography.labelMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
-        modifier = Modifier.fillMaxWidth().padding(start = 36.dp, end = 16.dp, top = 4.dp),
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .then(
+                    if (onRename != null) {
+                        Modifier.combinedClickable(
+                            onClick = {},
+                            onLongClickLabel = stringResource(CoreUiR.string.menu_rename_tab),
+                            onLongClick = onRename,
+                        )
+                    } else {
+                        Modifier
+                    },
+                ).padding(start = 36.dp, end = 16.dp, top = 4.dp),
     )
 }
 
