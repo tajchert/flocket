@@ -28,6 +28,8 @@ dependencies {
     implementation(projects.core.data)
     // Ships the libghostty-vt + JNI shim .so files (both ABIs) in the APK.
     implementation(projects.core.terminalGhostty)
+    implementation(projects.core.ssh)
+    implementation(projects.core.security)
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
