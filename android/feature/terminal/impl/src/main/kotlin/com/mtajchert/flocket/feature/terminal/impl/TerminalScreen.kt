@@ -48,6 +48,7 @@ import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.PowerSettingsNew
 import androidx.compose.material.icons.outlined.StopCircle
+import androidx.compose.material.icons.outlined.UploadFile
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -110,6 +111,8 @@ import com.mtajchert.flocket.core.ui.nav.PaneLayout
 import com.mtajchert.flocket.feature.terminal.impl.share.ShareActions
 import com.mtajchert.flocket.feature.terminal.impl.share.ShareCard
 import com.mtajchert.flocket.feature.terminal.impl.share.SharesUi
+import com.mtajchert.flocket.feature.terminal.impl.transfer.TransferPhase
+import com.mtajchert.flocket.feature.terminal.impl.transfer.TransferStrip
 
 /** Everything the screen can ask for. Defaults are no-ops (previews, screenshot tests). */
 @Immutable
@@ -140,6 +143,12 @@ data class TerminalActions(
     val onReply: (ReplyKey) -> Unit = {},
     /** Full-screen mode: hide (true) or bring back (false) the top bar and tab strip. */
     val onTopBarHidden: (Boolean) -> Unit = {},
+    // BEGIN transfer
+    val onSendToFolder: () -> Unit = {},
+    val onTransferCancel: () -> Unit = {},
+    val onTransferRetry: () -> Unit = {},
+    val onTransferDismiss: () -> Unit = {},
+    // END transfer
 )
 
 /**
@@ -161,6 +170,9 @@ fun TerminalScreen(
     shares: SharesUi = SharesUi(),
     shareActions: ShareActions = ShareActions(),
     // --- end agent shares ---
+    // BEGIN transfer
+    transfer: TransferPhase = TransferPhase.Idle,
+    // END transfer
     terminal: @Composable (Modifier) -> Unit,
 ) {
     val layout = LocalPaneLayout.current
@@ -228,6 +240,9 @@ fun TerminalScreen(
                     if (state.sizeTakenByOther) SizeTakenChip(actions.onFit)
                 }
             }
+            // BEGIN transfer
+            TransferStrip(transfer, actions.onTransferCancel, actions.onTransferRetry, actions.onTransferDismiss)
+            // END transfer
             EndBanner(state, actions)
             if (state.showExtraKeys && state.canInteract) {
                 ReplyBar(state.status, actions.onReply)
@@ -435,6 +450,12 @@ private fun OverflowMenu(
                 open = false
                 actions.onPaste()
             }
+            // BEGIN transfer
+            MenuItem(Icons.Outlined.UploadFile, R.string.transfer_action_send_to_folder, enabled = live) {
+                open = false
+                actions.onSendToFolder()
+            }
+            // END transfer
             MenuItem(Icons.Outlined.ContentCopy, R.string.terminal_action_copy, enabled = true) {
                 open = false
                 actions.onCopy()
@@ -626,7 +647,7 @@ private fun EndBanner(
 private enum class BannerTone { Neutral, Attention, Error }
 
 @Composable
-private fun StateBanner(
+internal fun StateBanner(
     icon: ImageVector,
     text: String,
     actions: List<Pair<String, () -> Unit>> = emptyList(),

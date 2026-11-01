@@ -83,7 +83,7 @@ class TerminalScreenTest {
         // With the extra keys off the keyboard toggle lives in the top bar.
         show(live.copy(isOwner = true, showExtraKeys = false))
         compose.onNodeWithContentDescription("Show or hide keyboard").performClick()
-        listOf("Paste", "Copy screen text", "Interrupt", "Kill").forEach { item ->
+        listOf("Paste…", "Copy screen text", "Interrupt", "Kill").forEach { item ->
             compose.onNodeWithContentDescription("More actions").performClick()
             compose.onNodeWithText(item).performClick()
         }
@@ -117,7 +117,8 @@ class TerminalScreenTest {
         show(live.copy(streamConnected = false))
         compose.onNodeWithText("Reconnecting…").assertExists()
         compose.onNodeWithContentDescription("More actions").performClick()
-        compose.onNodeWithText("Paste").assertIsNotEnabled()
+        compose.onNodeWithText("Paste…").assertIsNotEnabled()
+        compose.onNodeWithText("Send file to folder…").assertIsNotEnabled()
         compose.onNodeWithText("Interrupt").assertIsNotEnabled()
     }
 

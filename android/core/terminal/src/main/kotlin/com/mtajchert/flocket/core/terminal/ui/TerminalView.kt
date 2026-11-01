@@ -10,6 +10,7 @@ import android.graphics.Path
 import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.RenderNode
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.SystemClock
@@ -124,6 +125,9 @@ class TerminalView(
         }
 
     var onFontSizeChange: (Float) -> Unit = {}
+
+    /** The clipboard holds an image (content URI, MIME type) and no text: Ctrl+V and the two-finger tap hand it over. */
+    var onPasteImage: ((Uri, String?) -> Unit)? = null
 
     /** Show the soft keyboard on tap (false when a hardware keyboard is the only input). */
     var showKeyboardOnTap: Boolean = true
@@ -1159,6 +1163,14 @@ class TerminalView(
     fun pasteClipboard(): Boolean {
         val clip = context.getSystemService(ClipboardManager::class.java)?.primaryClip ?: return false
         if (clip.itemCount == 0) return false
+        val item = clip.getItemAt(0)
+        val imageHandler = onPasteImage
+        if (imageHandler != null && item.text.isNullOrEmpty() && item.uri != null &&
+            clip.description.hasMimeType("image/*")
+        ) {
+            imageHandler(item.uri, clip.description.getMimeType(0).takeIf { it.startsWith("image/") })
+            return true
+        }
         val text =
             clip
                 .getItemAt(0)

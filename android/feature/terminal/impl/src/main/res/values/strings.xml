@@ -14,7 +14,7 @@
     <string name="terminal_subtitle_machine">%1$s · %2$s · %3$s</string>
     <string name="terminal_action_fit">Fit to screen</string>
     <string name="terminal_size_taken">Sized for another screen</string>
-    <string name="terminal_action_paste">Paste</string>
+    <string name="terminal_action_paste">Paste…</string>
     <string name="terminal_action_copy">Copy screen text</string>
     <string name="terminal_action_interrupt">Interrupt</string>
     <string name="terminal_action_kill">Kill</string>
@@ -107,4 +107,26 @@
     <string name="share_saved">Saved</string>
     <string name="share_save_failed">Could not save the file</string>
     <string name="share_share_failed">Could not share the file</string>
+
+    <!-- BEGIN transfer (paste image or file, send to folder) -->
+    <string name="transfer_action_send_to_folder">Send file to folder…</string>
+    <string name="transfer_chooser_title">Paste</string>
+    <string name="transfer_chooser_text">Paste text</string>
+    <string name="transfer_chooser_clipboard_image">Paste image from clipboard</string>
+    <string name="transfer_chooser_photo">Choose photo</string>
+    <string name="transfer_chooser_file">Choose file</string>
+    <string name="transfer_reading">Reading file…</string>
+    <string name="transfer_uploading">Uploading %1$s…</string>
+    <string name="transfer_cancel">Cancel upload</string>
+    <string name="transfer_unknown">%1$s may not have been uploaded. Nothing was pasted.</string>
+    <string name="transfer_unknown_hint">Check before trying again: it may already be there.</string>
+    <string name="transfer_sent_format">Sent to %1$s</string>
+    <string name="transfer_send_title">Send file to folder</string>
+    <string name="transfer_send_folder">Folder</string>
+    <string name="transfer_send_name">File name</string>
+    <string name="transfer_send_exists">%1$s already exists in this folder.</string>
+    <string name="transfer_send_replace">Replace</string>
+    <string name="transfer_send_confirm">Send</string>
+    <string name="transfer_send_close">Close</string>
+    <!-- END transfer -->
 </resources>

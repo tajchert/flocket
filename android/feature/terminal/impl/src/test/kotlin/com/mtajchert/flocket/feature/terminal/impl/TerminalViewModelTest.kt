@@ -100,6 +100,7 @@ class TerminalViewModelTest {
                         engineDispatcher = dispatcher,
                     )
                 },
+                uriSource = NoUriSource,
                 appScope = CoroutineScope(dispatcher),
                 shareSeen = FakeShareSeenRepository(),
             )
@@ -400,6 +401,7 @@ class TerminalViewModelTest {
                             awaitCancellation()
                         }, UnconfinedTestDispatcher(testScheduler))
                     },
+                    NoUriSource,
                     CoroutineScope(UnconfinedTestDispatcher(testScheduler)),
                     FakeShareSeenRepository(),
                 )
@@ -799,4 +801,14 @@ class TerminalViewModelTest {
             advanceUntilIdle()
             assertEquals(1, marks.seen.size)
         }
+}
+
+/** The terminal ViewModel tests never pick a file. */
+private object NoUriSource : com.mtajchert.flocket.feature.terminal.impl.transfer.UriSource {
+    override suspend fun describe(uri: android.net.Uri) = AppResult.Failure(AppError.FileMissing(""))
+
+    override suspend fun read(
+        uri: android.net.Uri,
+        maxBytes: Long,
+    ) = AppResult.Failure(AppError.FileMissing(""))
 }
