@@ -10,11 +10,17 @@ interface KeyVault {
         comment: String,
     ): AppResult<DeviceKey>
 
-    /** Imports an OpenSSH/PKCS#8/PKCS#1 key; a passphrase is removed (stored key is unencrypted at the SSH level). */
+    /**
+     * Fails with `InvalidInput("alias")` if [alias] already exists: a key is never overwritten. Callers pass a
+     * unique alias (e.g. UUID based) and keep the user-facing label in [comment] (stored in the public meta and
+     * the OpenSSH public key comment).
+     *
+     * Imports an OpenSSH/PKCS#8/PKCS#1 key; a passphrase is removed (stored key is unencrypted at the SSH level). */
     suspend fun import(
         alias: String,
         pem: CharArray,
         passphrase: CharArray?,
+        comment: String = alias,
     ): AppResult<DeviceKey>
 
     suspend fun list(): AppResult<List<DeviceKey>>

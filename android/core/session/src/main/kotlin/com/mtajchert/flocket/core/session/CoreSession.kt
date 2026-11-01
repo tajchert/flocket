@@ -18,7 +18,7 @@ import kotlinx.coroutines.flow.StateFlow
  * features, required methods — never exact versions), subscribe to events unfiltered, reduce
  * events into [state], recover from `missed`, reconnect with jittered backoff using a new
  * connection epoch each time (callbacks from older epochs are dropped), and re-attach open
- * terminal streams passively after a reconnect.
+ * terminal streams with `resumed:true` after a reconnect ([TerminalStream] handles are durable).
  *
  * Mutations are at most once: nothing here retries a write. If the connection breaks after a
  * mutating call was dispatched the call returns `AppError.OutcomeUnknown` and state is re-read.
@@ -30,10 +30,19 @@ interface CoreSession {
 
     val state: StateFlow<SessionState>
 
-    /** Start connecting and keep the connection up (idempotent). */
+    /**
+     * Start connecting and keep the connection up (idempotent; safe to race with [stop]: a new
+     * connection starts only after the previous one is fully closed). Parked streams re-attach.
+     */
     fun start()
 
-    /** Detach all streams and close the connection. Terminals keep running on the host. */
+    /**
+     * Close the connection and go [ConnectionState.Idle]. Open [TerminalStream]s are **parked**,
+     * not ended: their channels are closed (CLOSE, so the core re-applies size ownership), they
+     * report `connected = false`, and the next [start] re-attaches them with `resumed:true` and a
+     * fresh first paint. Terminals keep running on the host. Call [TerminalStream.detach] to drop
+     * a handle for good.
+     */
     suspend fun stop()
 
     /** Skip the current backoff delay / retry after [ConnectionState.NeedsAttention] was resolved. */
@@ -64,7 +73,11 @@ interface CoreSession {
         historyLines: Int = 0,
     ): AppResult<String>
 
-    /** Open an interactive stream on a terminal. See [AttachRequest.mode] for size ownership. */
+    /**
+     * Open a durable stream on a terminal (requires Online). See [AttachRequest.mode] for size
+     * ownership. `Rpc(unavailable)` = kept terminal waiting for its new shell: wait for the
+     * record to become Running (`restarted`) and attach again.
+     */
     suspend fun attach(
         address: TerminalAddress,
         request: AttachRequest,
@@ -148,39 +161,68 @@ data class DisplayFacts(
 )
 
 /**
- * A live attach stream. Single consumer. Flow control is automatic: credit for a chunk of
- * [output] is returned once the collector has finished processing it, so a slow renderer applies
- * backpressure to this terminal only — never to control calls or other terminals.
+ * A durable viewer handle on one terminal. Single consumer.
+ *
+ * **Durable across reconnects:** when the connection drops the session keeps this handle,
+ * reconnects and re-attaches with `resumed:true` (so it never steals size ownership), and
+ * [output] continues with a fresh first paint (engines must accept a full repaint at any time).
+ * [connected] is false while no attach channel is live. [end] is set only when the stream is
+ * really over (detached, program ended/lost, or the terminal is gone) — never for a dropped link.
+ *
+ * Flow control is automatic: credit for a chunk of [output] is returned once the collector has
+ * finished processing it, so a slow renderer applies backpressure to this terminal only — never
+ * to control calls or other terminals.
+ *
+ * Size ownership (SPEC §7.5): an [AttachMode.Passive] stream (and every stream after an automatic
+ * re-attach) watches at the core's size and sends no RESIZE/FOCUS/FACTS until the first [write],
+ * [resize] or `focus(true)`; then it becomes active and the latest requested size/display/focus is
+ * sent. [AttachMode.Observe] never sends input or controls.
  */
 interface TerminalStream {
     val address: TerminalAddress
 
-    /** Terminal size as currently set by the core (updated from `size` events). */
+    /**
+     * Terminal size as currently set by the core: from the attach reply, then from `size` events
+     * (and any fresh record) for [address]. Render at this size.
+     */
     val size: StateFlow<TerminalSize>
 
-    /** Raw output bytes: first paint, then live output; a full repaint may arrive at any time. */
+    /** True while an attach channel is live; false while the session is reconnecting/re-attaching. */
+    val connected: StateFlow<Boolean>
+
+    /**
+     * Raw output bytes: first paint, then live output; a full repaint may arrive at any time
+     * (always after a re-attach). Completes after [end] was set and remaining bytes were delivered.
+     */
     val output: Flow<ByteArray>
 
-    /** Null while open; set once when the stream ends. [output] completes at the same time. */
+    /** Null while the handle is usable (even if temporarily disconnected); set once when it ends. */
     val end: StateFlow<StreamEnd?>
 
     /**
-     * Send keystrokes/paste bytes. Never retried. Fails with `InvalidInput` when the bounded
-     * outgoing queue is full and `ConnectionLost` when the stream is gone.
+     * Send keystrokes/paste bytes. Never queued across a reconnect and never retried. Fails fast
+     * with `ConnectionLost` while [connected] is false or after [end], with `InvalidInput` when the
+     * bounded outgoing queue is full or the stream is [AttachMode.Observe].
      */
     suspend fun write(bytes: ByteArray): AppResult<Unit>
 
-    /** Request a size; makes this viewer the size owner (unless [AttachMode.Observe]). */
+    /**
+     * Request a size; makes this viewer active, i.e. the size owner (ignored for
+     * [AttachMode.Observe]). Call it on user intent (first interaction, explicit "fit"), not on
+     * every layout pass of a passive viewer. The latest value is also used for re-attaches.
+     */
     fun resize(
         cols: Int,
         rows: Int,
     )
 
+    /** `focus(true)` makes this viewer active; `focus(false)` is sent only by an active viewer. */
     fun focus(focused: Boolean)
 
+    /** Theme/font changed. Sent as FACTS only while active (0.1.15 FACTS would steal ownership). */
     fun updateDisplay(facts: DisplayFacts)
 
-    /** Detach (the program keeps running). */
+    /** Detach (CLOSE; the program keeps running). Sets [end] to [StreamEnd.Detached]. Idempotent. */
     suspend fun detach()
 }
 
@@ -200,14 +242,19 @@ sealed interface StreamEnd {
         val signal: Int?,
     ) : StreamEnd
 
-    /** A kept terminal lost its program; reattach after it restarts with a fresh shell. */
+    /**
+     * A kept terminal lost its program (stream closed with the loss reason, or `unavailable` on
+     * re-attach while the record is waiting for a new shell; other `unavailable`s, e.g. a remote
+     * machine's line being down, keep the handle parked and retry). The record stays live; offer a new [CoreSession.attach] after `restarted`
+     * (it is then a fresh shell, not the old task).
+     */
     data class ProgramLost(
         val reason: String?,
     ) : StreamEnd
 
-    /** The connection dropped; the session will reattach a new stream after reconnecting. */
-    data object ConnectionLost : StreamEnd
-
-    /** The core closed the stream without a reason (e.g. remote machine forgotten). */
+    /**
+     * The core closed the stream without a reason (e.g. remote machine forgotten), the terminal
+     * was removed, or it was `not_found` when re-attaching after a reconnect.
+     */
     data object Unknown : StreamEnd
 }

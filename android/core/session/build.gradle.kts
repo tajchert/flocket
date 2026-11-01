@@ -10,3 +10,11 @@ dependencies {
     api(projects.core.common)
     api(libs.kotlinx.coroutines.core)
 }
+
+dependencies {
+    testImplementation(testFixtures(projects.core.protocol))
+}
+
+tasks.withType<Test>().configureEach {
+    testLogging { events("skipped", "failed") }
+}

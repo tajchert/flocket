@@ -7,14 +7,19 @@ plugins {
 }
 
 dependencies {
-    // Public contracts expose model, common and session types to features.
+    // Public contracts expose model, common, session and transport types to features and :app.
     api(projects.core.model)
     api(projects.core.common)
     api(projects.core.session)
-    implementation(projects.core.protocol)
+    api(projects.core.protocol)
     implementation(projects.core.ssh)
     implementation(projects.core.database)
     implementation(projects.core.datastore)
     implementation(projects.core.security)
     implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.androidx.lifecycle.process)
+
+    testImplementation(projects.core.testing)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.test.ext.junit)
 }

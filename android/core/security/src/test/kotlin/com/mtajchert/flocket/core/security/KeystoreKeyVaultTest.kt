@@ -72,6 +72,33 @@ class KeystoreKeyVaultTest {
         }
 
     @Test
+    fun `generate and import reject an existing alias and keep the original key`() =
+        runBlocking {
+            val v = vault()
+            val first = (v.generateEd25519("dup", "one") as AppResult.Success).value
+            val again = v.generateEd25519("dup", "two")
+            assertTrue((again as AppResult.Failure).error is AppError.InvalidInput)
+            val src =
+                com.mtajchert.flocket.core.ssh.SshKeys
+                    .generateEd25519("x")
+            assertTrue(
+                (v.import("dup", src.privateKeyPem, null, "three") as AppResult.Failure).error is AppError.InvalidInput,
+            )
+            assertEquals(listOf(first), (v.list() as AppResult.Success).value)
+        }
+
+    @Test
+    fun `import keeps the given label as key comment`() =
+        runBlocking {
+            val v = vault()
+            val src =
+                com.mtajchert.flocket.core.ssh.SshKeys
+                    .generateEd25519("x")
+            val k = (v.import("key-1", src.privateKeyPem, null, "Work laptop") as AppResult.Success).value
+            assertTrue(k.publicKeyOpenSsh.endsWith("Work laptop"))
+        }
+
+    @Test
     fun `delete removes key and missing alias is an error`() =
         runBlocking {
             val v = vault()
