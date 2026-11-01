@@ -1,6 +1,7 @@
 package com.mtajchert.flocket.core.session
 
 import com.mtajchert.flocket.core.common.result.AppResult
+import com.mtajchert.flocket.core.model.AgentShare
 import com.mtajchert.flocket.core.model.ConnectionState
 import com.mtajchert.flocket.core.model.CoreEndpoint
 import com.mtajchert.flocket.core.model.CoreInfo
@@ -141,6 +142,12 @@ data class SessionState(
      * disconnected; a machine with no document has no entry.
      */
     val machineLayouts: Map<String, DesktopLayout> = emptyMap(),
+    /**
+     * Files agents shared (`flocket-share` documents of the endpoint's machine and every connected federated
+     * machine), merged, newest first, one entry per share id (the local machine's wins, then machine name
+     * order). Kept while disconnected; an unreadable document keeps its last good value.
+     */
+    val shares: List<AgentShare> = emptyList(),
 ) {
     /** The core has `terminal.label` (herdr.seen / herdr.pinned writes). Kept while disconnected. */
     val supportsLabels: Boolean get() = core?.supports(CoreInfo.TERMINAL_LABEL) == true

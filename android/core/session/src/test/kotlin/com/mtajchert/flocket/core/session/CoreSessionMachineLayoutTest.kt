@@ -97,7 +97,10 @@ class CoreSessionMachineLayoutTest {
         }
 
     private fun FakeCore.docGetsOn(machine: String?) =
-        callsOf("doc.get").filter { it.params["on"]?.jsonPrimitive?.contentOrNull == machine }
+        callsOf("doc.get").filter {
+            it.params["name"]?.jsonPrimitive?.contentOrNull == "herdr-app" &&
+                it.params["on"]?.jsonPrimitive?.contentOrNull == machine
+        }
 
     private suspend fun FakeCore.docEvent(machine: String?) =
         pushEvent(

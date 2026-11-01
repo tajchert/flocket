@@ -4,6 +4,7 @@ import com.mtajchert.flocket.core.common.error.AppError
 import com.mtajchert.flocket.core.common.logging.Logger
 import com.mtajchert.flocket.core.common.result.AppResult
 import com.mtajchert.flocket.core.common.time.Clock
+import com.mtajchert.flocket.core.model.AgentShare
 import com.mtajchert.flocket.core.model.ConnectionState
 import com.mtajchert.flocket.core.model.CoreEndpoint
 import com.mtajchert.flocket.core.model.CoreInfo
@@ -96,6 +97,9 @@ class CoreSessionImpl(
 
         /** `machine.list` re-reads ([relistMachines]); guarded by [readLock]. */
         val machineReads = Coalesced()
+
+        /** `flocket-share` reads per machine ([refreshShares]; key null = local); guarded by [readLock]. */
+        val shareReads = HashMap<String?, Coalesced>()
     }
 
     /** One coalesced read on one link: at most one in flight, plus one more if triggered meanwhile. */
@@ -252,10 +256,12 @@ class CoreSessionImpl(
                         confirmedAtMs = clock.nowMillis(),
                     )
                 }
+                machines?.let { dropSharesOfRemovedMachines(it) }
             }
             online = l
             publishSizes()
             refreshLayout(l)
+            refreshShares(l)
             refreshMachineLayouts(l)
             logger.info(
                 TAG,
@@ -397,7 +403,10 @@ class CoreSessionImpl(
     private fun refreshMachineLayouts(l: Link) {
         stateFlow.value.machines
             .filter { it.state == MachineState.Connected }
-            .forEach { refreshLayout(l, it.name) }
+            .forEach {
+                refreshLayout(l, it.name)
+                refreshShares(l, it.name)
+            }
     }
 
     /** Publish a fresh machine list read on [l]: drop layouts of machines that left it, read connected ones. */
@@ -408,6 +417,7 @@ class CoreSessionImpl(
         synchronized(reduceLock) {
             if (link.get() !== l) return
             stateFlow.update { it.copy(machines = machines, machineLayouts = it.machineLayouts.onlyFor(machines)) }
+            dropSharesOfRemovedMachines(machines)
         }
     }
 
@@ -442,6 +452,61 @@ class CoreSessionImpl(
                 }
             }
         }
+    }
+
+    // ---- agent shares (`flocket-share` document), kept apart from the layout code ------------------------------
+
+    /** Last good shares per machine (key null = local); guarded by [reduceLock]. Merged into [SessionState.shares]. */
+    private val sharesByMachine = HashMap<String?, List<AgentShare>>()
+
+    /** Read `flocket-share` of [machine] on [l]; coalesced per machine like [refreshLayout]. */
+    private fun refreshShares(
+        l: Link,
+        machine: String? = null,
+    ) {
+        val slot = synchronized(readLock) { l.shareReads.getOrPut(machine) { Coalesced() } }
+        coalesced(l, slot) { fetchShares(l, machine) }
+    }
+
+    private suspend fun fetchShares(
+        l: Link,
+        machine: String?,
+    ) {
+        val reply =
+            try {
+                l.conn.docGet(ShareDocumentParser.DOCUMENT, on = machine, timeout = config.readTimeout)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // The last good value stays. Not a user-visible error.
+                val kind = (e as? RpcException)?.kind ?: e.javaClass.simpleName
+                logger.debug(TAG) { "doc.get ${ShareDocumentParser.DOCUMENT} failed: $kind" }
+                return
+            }
+        val shares = ShareDocumentParser.parse(reply.value, machine)
+        synchronized(reduceLock) {
+            if (link.get() !== l) return
+            if (machine != null && stateFlow.value.machines.none { it.name == machine }) return
+            if (shares.isEmpty()) sharesByMachine.remove(machine) else sharesByMachine[machine] = shares
+            publishShares()
+        }
+    }
+
+    /** A removed or renamed machine loses its shares. Call with [reduceLock] held. */
+    private fun dropSharesOfRemovedMachines(machines: List<MachineInfo>) {
+        val names = machines.mapTo(HashSet()) { it.name }
+        if (sharesByMachine.keys.removeAll { it != null && it !in names }) publishShares()
+    }
+
+    /** Merge all machines: the same id once (local first, then machine name order), newest first. */
+    private fun publishShares() {
+        val merged =
+            sharesByMachine.entries
+                .sortedWith(compareBy(nullsFirst()) { it.key })
+                .flatMap { it.value }
+                .distinctBy { it.id }
+                .sortedWith(compareByDescending<AgentShare> { it.atEpochSeconds }.thenBy { it.id })
+        stateFlow.update { it.copy(shares = merged) }
     }
 
     private suspend fun watchdog(c: CoreConnection) {
@@ -497,6 +562,7 @@ class CoreSessionImpl(
             }
             publishSizes()
             refreshLayout(l)
+            refreshShares(l)
             refreshMachineLayouts(l)
         }
     }
@@ -543,6 +609,7 @@ class CoreSessionImpl(
                 // A snapshot carries no documents; a remote machine (re)connecting also sends `missed`, so
                 // re-list machines and re-read every connected machine's document (SPEC §8.5, §10).
                 refreshLayout(l)
+                refreshShares(l)
                 relistMachines(l)
             }
 
@@ -551,6 +618,9 @@ class CoreSessionImpl(
                     val listed = effect.machine == null || state.value.machines.any { it.name == effect.machine }
                     // An unlisted machine (added or renamed without a `missed`) is read once the re-list knows it.
                     if (listed) refreshLayout(l, effect.machine) else relistMachines(l)
+                } else if (effect.name == ShareDocumentParser.DOCUMENT) {
+                    val listed = effect.machine == null || state.value.machines.any { it.name == effect.machine }
+                    if (listed) refreshShares(l, effect.machine) else relistMachines(l)
                 }
             }
 

@@ -24,6 +24,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.long
 import kotlinx.serialization.json.put
@@ -79,7 +80,11 @@ class CoreSessionLayoutTest {
             configure = { c -> c.handlers["doc.get"] = { reply(current.get(), 1) } }
         }
 
-    private fun FakeCore.docGets() = callsOf("doc.get")
+    private fun FakeCore.docGets() =
+        callsOf("doc.get").filter {
+            it.params["name"]?.jsonPrimitive?.contentOrNull ==
+                "herdr-app"
+        }
 
     @Test
     fun `reads the local herdr-app document after subscribing`() =
