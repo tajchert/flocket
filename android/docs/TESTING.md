@@ -12,7 +12,8 @@ This file is the canonical home of the verification commands. Run them from `and
 | SSH integration | Does `core:ssh` work against an embedded MINA sshd? | `core:ssh/src/test` | no |
 | Android unit + Compose (Robolectric) | Do ViewModels and UI react correctly? | `src/test` | no |
 | Screenshot tests | Does it look right at every window size? | `src/screenshotTest` | no |
-| Device journeys / benchmarks | Does it work on real framework/hardware? | `src/androidTest`, `benchmark` | yes |
+| Device journeys | Does the real app work against a real `hc` over SSH? | `app/src/androidTest/.../journey` | yes |
+| Device tests / benchmarks | Does it work on real framework/hardware? | other `src/androidTest`, `benchmark` | yes |
 
 Real `hc` tests use an isolated session (`--session flocket-test-<random>` or `HC_SESSION`), stop it in teardown, and never touch the developer's default session.
 On macOS, start the `hc` child with `TMPDIR=/tmp`: the default per-user `TMPDIR` makes the core's socket path longer than the 103-byte Unix socket limit and `hc connect` fails (`RealCoreIntegrationTest` passes it through `ProcessTransport(environment = ...)`).
@@ -50,11 +51,34 @@ Other tasks:
 ./gradlew :benchmark:connectedNonMinifiedReleaseAndroidTest
 ```
 
-End-to-end against a real `hc` over SSH on an emulator: `scripts/e2e-device.sh up` sets up a connected app in one command; see [journeys/E2E_SMOKE.md](journeys/E2E_SMOKE.md).
+End-to-end against a real `hc` over SSH on an emulator: see [Device journeys](#device-journeys).
 
 CI (`.github/workflows/android.yml`): the `instrumented` job runs `connectedDebugAndroidTest` for the modules with `androidTest` sources (`:core:terminal-ghostty`, `:core:terminal`, `:feature:terminal:impl`) on an API 35 `google_apis` x86_64 emulator with KVM and a cached AVD, after `build` passes. Add new device-test modules to its task list. Reports upload as `instrumented-reports` on failure.
 
 Reports: tests in `<module>/build/reports/tests/`, screenshots in `<module>/build/reports/screenshotTest/preview/debug/index.html`.
+
+## Device journeys
+
+Journeys are Kotlin androidTests in `:app` (`com.mtajchert.flocket.journey`, classes named `*JourneyTest`). They run the real app (Hilt graph, Room, Keystore, libghostty, SSH) against a real `hc` over the throwaway sshd. Nothing is faked. They check results on the core (`hc ls`, `hc read`, `hc get`), not on pixels. Which manual steps they cover: [journeys/E2E_SMOKE.md](journeys/E2E_SMOKE.md). Decision: [ADR-0009](../../docs/decisions/0009-device-journeys-androidtest.md).
+
+```bash
+scripts/e2e-device.sh up [--no-build] [--fresh]   # boot the emulator, start sshd, install the debug app
+scripts/e2e-device.sh journey                      # every journey test
+scripts/e2e-device.sh journey OnboardingJourneyTest TerminalJourneyTest#<method>   # selectors
+scripts/e2e-device.sh journey --smoke              # only tests annotated @Smoke
+scripts/e2e-device.sh journey --repeat 5           # flakiness check: per-test pass counts
+scripts/e2e-device.sh journey --no-build           # skip Gradle (the APKs are already built)
+scripts/e2e-device.sh down                         # stop hc session, sshd and emulator
+```
+
+- A selector is `Class` or `Class#method`; a bare class name means `com.mtajchert.flocket.journey.<Class>`.
+- `journey` builds `:app:assembleDebug :app:assembleDebugAndroidTest` in one Gradle call and installs an APK only when its hash changed or the package is missing.
+- **Isolation is per test method.** Before every method the runner clears the app's data, grants the notification permission, disables the system keyboards and runs that one method in its own `am instrument`. Tests never depend on order; a test that needs an onboarded app seeds it through the app's repositories (`JourneyRule`).
+- Each run prints one `PASS`/`FAIL` line per test with seconds and a summary (`journeys: X passed, Y failed in Zs`); the exit code is non-zero on any failure. A skipped test counts as a failure (the runner arguments did not arrive).
+- Each test has a time limit of `FLOCKET_JOURNEY_TIMEOUT` seconds (default 180); a test that hangs fails and the run goes on.
+- Raw instrumentation output of the last run of each test: `$FLOCKET_E2E_DIR/journeys/<Class>#<method>.txt` (default `$TMPDIR/flocket-e2e`).
+- Every test works in the isolated hc session (`FLOCKET_HC_SESSION`, default `flocket-e2e`) and kills its terminals before and after. Tests skip themselves without the runner's arguments, so a plain `connectedDebugAndroidTest` passes, but **do not use `connected*` for journeys**: it installs on every attached device.
+- Timings (M-series Mac, warm Gradle): the runner adds about 0.7 s per test (data clear plus instrumentation start); a journey of 5-6 s of test time takes 6-7 s wall. A cold emulator boot is 30-80 s once per `up`.
 
 ## Compose behaviour tests run on the JVM
 
