@@ -101,7 +101,7 @@ data class WorkspaceSpace(
 data class WorkspaceTab(
     /** Stable within its space. */
     val key: String,
-    /** Display name; blank when unnamed, the UI then shows "Tab [number]". */
+    /** Display name; blank when unnamed, the UI then shows just the number. */
     val name: String,
     /** Terminal addresses in layout order; only terminals that exist on the host. */
     val panes: List<TerminalAddress>,
