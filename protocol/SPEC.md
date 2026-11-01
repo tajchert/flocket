@@ -553,6 +553,12 @@ Sequence numbers, channels and stream state are per connection. After any reconn
 
 The desktop app (herdr-app) stores its spaces/tabs/pane layout in the document named **`herdr-app`**. Core never interprets it. Shape as used by HerdrKit (unofficial, [I]): `{"spaces":[{"id":"sp…","name":"","folder":"/path","look":{...}?,"tabs":[{"id":"tb…","name":"","root":<node>}]}], ...}` where a node is `{"id", "children":[node…]?, "size":{"weight":0.5}?, "active":"<child id>"?, "title"?, "content":{"terminal":"t7"} | {"mod":"…","props":{…}}}`; terminals also carry labels `herdr.space`/`herdr.tab`. **Our app must treat it as read-only** (import grouping hints at most), tolerate its absence (`{value:null, version:0}` [W]), unknown fields and shape changes. Store our own grouping in labels and/or our own document, e.g. `flocket` (preserve unknown fields, CAS on version).
 
+Further details from the Herdr.app 0.x bundle (field names and its built-in docs, [I]; synthetic example in `fixtures/herdr-app-layout.json`):
+- Each machine keeps its own spaces in its own core's `herdr-app` document (read remote ones with `on`). Federated terminals never appear in the local document.
+- A node may carry `"type"`: `"row"`, `"column"`, `"stack"` or `"block"`. `size` is `{"weight": n}` or `{"px": n}`. `active` names the shown child of a `stack`. Content kinds seen besides `terminal` and `mod`: `agent`, `context`, `tab` (treat all unknown kinds as non-terminal panes).
+- Focus, zoom and the selected space/tab are per screen (the desktop's `view.json`), not in the document: the `active` chain is the best available hint for the focused pane.
+- Unnamed spaces are shown after their first terminal's live folder (repo, else folder, `~` at home); unnamed tabs by their 1-based place. A terminal with labels `herdr.space=<id>`/`herdr.tab=<id>` is adopted into that space/tab (a new tab when `herdr.tab` is missing).
+
 ---
 
 ## 10. Machines (federation)
