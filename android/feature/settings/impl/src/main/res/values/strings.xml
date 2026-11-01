@@ -70,7 +70,7 @@
     <string name="about_github">Flocket on GitHub</string>
     <string name="about_herdr">herdr-core</string>
     <string name="about_herdr_hint">The program on your machines that Flocket talks to.</string>
-    <string name="github_url" translatable="false">https://github.com/mtajchert/flocket</string>
+    <string name="github_url" translatable="false">https://github.com/tajchert/flocket</string>
     <string name="herdr_url" translatable="false">https://github.com/herdrdev/herdr-core</string>
 
     <!-- Licenses -->
