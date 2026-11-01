@@ -1,6 +1,5 @@
 package com.mtajchert.flocket.feature.terminal.impl
 
-import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.mtajchert.flocket.core.common.error.AppError
@@ -60,7 +59,7 @@ fun interface TerminalControllerFactory {
  * Owns ONE [TerminalController] and the [TerminalStream] of one terminal for as long as the screen is
  * really open. Config changes (rotation, fold, multi-window resize) keep this ViewModel, so nothing is
  * re-attached and the engine's screen is shown instantly. Process death rebuilds it from the saved
- * back stack ([route]) and attaches passively; the core's first paint restores the screen.
+ * back stack ([route]) and attaches again; the core's first paint restores the screen.
  *
  * Attach needs an Online session: the screen shows "Connecting" and attaches as soon as the host is
  * Online. Dropped links are handled by the stream itself (durable handle, passive re-attach).
@@ -71,7 +70,6 @@ class TerminalViewModel
     @AssistedInject
     constructor(
         @Assisted private val route: TerminalRoute,
-        private val savedState: SavedStateHandle,
         private val connections: ConnectionManager,
         private val preferences: PreferencesRepository,
         private val hostSettings: HostSettingsRepository,
@@ -215,10 +213,10 @@ class TerminalViewModel
                     continue
                 }
                 phase.value = TerminalPhase.Attaching
-                // Owner only for the first attach of a terminal started here; never after process death.
-                val ownerFirst = route.startedHere && savedState.get<Boolean>(KEY_ATTACHED) != true
-                val mode = if (ownerFirst) AttachMode.Owner else AttachMode.Passive
-                val size = controller.gridSize.value
+                // Always the size owner: opening a terminal fits it to this screen (ADR-0007); a
+                // desktop viewer snaps back when its user types there.
+                val mode = AttachMode.Owner
+                val size = controller.preferredSize()
                 attachCount++
                 // Not cancellable: a stream returned after the screen closed must still be detached.
                 val result =
@@ -235,7 +233,6 @@ class TerminalViewModel
                         stream = st
                         // While bound, leaving the app keeps the link up for a few minutes (ADR-0006).
                         connections.holdTerminal(this)
-                        savedState[KEY_ATTACHED] = true
                         controller.bind(st, mode)
                         phase.value = TerminalPhase.Live
                         val end = st.end.filterNotNull().first()
@@ -485,7 +482,6 @@ class TerminalViewModel
             const val HISTORY_LINES = 1_000
             private const val FONT_SAVE_DEBOUNCE_MS = 400L
             private const val FAILURE_DEDUPE_MS = 3_000L
-            private const val KEY_ATTACHED = "attached_once"
             private val GONE_KINDS = setOf(AppError.Rpc.NOT_FOUND, AppError.Rpc.MACHINE_UNKNOWN)
         }
     }

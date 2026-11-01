@@ -2,7 +2,6 @@ package com.mtajchert.flocket.feature.terminal.impl
 
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
@@ -45,7 +44,6 @@ class TerminalRotationTest {
             initializer {
                 TerminalViewModel(
                     route = TerminalRoute("studio", "t1"),
-                    savedState = SavedStateHandle(),
                     connections = manager,
                     preferences = FakePreferencesRepository(),
                     hostSettings = FakeHostSettingsRepository(),

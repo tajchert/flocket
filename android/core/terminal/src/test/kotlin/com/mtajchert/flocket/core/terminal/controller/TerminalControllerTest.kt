@@ -380,13 +380,16 @@ class TerminalControllerTest {
         }
 
     @Test
-    fun `a reconnect drops ownership until the user interacts again`() =
+    fun `a reconnect of a passive bind stays passive until the user interacts again`() =
         runTest {
             val c = controller()
             val s = FakeStream(TerminalSize(100, 70))
-            c.bind(s, AttachMode.Owner)
+            c.bind(s, AttachMode.Passive)
             c.onViewportChanged(phone)
             advanceUntilIdle()
+            c.fitToScreen()
+            advanceUntilIdle()
+            assertTrue(c.isOwner.value)
             assertTrue(c.connected.value)
             s.connected.value = false
             advanceUntilIdle()
@@ -401,6 +404,62 @@ class TerminalControllerTest {
             advanceUntilIdle()
             assertEquals(emptyList<String>(), s.calls.toList())
             assertEquals("fresh paint", frame(c).line(0))
+            c.close()
+        }
+
+    @Test
+    fun `an owner bind takes the size again when the link is back`() =
+        runTest {
+            val c = controller()
+            val s = FakeStream(TerminalSize(100, 70))
+            c.bind(s, AttachMode.Owner)
+            c.onViewportChanged(phone)
+            c.setFocused(true)
+            advanceUntilIdle()
+            s.connected.value = false
+            advanceUntilIdle()
+            assertFalse(c.isOwner.value)
+            // While the link was down nobody led, so the core went back to the headless size.
+            s.size.value = TerminalSize(200, 120)
+            advanceUntilIdle()
+            s.calls.clear()
+            s.connected.value = true
+            advanceUntilIdle()
+            assertTrue(c.isOwner.value)
+            assertEquals(listOf("resize 100x70", "focus true", "display"), s.calls.toList())
+            assertEquals(TerminalSize(100, 70), c.gridSize.value)
+            c.close()
+        }
+
+    @Test
+    fun `an owner bind reconnected in the background takes the size when visible again`() =
+        runTest {
+            val c = controller()
+            val s = FakeStream(TerminalSize(100, 70))
+            c.bind(s, AttachMode.Owner)
+            c.onViewportChanged(phone)
+            advanceUntilIdle()
+            c.setVisible(false)
+            s.connected.value = false
+            advanceUntilIdle()
+            s.calls.clear()
+            s.connected.value = true
+            advanceUntilIdle()
+            assertEquals(emptyList<String>(), s.calls.toList())
+            c.setVisible(true)
+            advanceUntilIdle()
+            assertEquals(listOf("resize 100x70", "display"), s.calls.toList())
+            c.close()
+        }
+
+    @Test
+    fun `preferredSize is the viewport grid once laid out`() =
+        runTest {
+            val c = controller()
+            advanceUntilIdle()
+            assertEquals(TerminalSize(80, 24), c.preferredSize())
+            c.onViewportChanged(phone)
+            assertEquals(TerminalSize(100, 70), c.preferredSize())
             c.close()
         }
 

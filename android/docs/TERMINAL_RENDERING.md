@@ -68,10 +68,10 @@ vsync (Choreographer) ──▶ [engine thread] drainEvents + engine.snapshot(wo
 
 | State | Engine size | Sends |
 |---|---|---|
-| Passive (default bind) | mirrors `stream.size` | nothing (no RESIZE, FOCUS 1, FACTS). Rendered scaled to fit width; pinch zooms 1-4x with horizontal pan. |
+| Passive (default `bind`; the app always binds as Owner, [ADR-0007](../../docs/decisions/0007-fit-terminal-on-open.md)) | mirrors `stream.size` | nothing (no RESIZE, FOCUS 1, FACTS). Rendered scaled to fit width; pinch zooms 1-4x with horizontal pan. |
 | Owner (`AttachMode.Owner`, first key/paste, or `fitToScreen()`) | viewport cols x rows | RESIZE on change (debounced 120 ms), FOCUS 1/0 with visibility and focus, FACTS on theme change. |
 | Another viewer took the size (a `size` event that is not what we requested) | mirrors `stream.size` | back to passive until the next keystroke or `fitToScreen()`. |
-| Link dropped (`connected = false`) | retained | back to passive: the session reattaches with `resumed:true` and sends a fresh first paint. A "Reconnecting…" chip is shown over the retained screen. |
+| Link dropped (`connected = false`) | retained | back to passive: the session reattaches with `resumed:true` and sends a fresh first paint. A "Reconnecting…" chip is shown over the retained screen. Bound as Owner: takes the size again once connected and visible. |
 | Observe | mirrors `stream.size` | nothing; input refused (`isReadOnly`). |
 
 FOCUS 0 is sent only after a FOCUS 1. Pinch in Owner mode changes the font size (callback to persist it) and the grid is
@@ -96,8 +96,8 @@ re-measured once, at gesture end; during the pinch only the canvas scale changes
 one `TerminalController` (Ghostty engine via `TerminalControllerFactory`) and the stream:
 
 - Waits for `ConnectionManager.session(hostId)` (null until the hosts load) and for Online, then attaches with
-  `historyLines = 1000`. `AttachMode.Owner` only when `TerminalRoute.startedHere` (new-terminal flow) and only for the
-  first attach (`SavedStateHandle` flag, so a process-death restore is passive); every other attach is Passive.
+  `historyLines = 1000`. Every attach is `AttachMode.Owner` at `controller.preferredSize()` (the viewport grid), so
+  opening a terminal fits it to the screen ([ADR-0007](../../docs/decisions/0007-fit-terminal-on-open.md)).
 - `StreamEnd`: `ProgramEnded` → "Exited (code N)" banner (Remove/Close); `ProgramLost` or attach `unavailable` →
   "Waiting for a new shell…", re-attach when the record is Running again, then a "fresh shell" notice; `Unknown` or
   `not_found` → "Stream ended" with Reattach. A record that is already Finished is not attached.

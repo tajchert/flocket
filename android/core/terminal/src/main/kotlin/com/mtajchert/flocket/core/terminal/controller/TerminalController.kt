@@ -71,7 +71,9 @@ data class TerminalViewport(
  * Size ownership (protocol/SPEC.md §7.5): in [AttachMode.Passive] the engine mirrors the core's
  * size ([TerminalStream.size]) and nothing that would make this viewer the leader (RESIZE,
  * FOCUS 1, FACTS) is sent. The first keystroke/paste or [fitToScreen] makes it the owner: from
- * then on the viewport's cols x rows are sent (debounced while the window animates).
+ * then on the viewport's cols x rows are sent (debounced while the window animates). A stream
+ * bound in [AttachMode.Owner] takes the size again after a dropped link, once the link is back
+ * and the terminal is visible (the session re-attaches with `resumed:true`, which is passive).
  */
 @OptIn(FlowPreview::class)
 class TerminalController(
@@ -112,6 +114,9 @@ class TerminalController(
     private var mode = AttachMode.Passive
     private var owner = false
     private var focusSent = false
+
+    // Bound as Owner and the link dropped: take the size again when connected and visible.
+    private var refitPending = false
     private var lastRequested: TerminalSize? = null
     private var theme = theme
 
@@ -161,6 +166,9 @@ class TerminalController(
 
     /** The engine's cols x rows (what is being rendered). */
     val gridSize: StateFlow<TerminalSize> = _gridSize.asStateFlow()
+
+    /** The size to attach with: the viewport's cols x rows once laid out, else the engine's. */
+    fun preferredSize(): TerminalSize = viewport?.grid() ?: _gridSize.value
 
     /** True once this viewer is the size owner (Owner mode, first input, or [fitToScreen]). */
     val isOwner: StateFlow<Boolean> = _isOwner.asStateFlow()
@@ -229,6 +237,7 @@ class TerminalController(
             this@TerminalController.mode = mode
             owner = false
             focusSent = false
+            refitPending = false
             lastRequested = null
             _isOwner.value = false
             _isReadOnly.value = mode == AttachMode.Observe
@@ -257,6 +266,7 @@ class TerminalController(
             streamJob = null
             stream = null
             owner = false
+            refitPending = false
             _isOwner.value = false
             _connected.value = false
         }
@@ -271,7 +281,16 @@ class TerminalController(
             _isOwner.value = false
             focusSent = false
             lastRequested = null
+            if (mode == AttachMode.Owner) refitPending = true
+        } else {
+            refitIfPending()
         }
+    }
+
+    private fun refitIfPending() {
+        if (!refitPending || !visible || !_connected.value) return
+        refitPending = false
+        fit()
     }
 
     // ------------------------------------------------------------------ input
@@ -345,12 +364,14 @@ class TerminalController(
 
     /** Take size ownership now and fit the terminal to this screen. */
     fun fitToScreen() {
-        scope.launch {
-            if (!owner) {
-                becomeOwner()
-            } else {
-                viewport?.grid()?.let { resizeTo(it, force = true) }
-            }
+        scope.launch { fit() }
+    }
+
+    private fun fit() {
+        if (!owner) {
+            becomeOwner()
+        } else {
+            viewport?.grid()?.let { resizeTo(it, force = true) }
         }
     }
 
@@ -358,7 +379,10 @@ class TerminalController(
     fun setVisible(visible: Boolean) {
         this.visible = visible
         visibleFlow.value = visible
-        scope.launch { updateFocus() }
+        scope.launch {
+            refitIfPending()
+            updateFocus()
+        }
     }
 
     /** The terminal view has input focus (this pane is the active one). */

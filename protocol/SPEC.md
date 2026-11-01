@@ -443,7 +443,7 @@ DATA on the stream channel = bytes typed into the PTY, exactly as a terminal wou
 - Size changes emit `size` events and SIGWINCH the program (agent TUIs redraw).
 - Measured sequence [W]: A attach 80×24 → B attach 120×40 (B wins) → A types (80×24) → B FOCUS 1 (120×40) → observer RESIZE (ignored) → B detaches (80×24) → A detaches (200×120).
 - RESIZE with 0 cols or rows makes you active but does not change the size; never send 0.
-- **App policy (recommended):** attaching from the phone resizes a terminal someone else is using on the desktop. Default to `observe:true` (or `resumed:true` + no RESIZE) when the terminal already has a different size and the user hasn't interacted; take ownership (send RESIZE + FOCUS 1) on first keystroke or an explicit "fit to phone". Send FOCUS 0 when the app backgrounds. Expect the desktop to snap back when the user types there.
+- **App policy (recommended):** attaching from the phone resizes a terminal someone else is using on the desktop. Default to `observe:true` (or `resumed:true` + no RESIZE) when the terminal already has a different size and the user hasn't interacted; take ownership (send RESIZE + FOCUS 1) on first keystroke or an explicit "fit to phone". Send FOCUS 0 when the app backgrounds. Expect the desktop to snap back when the user types there. (Flocket deliberately takes the size on open instead: [ADR-0007](../docs/decisions/0007-fit-terminal-on-open.md).)
 
 ### 7.6 FOCUS
 

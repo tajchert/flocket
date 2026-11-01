@@ -1,6 +1,5 @@
 package com.mtajchert.flocket.feature.terminal.impl
 
-import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.viewmodel.initializer
@@ -67,8 +66,6 @@ class TerminalViewModelTest {
 
     private fun TestScope.viewModel(
         address: String = "t1",
-        startedHere: Boolean = false,
-        savedState: SavedStateHandle = SavedStateHandle(),
         preferences: FakePreferencesRepository = FakePreferencesRepository(),
         settings: FakeHostSettingsRepository = FakeHostSettingsRepository(preferences),
         attach: (suspend (TerminalAddress, AttachRequest) -> AppResult<TerminalStream>)? = null,
@@ -78,8 +75,7 @@ class TerminalViewModelTest {
         val dispatcher = UnconfinedTestDispatcher(testScheduler)
         val vm =
             TerminalViewModel(
-                route = TerminalRoute("studio", address, startedHere),
-                savedState = savedState,
+                route = TerminalRoute("studio", address),
                 connections = manager,
                 preferences = preferences,
                 hostSettings = settings,
@@ -108,7 +104,7 @@ class TerminalViewModelTest {
     private fun attaches() = session.calls.filter { it.startsWith("attach:") }
 
     @Test
-    fun `waits for Online, then attaches passively once`() =
+    fun `waits for Online, then attaches as size owner once`() =
         runTest {
             val vm = viewModel()
             assertEquals(TerminalPhase.Connecting, vm.uiState.value.phase)
@@ -117,18 +113,17 @@ class TerminalViewModelTest {
             goOnline()
             advanceUntilIdle()
 
-            assertEquals(listOf("attach:t1:Passive"), attaches())
+            assertEquals(listOf("attach:t1:Owner"), attaches())
             assertEquals(TerminalPhase.Live, vm.uiState.value.phase)
             assertTrue(vm.uiState.value.streamConnected)
-            assertFalse("passive never takes the size", streams.single().calls.any { it.startsWith("resize") })
+            assertTrue("opening fits the terminal", vm.uiState.value.isOwner)
         }
 
     @Test
-    fun `a terminal started here attaches as owner, and re-attaches passively`() =
+    fun `a re-attach after the stream ended is the size owner too`() =
         runTest {
-            val saved = SavedStateHandle()
             goOnline()
-            val vm = viewModel(startedHere = true, savedState = saved)
+            val vm = viewModel()
             advanceUntilIdle()
             assertEquals(listOf("attach:t1:Owner"), attaches())
 
@@ -137,17 +132,8 @@ class TerminalViewModelTest {
             assertEquals(TerminalPhase.StreamEnded, vm.uiState.value.phase)
             vm.retryAttach()
             advanceUntilIdle()
-            assertEquals(listOf("attach:t1:Owner", "attach:t1:Passive"), attaches())
+            assertEquals(listOf("attach:t1:Owner", "attach:t1:Owner"), attaches())
             assertEquals(TerminalPhase.Live, vm.uiState.value.phase)
-        }
-
-    @Test
-    fun `after process death a started-here route attaches passively`() =
-        runTest {
-            goOnline()
-            viewModel(startedHere = true, savedState = SavedStateHandle(mapOf("attached_once" to true)))
-            advanceUntilIdle()
-            assertEquals(listOf("attach:t1:Passive"), attaches())
         }
 
     @Test
@@ -375,7 +361,6 @@ class TerminalViewModelTest {
             val vm =
                 TerminalViewModel(
                     TerminalRoute("gone", "t1"),
-                    SavedStateHandle(),
                     manager,
                     FakePreferencesRepository(),
                     FakeHostSettingsRepository(),

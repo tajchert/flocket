@@ -90,7 +90,6 @@ private fun TerminalRouteEntry(
     TerminalRouteContent(
         viewModel,
         onClose = navigator::back,
-        // Passive attach (startedHere = false): switching tabs or panes never resizes a terminal.
         onOpenTerminal = { address -> navigator.navigate(TerminalRoute(key.hostId, address)) },
     )
 }
