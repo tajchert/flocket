@@ -98,6 +98,13 @@ class HostControl private constructor(
     /** `adb -s <serial> <args>` run on the Mac, for what the device can't do to itself (network toggles, ...). */
     fun adb(vararg adbArgs: String): String = run(listOf(args.adbPath, "-s", args.serial) + adbArgs)
 
+    /**
+     * SSH logins the harness sshd has accepted so far (its log). Compare before and after a step: a growing count
+     * means the app reconnected. The control connection logs in once per class, before any test body runs.
+     */
+    fun acceptedLogins(): Int =
+        run(listOf("sh", "-c", "grep -c 'Accepted publickey' \"$1/sshd.log\" || true", "sh", args.sshdDir)).toInt()
+
     private fun run(command: List<String>): String =
         runBlocking {
             val r = session.run(command)
