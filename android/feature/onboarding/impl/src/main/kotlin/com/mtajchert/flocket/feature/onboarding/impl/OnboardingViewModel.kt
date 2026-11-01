@@ -17,8 +17,12 @@ import com.mtajchert.flocket.core.model.DeviceKey
 import com.mtajchert.flocket.core.model.Host
 import com.mtajchert.flocket.core.model.HostAuth
 import com.mtajchert.flocket.core.model.HostId
+import com.mtajchert.flocket.core.ui.component.ImportKeyDialogState
+import com.mtajchert.flocket.core.ui.component.ImportKeyProblem
 import com.mtajchert.flocket.core.ui.component.KeySource
 import com.mtajchert.flocket.core.ui.component.PickedKeyFile
+import com.mtajchert.flocket.core.ui.component.importFrom
+import com.mtajchert.flocket.core.ui.component.keyLabelFromFileName
 import com.mtajchert.flocket.core.ui.component.looksLikePrivateKey
 import com.mtajchert.flocket.core.ui.error.UiError
 import com.mtajchert.flocket.core.ui.error.UiErrorAction
@@ -70,12 +74,28 @@ data class OnboardingUiState(
     val importPem: String = "",
     val importPassphrase: String = "",
     val importNotAKey: Boolean = false,
+    /** The host step's "Import an existing key" dialog is open; it reuses the import fields above. */
+    val hostImportOpen: Boolean = false,
+    val importLabel: String = "",
     val saving: Boolean = false,
     val error: UiError? = null,
     val connect: ConnectUiState = ConnectUiState(),
     /** Onboarding is complete: the route navigates to the app. */
     val finished: Boolean = false,
 ) {
+    /** The shared import dialog's view of the import fields; only meaningful while [hostImportOpen]. */
+    val importDialog: ImportKeyDialogState
+        get() =
+            ImportKeyDialogState(
+                source = importSource,
+                fileName = importFileName,
+                label = importLabel,
+                pem = importPem,
+                passphrase = importPassphrase,
+                busy = generatingKey,
+                problem = if (importNotAKey) ImportKeyProblem.NotAPrivateKey else null,
+                error = error,
+            )
     val selectedKey: DeviceKey? get() = keys.firstOrNull { it.alias == form.keyAlias }
     val usesPassword: Boolean get() = form.authKind == AuthKind.Password
     val canGoBack: Boolean get() = step != OnboardingStep.Welcome && !connect.connected
@@ -107,6 +127,8 @@ class OnboardingViewModel
             val importPem: String = "",
             val importPassphrase: String = "",
             val importNotAKey: Boolean = false,
+            val hostImportOpen: Boolean = false,
+            val importLabel: String = "",
             val saving: Boolean = false,
             val showFormErrors: Boolean = false,
             val error: UiError? = null,
@@ -135,6 +157,8 @@ class OnboardingViewModel
                     importPem = local.importPem,
                     importPassphrase = local.importPassphrase,
                     importNotAKey = local.importNotAKey,
+                    hostImportOpen = local.hostImportOpen,
+                    importLabel = local.importLabel,
                     saving = local.saving,
                     error = local.error,
                     connect = connect,
@@ -233,11 +257,17 @@ class OnboardingViewModel
         fun onImportFilePicked(file: PickedKeyFile) =
             local.update {
                 it.copy(
-                    importOpen = true,
+                    importOpen = it.importOpen || !it.hostImportOpen,
                     importSource = KeySource.File,
                     importFileName = file.name,
                     importPem = file.text,
                     importNotAKey = !looksLikePrivateKey(file.text),
+                    importLabel =
+                        if (it.hostImportOpen) {
+                            it.importLabel.ifBlank { keyLabelFromFileName(file.name).orEmpty() }
+                        } else {
+                            it.importLabel
+                        },
                     error = null,
                 )
             }
@@ -271,6 +301,14 @@ class OnboardingViewModel
 
         fun onImportPassphrase(value: String) = local.update { it.copy(importPassphrase = value) }
 
+        // ---- Import from the host step's key picker -----------------------------------------------
+
+        fun openHostImport() = local.update { it.copy(hostImportOpen = true, error = null) }
+
+        fun dismissHostImport() = local.update { it.copy(hostImportOpen = false, error = null) }
+
+        fun onImportLabel(value: String) = local.update { it.copy(importLabel = value) }
+
         fun importKey() {
             val current = local.value
             if (current.importPem.isBlank()) return
@@ -278,29 +316,27 @@ class OnboardingViewModel
                 local.update { it.copy(importNotAKey = true) }
                 return
             }
+            val request =
+                ImportKeyDialogState(
+                    label = current.importLabel.ifBlank { KEY_LABEL },
+                    pem = current.importPem,
+                    passphrase = current.importPassphrase,
+                )
             viewModelScope.launch {
                 local.update { it.copy(generating = true, error = null) }
-                val result =
-                    deviceKeys
-                        .import(
-                            KEY_LABEL,
-                            current.importPem.toCharArray(),
-                            current.importPassphrase
-                                .takeIf {
-                                    it.isNotEmpty()
-                                }?.toCharArray(),
-                        )
-                when (result) {
+                when (val result = deviceKeys.importFrom(request)) {
                     is AppResult.Success -> {
                         setForm(form.value.copy(authKind = AuthKind.Key, keyAlias = result.value.alias))
                         local.update {
                             it.copy(
                                 generating = false,
                                 importOpen = false,
+                                hostImportOpen = false,
                                 importSource = KeySource.File,
                                 importFileName = null,
                                 importPem = "",
                                 importPassphrase = "",
+                                importLabel = "",
                                 importNotAKey = false,
                             )
                         }

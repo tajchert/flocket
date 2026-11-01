@@ -94,7 +94,7 @@ private val editState =
 @Composable
 private fun HostEditScreenshot() =
     Shot {
-        HostEditScreen(editState, onFormChange = {}, onCreateKey = {}, onSave = {}, onClose = {})
+        HostEditScreen(editState, onFormChange = {}, onImportKey = {}, onCreateKey = {}, onSave = {}, onClose = {})
     }
 
 @PreviewTest
@@ -104,7 +104,7 @@ private fun HostEditValidationScreenshot() {
     val form = HostFormState(hostname = "my host", port = "0", advancedExpanded = true, session = "-bad")
     Shot {
         HostEditScreen(editState.copy(form = form, errors = form.validate(), keys = emptyList()), onFormChange = {
-        }, onCreateKey = {}, onSave = {}, onClose = {})
+        }, onImportKey = {}, onCreateKey = {}, onSave = {}, onClose = {})
     }
 }
 

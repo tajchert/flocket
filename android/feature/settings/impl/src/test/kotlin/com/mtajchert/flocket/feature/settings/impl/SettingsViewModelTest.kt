@@ -13,6 +13,7 @@ import com.mtajchert.flocket.core.testing.FakeHostRepository
 import com.mtajchert.flocket.core.testing.FakePreferencesRepository
 import com.mtajchert.flocket.core.testing.MainDispatcherRule
 import com.mtajchert.flocket.core.testing.SampleData
+import com.mtajchert.flocket.core.ui.component.ImportKeyProblem
 import com.mtajchert.flocket.core.ui.component.KeySource
 import com.mtajchert.flocket.core.ui.component.PickedKeyFile
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -117,12 +118,12 @@ class SettingsViewModelTest {
             vm.requestImport()
             vm.onImportChange(label = "laptop", pem = "ssh-ed25519 AAAA public")
             vm.import()
-            assertEquals(ImportProblem.NotAPrivateKey, (vm.dialog.value as SettingsDialog.Import).problem)
+            assertEquals(ImportKeyProblem.NotAPrivateKey, (vm.dialog.value as SettingsDialog.Import).form.problem)
 
             vm.onImportChange(pem = "-----BEGIN OPENSSH PRIVATE KEY-----\nabc\n-----END OPENSSH PRIVATE KEY-----")
             keys.nextError = AppError.InvalidInput("passphrase", "wrong")
             vm.import()
-            assertNotNull((vm.dialog.value as SettingsDialog.Import).error)
+            assertNotNull((vm.dialog.value as SettingsDialog.Import).form.error)
             assertEquals(1, vm.uiState.value.keys.size)
 
             vm.import()
@@ -135,18 +136,18 @@ class SettingsViewModelTest {
         runTest {
             val vm = vm()
             vm.requestImport()
-            assertEquals(KeySource.File, (vm.dialog.value as SettingsDialog.Import).source)
+            assertEquals(KeySource.File, (vm.dialog.value as SettingsDialog.Import).form.source)
 
             vm.onImportFilePicked(PickedKeyFile("id_ed25519.pub", "ssh-ed25519 AAAA public"))
             var d = vm.dialog.value as SettingsDialog.Import
-            assertEquals("id_ed25519.pub", d.fileName)
-            assertEquals(ImportProblem.NotAPrivateKey, d.problem)
+            assertEquals("id_ed25519.pub", d.form.fileName)
+            assertEquals(ImportKeyProblem.NotAPrivateKey, d.form.problem)
 
             vm.onImportChange(label = "")
             vm.onImportFilePicked(PickedKeyFile("work.pem", PRIVATE_KEY))
             d = vm.dialog.value as SettingsDialog.Import
-            assertEquals("work", d.label)
-            assertNull(d.problem)
+            assertEquals("work", d.form.label)
+            assertNull(d.form.problem)
 
             vm.events.test {
                 vm.import()
@@ -163,14 +164,14 @@ class SettingsViewModelTest {
             vm.requestImport()
             vm.onImportChange(label = "laptop")
             vm.onImportFilePicked(PickedKeyFile("id_rsa", PRIVATE_KEY))
-            assertEquals("laptop", (vm.dialog.value as SettingsDialog.Import).label)
+            assertEquals("laptop", (vm.dialog.value as SettingsDialog.Import).form.label)
 
             vm.onImportSource(KeySource.Paste)
             val d = vm.dialog.value as SettingsDialog.Import
-            assertEquals(KeySource.Paste, d.source)
-            assertNull(d.fileName)
-            assertEquals("", d.pem)
-            assertEquals("laptop", d.label)
+            assertEquals(KeySource.Paste, d.form.source)
+            assertNull(d.form.fileName)
+            assertEquals("", d.form.pem)
+            assertEquals("laptop", d.form.label)
         }
 
     @Test

@@ -20,6 +20,8 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation3.runtime.NavKey
 import com.mtajchert.flocket.core.model.HostId
+import com.mtajchert.flocket.core.ui.component.ImportKeyDialog
+import com.mtajchert.flocket.core.ui.component.rememberKeyFilePicker
 import com.mtajchert.flocket.core.ui.nav.EntryProviderInstaller
 import com.mtajchert.flocket.core.ui.nav.Navigator
 import com.mtajchert.flocket.core.ui.terminalsettings.TerminalSettingsCallbacks
@@ -94,13 +96,25 @@ private fun HostEditRoute(
     val viewModel = hiltViewModel<HostEditViewModel, HostEditViewModel.Factory>(key = hostId) { it.create(hostId) }
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     LaunchedEffect(state.saved) { if (state.saved) navigator.back() }
+    val pickKeyFile = rememberKeyFilePicker(viewModel::onImportFilePicked, viewModel::onImportFileFailed)
     HostEditScreen(
         state = state,
         onFormChange = viewModel::onFormChange,
+        onImportKey = viewModel::requestImport,
         onCreateKey = viewModel::createKey,
         onSave = viewModel::save,
         onClose = navigator::back,
     )
+    state.importDialog?.let { dialog ->
+        ImportKeyDialog(
+            state = dialog,
+            onChange = viewModel::onImportChange,
+            onSource = viewModel::onImportSource,
+            onPickFile = pickKeyFile,
+            onConfirm = viewModel::importKey,
+            onDismiss = viewModel::dismissImport,
+        )
+    }
 }
 
 @Composable

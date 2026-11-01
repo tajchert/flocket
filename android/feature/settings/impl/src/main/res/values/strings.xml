@@ -37,20 +37,13 @@
     <string name="keys_deleted">Key deleted</string>
     <string name="generate_title">Generate a key</string>
     <string name="generate_message">Creates an Ed25519 key on this device. You’ll add its public key to the host afterwards.</string>
-    <string name="key_label">Name</string>
-    <string name="key_label_required">Enter a name</string>
     <string name="generate_action">Generate</string>
-    <string name="import_title">Import a private key</string>
-    <string name="import_message">Choose your private key file (OpenSSH or PEM), or paste its text. It is encrypted with the Android Keystore and never shown again.</string>
-    <string name="import_passphrase">Passphrase (if the key has one)</string>
-    <string name="import_action">Import</string>
     <string name="delete_title">Delete key “%1$s”?</string>
     <string name="delete_message_unused">The key is removed from this device. This can’t be undone.</string>
     <plurals name="delete_message_used">
         <item quantity="one">%2$s signs in with this key and will fail to connect until you choose another key. This can’t be undone.</item>
         <item quantity="other">%1$d hosts (%2$s) sign in with this key and will fail to connect until you choose another key. This can’t be undone.</item>
     </plurals>
-    <string name="cancel">Cancel</string>
 
     <!-- Hosts -->
     <string name="section_hosts">Hosts</string>

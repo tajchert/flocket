@@ -113,7 +113,8 @@
     <string name="form_auth_key">Device key</string>
     <string name="form_auth_password">Password</string>
     <string name="form_password_note">Flocket asks for the password when it connects and keeps it in memory only.</string>
-    <string name="form_no_keys">No device key yet.</string>
+    <string name="form_no_keys">No device key yet. Import the key you already use, or create a new one.</string>
+    <string name="form_import_key">Import an existing key</string>
     <string name="form_create_key">Create a device key</string>
     <string name="form_advanced">Advanced</string>
     <string name="form_hc_path">Path to hc</string>
@@ -174,4 +175,12 @@
     <string name="key_import_not_a_key_file">This isn’t a private key. Choose the file without .pub.</string>
     <string name="key_import_file_failed">Couldn’t read that file.</string>
     <string name="key_import_file_failed_message">Choose the key file again, or paste its text instead.</string>
+
+    <!-- Import key dialog (ImportKeyDialog.kt) -->
+    <string name="key_import_title">Import a private key</string>
+    <string name="key_import_message">Choose your private key file (OpenSSH or PEM), or paste its text. It is encrypted with the Android Keystore and never shown again.</string>
+    <string name="key_import_dialog_passphrase">Passphrase (if the key has one)</string>
+    <string name="key_import_confirm">Import</string>
+    <string name="key_label">Name</string>
+    <string name="key_label_required">Enter a name</string>
 </resources>

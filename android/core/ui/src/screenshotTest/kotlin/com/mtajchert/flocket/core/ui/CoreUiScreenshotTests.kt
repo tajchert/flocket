@@ -26,6 +26,8 @@ import com.mtajchert.flocket.core.ui.component.ConnectionStateBadge
 import com.mtajchert.flocket.core.ui.component.EmptyState
 import com.mtajchert.flocket.core.ui.component.ErrorBanner
 import com.mtajchert.flocket.core.ui.component.ErrorState
+import com.mtajchert.flocket.core.ui.component.ImportKeyDialog
+import com.mtajchert.flocket.core.ui.component.ImportKeyDialogState
 import com.mtajchert.flocket.core.ui.component.LoadingState
 import com.mtajchert.flocket.core.ui.component.PublicKeyCard
 import com.mtajchert.flocket.core.ui.component.StaleDataBanner
@@ -141,8 +143,45 @@ private fun HostFormScreenshot() =
                 ).validate(),
             keys = listOf(SampleData.deviceKey),
             onChange = {},
+            onImportKey = {},
             onCreateKey = {},
             modifier = Modifier.fillMaxWidth(),
+        )
+    }
+
+@PreviewTest
+@PreviewComponentThemes
+@Composable
+private fun HostFormNoKeysScreenshot() =
+    Shot {
+        HostForm(
+            state = HostFormState(label = "Studio", hostname = "studio.local", username = "me"),
+            errors = emptyMap(),
+            keys = emptyList(),
+            onChange = {},
+            onImportKey = {},
+            onCreateKey = {},
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
+
+@PreviewTest
+@PreviewComponentThemes
+@Composable
+private fun ImportKeyDialogScreenshot() =
+    Shot {
+        ImportKeyDialog(
+            state =
+                ImportKeyDialogState(
+                    fileName = "android_mini_ed25519",
+                    label = "android_mini_ed25519",
+                    pem = "-----BEGIN OPENSSH PRIVATE KEY-----",
+                ),
+            onChange = { _, _, _ -> },
+            onSource = {},
+            onPickFile = {},
+            onConfirm = {},
+            onDismiss = {},
         )
     }
 

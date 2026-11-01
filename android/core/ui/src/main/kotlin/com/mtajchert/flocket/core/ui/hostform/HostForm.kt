@@ -3,6 +3,8 @@ package com.mtajchert.flocket.core.ui.hostform
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -45,6 +47,7 @@ fun HostForm(
     errors: Map<HostFormField, HostFormError>,
     keys: List<DeviceKey>,
     onChange: (HostFormState) -> Unit,
+    onImportKey: () -> Unit,
     onCreateKey: () -> Unit,
     modifier: Modifier = Modifier,
     isCreatingKey: Boolean = false,
@@ -116,7 +119,7 @@ fun HostForm(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         } else {
-            KeyPicker(state, errors[HostFormField.Key], keys, onChange, onCreateKey, isCreatingKey)
+            KeyPicker(state, errors[HostFormField.Key], keys, onChange, onImportKey, onCreateKey, isCreatingKey)
         }
 
         TextButton(onClick = { onChange(state.copy(advancedExpanded = !state.advancedExpanded)) }) {
@@ -189,12 +192,14 @@ private fun FormField(
     )
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun KeyPicker(
     state: HostFormState,
     error: HostFormError?,
     keys: List<DeviceKey>,
     onChange: (HostFormState) -> Unit,
+    onImportKey: () -> Unit,
     onCreateKey: () -> Unit,
     isCreatingKey: Boolean,
 ) {
@@ -237,9 +242,19 @@ private fun KeyPicker(
                 color = MaterialTheme.colorScheme.error,
             )
         }
-        OutlinedButton(
-            onClick = onCreateKey,
-            enabled = !isCreatingKey,
-        ) { Text(stringResource(R.string.form_create_key)) }
+        // The key people already use is the natural path, so importing comes first.
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            OutlinedButton(
+                onClick = onImportKey,
+                enabled = !isCreatingKey,
+            ) { Text(stringResource(R.string.form_import_key)) }
+            OutlinedButton(
+                onClick = onCreateKey,
+                enabled = !isCreatingKey,
+            ) { Text(stringResource(R.string.form_create_key)) }
+        }
     }
 }

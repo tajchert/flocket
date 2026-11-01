@@ -11,6 +11,9 @@ import com.mtajchert.flocket.core.testing.FakeHostSettingsRepository
 import com.mtajchert.flocket.core.testing.FakeHostTrustRepository
 import com.mtajchert.flocket.core.testing.MainDispatcherRule
 import com.mtajchert.flocket.core.testing.SampleData
+import com.mtajchert.flocket.core.ui.component.ImportKeyProblem
+import com.mtajchert.flocket.core.ui.component.PickedKeyFile
+import com.mtajchert.flocket.core.ui.hostform.AuthKind
 import com.mtajchert.flocket.core.ui.hostform.HostFormField
 import com.mtajchert.flocket.core.ui.hostform.HostFormState
 import com.mtajchert.flocket.feature.hosts.impl.detail.HostDetailDialog
@@ -76,6 +79,75 @@ class HostsViewModelsTest {
             vm.save()
             assertTrue(vm.uiState.value.saved)
             assertEquals("new.local", hosts.saved.single().hostname)
+        }
+
+    @Test
+    fun `importing a key selects it and switches the form to key sign-in`() =
+        runTest {
+            val keys = FakeDeviceKeyRepository()
+            val vm = HostEditViewModel(null, SavedStateHandle(), hosts, keys)
+            vm.uiState.onEach { }.launchIn(CoroutineScope(UnconfinedTestDispatcher(testScheduler)))
+            vm.onFormChange(HostFormState(authKind = AuthKind.Password))
+            vm.requestImport()
+            vm.onImportFilePicked(PickedKeyFile("android_mini_ed25519", PRIVATE_KEY))
+            assertEquals(
+                "android_mini_ed25519",
+                vm.uiState.value.importDialog
+                    ?.label,
+            )
+
+            vm.importKey()
+
+            val state = vm.uiState.value
+            assertNull(state.importDialog)
+            assertEquals(AuthKind.Key, state.form.authKind)
+            assertEquals(state.keys.single().alias, state.form.keyAlias)
+            assertEquals("android_mini_ed25519", state.keys.single().label)
+        }
+
+    @Test
+    fun `a failed import keeps the dialog open with the error and leaves the selection alone`() =
+        runTest {
+            val keys = FakeDeviceKeyRepository()
+            val vm = HostEditViewModel(null, SavedStateHandle(), hosts, keys)
+            vm.uiState.onEach { }.launchIn(CoroutineScope(UnconfinedTestDispatcher(testScheduler)))
+            vm.onFormChange(HostFormState(authKind = AuthKind.Password))
+            vm.requestImport()
+            vm.onImportFilePicked(PickedKeyFile("id_ed25519", PRIVATE_KEY))
+            vm.onImportChange(passphrase = "wrong")
+            keys.nextError = AppError.InvalidInput("passphrase", "wrong")
+
+            vm.importKey()
+
+            val state = vm.uiState.value
+            val dialog = state.importDialog
+            assertNotNull(dialog?.error)
+            assertEquals(false, dialog?.busy)
+            assertEquals("wrong", dialog?.passphrase)
+            assertEquals("id_ed25519", dialog?.fileName)
+            assertEquals(AuthKind.Password, state.form.authKind)
+            assertNull(state.form.keyAlias)
+            assertTrue(state.keys.isEmpty())
+        }
+
+    @Test
+    fun `importing text that is not a private key is rejected before the repository`() =
+        runTest {
+            val keys = FakeDeviceKeyRepository()
+            val vm = HostEditViewModel(null, SavedStateHandle(), hosts, keys)
+            vm.uiState.onEach { }.launchIn(CoroutineScope(UnconfinedTestDispatcher(testScheduler)))
+            vm.requestImport()
+            vm.onImportFilePicked(PickedKeyFile("id_ed25519.pub", "ssh-ed25519 AAAA public"))
+            vm.importKey()
+            assertEquals(
+                ImportKeyProblem.NotAPrivateKey,
+                vm.uiState.value.importDialog
+                    ?.problem,
+            )
+            assertTrue(
+                vm.uiState.value.keys
+                    .isEmpty(),
+            )
         }
 
     @Test
@@ -147,3 +219,5 @@ class HostsViewModelsTest {
             assertEquals(listOf(SampleData.pi.id, SampleData.pi.id), manager.connectRequests)
         }
 }
+
+private const val PRIVATE_KEY = "-----BEGIN OPENSSH PRIVATE KEY-----\nabc\n-----END OPENSSH PRIVATE KEY-----"
