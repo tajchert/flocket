@@ -95,6 +95,9 @@ internal class TerminalSelection {
 
         fun lastCol(packed: Long): Int = packed.toInt()
 
+        /** [wordAt] result for "nothing to select". */
+        const val NONE = -1L
+
         private const val WORD_CHARS = "-_./~:@%+=#"
 
         /**
@@ -126,7 +129,8 @@ internal class TerminalSelection {
         /**
          * Columns of the word around [col] in the row starting at [base] (non-ASCII counts as a word
          * character, so CJK runs and accented words select whole). A blank cell selects itself; a wide
-         * character's spacer selects its character. Packed by [packCols].
+         * character's spacer selects its character. Packed by [packCols]. A blank cell past the row's last
+         * non-blank character selects nothing: [NONE].
          */
         fun wordAt(
             codepoints: IntArray,
@@ -143,6 +147,13 @@ internal class TerminalSelection {
                 val cp = codepoints[base + i]
                 return cp != 0 && cp != ' '.code &&
                     (Character.isLetterOrDigit(cp) || (cp < 0x80 && cp.toChar() in WORD_CHARS) || cp >= 0x80)
+            }
+            val blankHere =
+                flags[base + c] and CellFlags.WIDE_SPACER == 0 && codepoints[base + c].let { it == 0 || it == ' '.code }
+            if (blankHere &&
+                (c + 1 until cols).none { codepoints[base + it].let { cp -> cp != 0 && cp != ' '.code } }
+            ) {
+                return NONE
             }
             var c0 = c
             var c1 = if (flags[base + c] and CellFlags.WIDE != 0) minOf(c + 1, cols - 1) else c

@@ -480,6 +480,35 @@ class GhosttyTerminalEngineTest {
     }
 
     @Test
+    fun defaultScrollbackKeepsTheConfiguredLineCountAt52Columns() {
+        // Regression: libghostty also applies a default byte cap, which kept only ~1250 rows at 52 columns.
+        val e = GhosttyTerminalEngine(cols = 52, rows = 41)
+        try {
+            e.setTheme(theme)
+            val chunk = StringBuilder()
+            for (i in 1..5000) {
+                chunk.append(i).append("\r\n")
+                if (i % 500 == 0) {
+                    e.feed(chunk.toString().toByteArray())
+                    chunk.clear()
+                    e.snapshot()
+                }
+            }
+            val snap = e.snapshot()
+            assertTrue("only ${snap.scrollbackRows} scrollback rows", snap.scrollbackRows >= 4500)
+            val row = ScreenSnapshot(1, 1)
+            assertTrue(e.readRow(0, row))
+            val first = row.row(0).toInt()
+            assertTrue("oldest retained line is $first", first <= 500)
+            // Lines 1..500 are reachable through the engine API.
+            val text = e.textRange(0, 0, 600, 51)
+            assertTrue(text.lines().take(600).any { it == "500" })
+        } finally {
+            e.close()
+        }
+    }
+
+    @Test
     fun historyBaseIsExactWhenTrimmingKeepsTheNewestRows() {
         // Ghostty trims whole pages (about 2233 rows at 20 columns). With a cap above one page the
         // newest rows always survive a trim, so ids equal absolute line numbers: line k has id k - 1.

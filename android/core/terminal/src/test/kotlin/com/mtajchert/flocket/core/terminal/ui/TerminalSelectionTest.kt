@@ -57,6 +57,18 @@ class TerminalSelectionTest {
     }
 
     @Test
+    fun `a blank cell past the last non-blank character selects nothing`() {
+        val e = FakeTerminalEngine(30, 2)
+        e.feed("ls  done".encodeToByteArray())
+        val snap = e.snapshot()
+        assertEquals(TerminalSelection.NONE, TerminalSelection.wordAt(snap.codepoints, snap.flags, 0, 30, 20))
+        assertEquals(TerminalSelection.NONE, TerminalSelection.wordAt(snap.codepoints, snap.flags, 0, 30, 8))
+        // A blank between words still selects itself; an empty row selects nothing.
+        assertEquals(2..2, cols(TerminalSelection.wordAt(snap.codepoints, snap.flags, 0, 30, 2)))
+        assertEquals(TerminalSelection.NONE, TerminalSelection.wordAt(snap.codepoints, snap.flags, 30, 30, 3))
+    }
+
+    @Test
     fun `word selection on a wide spacer includes the whole character`() {
         val e = FakeTerminalEngine(10, 1)
         e.feed("a 你好 b".encodeToByteArray())

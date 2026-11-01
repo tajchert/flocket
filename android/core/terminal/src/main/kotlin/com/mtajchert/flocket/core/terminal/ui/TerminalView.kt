@@ -10,6 +10,7 @@ import android.graphics.Path
 import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.RenderNode
+import android.os.Build
 import android.os.Bundle
 import android.os.SystemClock
 import android.util.TypedValue
@@ -26,6 +27,8 @@ import android.view.inputmethod.InputConnection
 import android.view.inputmethod.InputMethodManager
 import android.widget.OverScroller
 import android.widget.Toast
+import android.window.OnBackInvokedCallback
+import android.window.OnBackInvokedDispatcher
 import androidx.core.view.ViewCompat
 import androidx.core.view.accessibility.AccessibilityNodeInfoCompat
 import androidx.core.view.accessibility.AccessibilityNodeInfoCompat.AccessibilityActionCompat
@@ -159,6 +162,10 @@ class TerminalView(
     private var lastTouchY = 0f
     private var autoScrolling = false
     private var actionMode: ActionMode? = null
+
+    /** Dismisses the selection toolbar like Back does. For tests. */
+    internal fun finishActionModeForTest(): Boolean = actionMode?.also { it.finish() } != null
+
     private val handlePath = Path()
     private val handleRect = RectF()
     private val handleRadii = FloatArray(8)
@@ -200,6 +207,7 @@ class TerminalView(
     }
 
     override fun onDetachedFromWindow() {
+        unregisterBackCallback()
         frameJob?.cancel()
         frameJob = null
         actionMode?.finish()
@@ -623,6 +631,7 @@ class TerminalView(
         keyCode: Int,
         event: KeyEvent,
     ): Boolean {
+        if (keyCode == KeyEvent.KEYCODE_BACK && handleBack()) return true
         val s = sink ?: return super.onKeyDown(keyCode, event)
         if (event.isCtrlPressed && event.isShiftPressed) {
             when (keyCode) {
@@ -727,7 +736,7 @@ class TerminalView(
 
                 override fun onLongPress(e: MotionEvent) {
                     val cell = cellAt(e.x, e.y, clamp = false) ?: return
-                    selectWord(cell)
+                    if (!selectWord(cell)) return
                     selection.beginDrag(startHandle = false)
                     selecting = true
                     dragDx = 0f
@@ -955,17 +964,20 @@ class TerminalView(
 
     // --------------------------------------------------------------- selection
 
-    private fun selectWord(cell: CellPos) {
+    /** Selects the word at [cell]; false (nothing selected) for off-screen or blank space past the row's text. */
+    private fun selectWord(cell: CellPos): Boolean {
         val r = visibleRow(cell.row)
-        if (r == OFF_SCREEN) return
+        if (r == OFF_SCREEN) return false
         val snap = if (r == -1) above.cells else render
         val base = if (r == -1) 0 else r * render.cols
         val packed = TerminalSelection.wordAt(snap.codepoints, snap.flags, base, snap.cols, cell.col)
+        if (packed == TerminalSelection.NONE) return false
         selection.set(
             CellPos(cell.row, TerminalSelection.firstCol(packed)),
             CellPos(cell.row, TerminalSelection.lastCol(packed)),
         )
         onSelectionChanged()
+        return true
     }
 
     private fun applyPendingSelection() {
@@ -978,6 +990,7 @@ class TerminalView(
         )
         pendingSelStart = -1
         pendingSelEnd = -1
+        syncBackCallback()
     }
 
     /** Text of the selected cells that are on screen (rows joined with newlines, trailing blanks trimmed). */
@@ -1024,7 +1037,44 @@ class TerminalView(
         onSelectionChanged()
     }
 
+    private var backCallback: OnBackInvokedCallback? = null
+
+    /**
+     * Back clears an active selection (and its handles and toolbar) before it navigates. The floating
+     * toolbar does not consume Back, and with predictive back the key never reaches [onKeyDown], so a
+     * callback is registered while a selection exists (API 33+; older versions use [onKeyDown]).
+     */
+    private fun syncBackCallback() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        if (!selection.isActive) {
+            unregisterBackCallback()
+            return
+        }
+        if (backCallback != null) return
+        val dispatcher = findOnBackInvokedDispatcher() ?: return
+        val cb = OnBackInvokedCallback { handleBack() }
+        dispatcher.registerOnBackInvokedCallback(OnBackInvokedDispatcher.PRIORITY_OVERLAY, cb)
+        backCallback = cb
+    }
+
+    private fun unregisterBackCallback() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        val cb = backCallback ?: return
+        backCallback = null
+        val dispatcher = findOnBackInvokedDispatcher() ?: return
+        // Not while the callback is running: the same Back must not reach the next callback (navigation).
+        post { dispatcher.unregisterOnBackInvokedCallback(cb) }
+    }
+
+    /** Back: clears the selection. False when there is none (the caller navigates). */
+    internal fun handleBack(): Boolean {
+        if (!selection.isActive) return false
+        clearSelection()
+        return true
+    }
+
     private fun onSelectionChanged() {
+        syncBackCallback()
         invalidate()
         actionMode?.invalidateContentRect()
         a11y.invalidateRoot()
@@ -1086,7 +1136,10 @@ class TerminalView(
     }
 
     private fun startSelectionActionMode() {
-        actionMode?.finish()
+        actionMode?.let {
+            actionMode = null
+            it.finish()
+        }
         actionMode =
             startActionMode(
                 object : ActionMode.Callback2() {
@@ -1129,7 +1182,11 @@ class TerminalView(
                     }
 
                     override fun onDestroyActionMode(mode: ActionMode) {
-                        if (actionMode === mode) actionMode = null
+                        // Back (or any other dismissal) also drops the selection and its handles.
+                        if (actionMode === mode) {
+                            actionMode = null
+                            clearSelection()
+                        }
                     }
 
                     override fun onGetContentRect(
