@@ -112,6 +112,7 @@ class GhosttyTerminalEngine(
         snap.scrollbackRows = header[SnapshotHeader.SCROLLBACK_ROWS]
         snap.viewportOffset = header[SnapshotHeader.VIEWPORT_OFFSET]
         snap.historyBase = GhosttyNative.nativeHistoryBase(handle)
+        snap.altScreen = header[SnapshotHeader.ALT_SCREEN] != 0
         val gen = header[SnapshotHeader.TITLE_GENERATION]
         if (gen != lastTitleGeneration) {
             lastTitleGeneration = gen
@@ -182,6 +183,10 @@ class GhosttyTerminalEngine(
     // ---- Smooth scrolling and selection ----
 
     private var rowGraphemes = IntArray(64)
+
+    override fun historyBase(): Long = GhosttyNative.nativeHistoryBase(h())
+
+    override fun scrollViewportTo(screenRow: Int) = GhosttyNative.nativeScrollToRow(h(), screenRow)
 
     override fun readRow(
         screenRow: Int,

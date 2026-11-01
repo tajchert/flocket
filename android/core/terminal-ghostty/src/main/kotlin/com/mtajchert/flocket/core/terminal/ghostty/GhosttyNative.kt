@@ -126,6 +126,11 @@ internal object GhosttyNative {
 
     @JvmStatic external fun nativeHistoryBase(handle: Long): Long
 
+    @JvmStatic external fun nativeScrollToRow(
+        handle: Long,
+        screenRow: Int,
+    )
+
     @JvmStatic external fun nativeTextRange(
         handle: Long,
         startRow: Int,

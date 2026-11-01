@@ -83,4 +83,30 @@ class FakeScrollbackTest {
         e.feed("a你b é x".encodeToByteArray())
         assertEquals("a你b e\u0301 x", e.textRange(0, 0, 0, 9))
     }
+
+    @Test
+    fun `the alternate screen has no scrollback and restores the primary on exit`() {
+        val e = engine()
+        e.lines(5)
+        e.feed("\u001b[?1049h\u001b[Hvim".encodeToByteArray())
+        val alt = e.snapshot()
+        assertTrue(alt.altScreen)
+        assertEquals(0, alt.scrollbackRows)
+        assertEquals("vim", alt.line(0))
+        e.feed("\u001b[?1049l".encodeToByteArray())
+        val back = e.snapshot()
+        assertFalse(back.altScreen)
+        assertEquals(2, back.scrollbackRows)
+        assertEquals("line3", back.line(0))
+    }
+
+    @Test
+    fun `scrollViewportTo is absolute and clamps to the bottom`() {
+        val e = engine()
+        e.lines(10) // 7 rows of scrollback
+        e.scrollViewportTo(2)
+        assertEquals("line3", e.snapshot().line(0))
+        e.scrollViewportTo(100)
+        assertEquals(0, e.snapshot().viewportOffset)
+    }
 }

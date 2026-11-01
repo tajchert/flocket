@@ -64,4 +64,15 @@ class TerminalSelectionTest {
         assertTrue(snap.flags[3] and CellFlags.WIDE_SPACER != 0)
         assertEquals(2..5, cols(TerminalSelection.wordAt(snap.codepoints, snap.flags, 0, 10, 3)))
     }
+
+    @Test
+    fun `moving a handle by a word lands on word edges in the row`() {
+        val e = FakeTerminalEngine(20, 1)
+        e.feed("one two  three".encodeToByteArray())
+        val cp = e.snapshot().codepoints
+        assertEquals(4, TerminalSelection.nextWordEdge(cp, 0, 20, 0, forward = true, startHandle = true))
+        assertEquals(6, TerminalSelection.nextWordEdge(cp, 0, 20, 2, forward = true, startHandle = false))
+        assertEquals(2, TerminalSelection.nextWordEdge(cp, 0, 20, 6, forward = false, startHandle = false))
+        assertEquals(13, TerminalSelection.nextWordEdge(cp, 0, 20, 13, forward = true, startHandle = false))
+    }
 }

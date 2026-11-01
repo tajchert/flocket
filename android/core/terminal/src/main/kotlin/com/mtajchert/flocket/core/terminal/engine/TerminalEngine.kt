@@ -44,6 +44,16 @@ interface TerminalEngine : AutoCloseable {
 
     fun scrollToBottom()
 
+    /**
+     * Put screen row [screenRow] ([readRow] space) at the top of the viewport, clamped to the
+     * scrollback; a row at or past the active area's top means the bottom (which follows output).
+     * Absolute: it does not depend on how stale the caller's last snapshot is.
+     */
+    fun scrollViewportTo(screenRow: Int)
+
+    /** [ScreenSnapshot.historyBase] as of now (rows may have been evicted since the last snapshot). */
+    fun historyBase(): Long
+
     /** Encode a key press for the program's current modes (app-cursor, kitty keyboard, …). */
     fun encodeKey(event: KeyInput): ByteArray
 
@@ -152,6 +162,9 @@ class ScreenSnapshot(
      * [TerminalEngine.readRow]) is a row id that stays on the same content while output arrives.
      */
     var historyBase: Long = 0
+
+    /** The alternate screen is active (no scrollback; row ids are not comparable across a switch). */
+    var altScreen: Boolean = false
 
     var title: String = ""
 

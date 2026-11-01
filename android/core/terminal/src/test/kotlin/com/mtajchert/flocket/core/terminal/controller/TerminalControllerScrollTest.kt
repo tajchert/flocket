@@ -83,7 +83,55 @@ class TerminalControllerScrollTest {
     fun `selection text spans scrollback rows the viewport does not show`() =
         runTest {
             val (c, _) = filled()
-            assertEquals("ne2\nline3\nline4", c.selectionText(1, 2, 3, 9))
+            assertEquals("ne2\nline3\nline4", c.selectionText(1, 2, 3, 9, altScreen = false))
+            c.close()
+        }
+
+    @Test
+    fun `selection text is null after a screen switch or for blank cells`() =
+        runTest {
+            val (c, s) = filled()
+            s.chunks.send("\u001b[?1049h".encodeToByteArray())
+            advanceUntilIdle()
+            assertEquals(null, c.selectionText(1, 2, 3, 9, altScreen = false))
+            assertEquals(null, c.selectionText(0, 0, 0, 9, altScreen = true)) // empty alt screen
+            c.close()
+        }
+
+    @Test
+    fun `scrollToRow resolves against output fed after the last frame`() =
+        runTest {
+            val c =
+                TerminalController(
+                    engineFactory = { cc, r -> FakeTerminalEngine(cc, r, scrollbackLines = 5) },
+                    theme = FakeTerminalEngine.DEFAULT_THEME,
+                    frameClock = clock,
+                    engineDispatcher = StandardTestDispatcher(testScheduler),
+                )
+            val s = FakeStream(TerminalSize(10, 3))
+            c.bind(s)
+            s.chunks.send((1..8).joinToString("\r\n") { "line$it" }.encodeToByteArray())
+            advanceUntilIdle()
+            frame(c) // line1..line8: scrollback full (line1..line5), ids 0..4
+            s.chunks.send("\r\nline9\r\nline10".encodeToByteArray()) // evicts two rows, no frame yet
+            advanceUntilIdle()
+            c.scrollToRow(3) // id 3 = line4, now screen row 1
+            assertEquals("line4", frame(c).line(0))
+            c.close()
+        }
+
+    @Test
+    fun `a frame and its row above are acquired together`() =
+        runTest {
+            val (c, _) = filled()
+            c.setRowAboveWanted(true)
+            c.scrollToRow(10)
+            frame(c)
+            val target = ScreenSnapshot(1, 1)
+            val above = RowSnapshot()
+            val got = c.acquire(target, above)
+            assertEquals(TerminalFrameSource.ROW_ABOVE_CHANGED, got and TerminalFrameSource.ROW_ABOVE_CHANGED)
+            assertEquals(target.historyBase + target.scrollbackRows - target.viewportOffset - 1, above.id)
             c.close()
         }
 }

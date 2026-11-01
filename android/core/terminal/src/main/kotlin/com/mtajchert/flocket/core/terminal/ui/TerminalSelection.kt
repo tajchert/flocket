@@ -98,6 +98,32 @@ internal class TerminalSelection {
         private const val WORD_CHARS = "-_./~:@%+=#"
 
         /**
+         * Column a handle lands on when moved by one word ([forward] or back) from [col] in the row at
+         * [base]: a start handle goes to the start of a word, an end handle to the end of one; stays in
+         * the row.
+         */
+        fun nextWordEdge(
+            codepoints: IntArray,
+            base: Int,
+            cols: Int,
+            col: Int,
+            forward: Boolean,
+            startHandle: Boolean,
+        ): Int {
+            fun blank(c: Int) = codepoints[base + c].let { it == 0 || it == ' '.code }
+
+            fun isEdge(c: Int): Boolean =
+                !blank(c) && if (startHandle) c == 0 || blank(c - 1) else c == cols - 1 || blank(c + 1)
+            val step = if (forward) 1 else -1
+            var c = col + step
+            while (c in 0 until cols) {
+                if (isEdge(c)) return c
+                c += step
+            }
+            return col.coerceIn(0, cols - 1)
+        }
+
+        /**
          * Columns of the word around [col] in the row starting at [base] (non-ASCII counts as a word
          * character, so CJK runs and accented words select whole). A blank cell selects itself; a wide
          * character's spacer selects its character. Packed by [packCols].

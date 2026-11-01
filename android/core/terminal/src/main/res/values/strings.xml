@@ -2,4 +2,9 @@
 <resources>
     <string name="terminal_selection_start_handle">Selection start handle</string>
     <string name="terminal_selection_end_handle">Selection end handle</string>
+    <string name="terminal_selection_evicted">Nothing copied: the selection is empty or no longer in the history</string>
+    <string name="terminal_handle_previous_word">Move to previous word</string>
+    <string name="terminal_handle_next_word">Move to next word</string>
+    <string name="terminal_handle_previous_line">Move to previous line</string>
+    <string name="terminal_handle_next_line">Move to next line</string>
 </resources>

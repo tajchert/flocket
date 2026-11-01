@@ -21,13 +21,15 @@ import android.view.MenuItem
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
 import android.view.View
-import android.view.accessibility.AccessibilityEvent
-import android.view.accessibility.AccessibilityNodeInfo
-import android.view.accessibility.AccessibilityNodeProvider
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputConnection
 import android.view.inputmethod.InputMethodManager
 import android.widget.OverScroller
+import android.widget.Toast
+import androidx.core.view.ViewCompat
+import androidx.core.view.accessibility.AccessibilityNodeInfoCompat
+import androidx.core.view.accessibility.AccessibilityNodeInfoCompat.AccessibilityActionCompat
+import androidx.customview.widget.ExploreByTouchHelper
 import com.mtajchert.flocket.core.terminal.R
 import com.mtajchert.flocket.core.terminal.controller.RowSnapshot
 import com.mtajchert.flocket.core.terminal.controller.TerminalController
@@ -43,6 +45,7 @@ import com.mtajchert.flocket.core.terminal.input.KeyEventMapper
 import com.mtajchert.flocket.core.terminal.input.TerminalInputConnection
 import com.mtajchert.flocket.core.terminal.input.TerminalInputSink
 import com.mtajchert.flocket.core.terminal.input.asInputSink
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -90,9 +93,10 @@ class TerminalView(
     private var aboveNode: RenderNode? = null
     private var aboveValid = false
     private var aboveGrapheme: BooleanArray? = null
+    private var aboveGraphemeBuf: BooleanArray? = null
     private val smooth = SmoothScroll()
     private var lastCols = 0
-    private var lastRows = 0
+    private var lastAlt = false
 
     private var source: TerminalFrameSource? = null
     private var controller: TerminalController? = null
@@ -260,8 +264,9 @@ class TerminalView(
             canvas.restoreToCount(outer)
             return
         }
-        if (src.acquireFrame(render)) onFrameAcquired()
-        if (src.acquireRowAbove(above)) onRowAboveAcquired()
+        val acquired = src.acquire(render, above)
+        if (acquired and TerminalFrameSource.FRAME_CHANGED != 0) onFrameAcquired()
+        if (acquired and TerminalFrameSource.ROW_ABOVE_CHANGED != 0) onRowAboveAcquired()
         if (pendingSelStart >= 0) applyPendingSelection()
         val cols = render.cols
         val rows = render.rows
@@ -368,11 +373,12 @@ class TerminalView(
         val wasLive = smooth.live
         smooth.onFrame(render.historyBase, render.scrollbackRows, render.viewportOffset)
         if (wasLive != smooth.live) updateRowAboveWanted()
-        // Rotation/resize may reflow rows; evicted rows are gone: the selection does not survive either.
-        if (render.cols != lastCols || render.rows != lastRows) {
+        // A width change reflows rows and a screen switch (shell <-> vim) changes what the row ids
+        // point at; evicted rows are gone. Row-count changes (IME show/hide) keep ids valid.
+        if (render.cols != lastCols || render.altScreen != lastAlt) {
             if (lastCols != 0 && pendingSelStart < 0) clearSelection()
             lastCols = render.cols
-            lastRows = render.rows
+            lastAlt = render.altScreen
         }
         if (selection.isEvicted(render.historyBase)) clearSelection()
     }
@@ -380,12 +386,16 @@ class TerminalView(
     private fun onRowAboveAcquired() {
         aboveValid = false
         val cells = above.cells
-        aboveGrapheme =
-            if (cells.graphemes.isEmpty()) {
-                null
-            } else {
-                BooleanArray(cells.cols).also { a -> for (k in cells.graphemes.keys) if (k < a.size) a[k] = true }
-            }
+        if (cells.graphemes.isEmpty()) {
+            aboveGrapheme = null
+            return
+        }
+        val a =
+            aboveGraphemeBuf?.takeIf { it.size == cells.cols }
+                ?: BooleanArray(cells.cols).also { aboveGraphemeBuf = it }
+        a.fill(false)
+        for (k in cells.graphemes.keys) if (k < a.size) a[k] = true
+        aboveGrapheme = a
     }
 
     private fun updateRowAboveWanted() {
@@ -645,6 +655,7 @@ class TerminalView(
         previouslyFocusedRect: Rect?,
     ) {
         super.onFocusChanged(gainFocus, direction, previouslyFocusedRect)
+        a11y.onFocusChanged(gainFocus, direction, previouslyFocusedRect)
         controller?.setFocused(gainFocus && hasWindowFocus())
         invalidate()
     }
@@ -847,7 +858,10 @@ class TerminalView(
     private fun scrollRows(rows: Double) {
         if (!smooth.canScroll) return
         val request = smooth.move(rows)
-        if (request != null) controller?.scrollToRow(request)
+        if (request != null) {
+            // Live means "follow the bottom": the bottom row id seen in the last frame may be stale.
+            if (smooth.live) controller?.scrollToBottom() else controller?.scrollToRow(request)
+        }
         actionMode?.invalidateContentRect()
         invalidate()
     }
@@ -969,8 +983,13 @@ class TerminalView(
     /** Text of the selected cells that are on screen (rows joined with newlines, trailing blanks trimmed). */
     fun selectedText(): String? {
         if (pendingSelStart >= 0) applyPendingSelection()
-        val s = selection.start ?: return null
-        val e = selection.end ?: return null
+        return selectedText(selection.start ?: return null, selection.end ?: return null)
+    }
+
+    private fun selectedText(
+        s: CellPos,
+        e: CellPos,
+    ): String {
         val top = smooth.frameTop
         return render.textRange((s.row - top).toInt(), s.col, (e.row - top).toInt(), e.col)
     }
@@ -1008,7 +1027,7 @@ class TerminalView(
     private fun onSelectionChanged() {
         invalidate()
         actionMode?.invalidateContentRect()
-        sendAccessibilityEvent(AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED)
+        a11y.invalidateRoot()
     }
 
     /**
@@ -1020,16 +1039,36 @@ class TerminalView(
         val s = selection.start ?: return false
         val e = selection.end ?: return false
         val c = controller
-        if (c == null) {
-            selectedText()?.let(::setClipboard)
-        } else {
-            uiScope.launch { c.selectionText(s.row, s.col, e.row, e.col)?.let(::setClipboard) }
-        }
+        val evicted = selection.isEvicted(render.historyBase)
+        val alt = render.altScreen
         clearSelection()
+        if (evicted) {
+            Toast.makeText(context, R.string.terminal_selection_evicted, Toast.LENGTH_SHORT).show()
+        } else if (c == null) {
+            setClipboard(selectedText(s, e))
+        } else {
+            uiScope.launch {
+                val text =
+                    try {
+                        c.selectionText(s.row, s.col, e.row, e.col, alt)
+                    } catch (ce: CancellationException) {
+                        throw ce
+                    } catch (_: Exception) {
+                        null // engine closed or failed: copy nothing rather than crash
+                    }
+                if (text == null) {
+                    Toast.makeText(context, R.string.terminal_selection_evicted, Toast.LENGTH_SHORT).show()
+                } else {
+                    setClipboard(text)
+                }
+            }
+        }
         return true
     }
 
+    /** Never overwrites the clipboard with nothing. */
     private fun setClipboard(text: String) {
+        if (text.isEmpty()) return
         context.getSystemService(ClipboardManager::class.java)?.setPrimaryClip(ClipData.newPlainText("terminal", text))
     }
 
@@ -1133,58 +1172,105 @@ class TerminalView(
 
     // ---------------------------------------------------------- accessibility
 
-    /** Virtual nodes for the selection handles (the toolbar is the platform one). */
-    override fun getAccessibilityNodeProvider(): AccessibilityNodeProvider? =
-        if (selection.isActive) handleNodes else null
+    /** Selection handles as virtual views (TalkBack focus, hover, custom move actions). */
+    private inner class HandleAccessibility : ExploreByTouchHelper(this) {
+        override fun getVirtualViewAt(
+            x: Float,
+            y: Float,
+        ): Int = handleAt(x, y).takeIf { it != HANDLE_NONE } ?: INVALID_ID
 
-    private val handleNodes =
-        object : AccessibilityNodeProvider() {
-            private val loc = IntArray(2)
-            private val bounds = Rect()
-
-            override fun createAccessibilityNodeInfo(virtualViewId: Int): AccessibilityNodeInfo? {
-                if (virtualViewId == HOST_VIEW_ID) {
-                    @Suppress("DEPRECATION")
-                    val info = AccessibilityNodeInfo.obtain(this@TerminalView)
-                    onInitializeAccessibilityNodeInfo(info)
-                    if (selection.isActive) {
-                        info.addChild(this@TerminalView, HANDLE_START)
-                        info.addChild(this@TerminalView, HANDLE_END)
-                    }
-                    return info
-                }
-                if (virtualViewId != HANDLE_START && virtualViewId != HANDLE_END) return null
-                val start = virtualViewId == HANDLE_START
-
-                @Suppress("DEPRECATION")
-                val info = AccessibilityNodeInfo.obtain(this@TerminalView, virtualViewId)
-                info.setParent(this@TerminalView)
-                info.packageName = context.packageName
-                info.className = View::class.java.name
-                info.contentDescription =
-                    context.getString(
-                        if (start) R.string.terminal_selection_start_handle else R.string.terminal_selection_end_handle,
-                    )
-                val x = handleX(start)
-                val y = handleY(start)
-                if (!x.isNaN() && !y.isNaN()) {
-                    val d = 2 * handleRadius
-                    val left = if (start) x - d else x
-                    bounds.set(left.toInt(), y.toInt(), (left + d).toInt(), (y + d).toInt())
-                    getLocationOnScreen(loc)
-                    bounds.offset(loc[0], loc[1])
-                    info.setBoundsInScreen(bounds)
-                    info.isVisibleToUser = true
-                }
-                return info
-            }
-
-            override fun performAction(
-                virtualViewId: Int,
-                action: Int,
-                arguments: Bundle?,
-            ): Boolean = if (virtualViewId == HOST_VIEW_ID) performAccessibilityAction(action, arguments) else false
+        override fun getVisibleVirtualViews(ids: MutableList<Int>) {
+            if (!selection.isActive) return
+            if (!handleX(true).isNaN()) ids += HANDLE_START
+            if (!handleX(false).isNaN()) ids += HANDLE_END
         }
+
+        override fun onPopulateNodeForVirtualView(
+            id: Int,
+            node: AccessibilityNodeInfoCompat,
+        ) {
+            val start = id == HANDLE_START
+            node.contentDescription =
+                context.getString(
+                    if (start) R.string.terminal_selection_start_handle else R.string.terminal_selection_end_handle,
+                )
+            val x = handleX(start)
+            val y = handleY(start)
+            val d = 2 * handleRadius
+            if (x.isNaN() || y.isNaN()) {
+                a11yBounds.set(0, 0, 1, 1) // off screen: not listed as visible, but bounds are mandatory
+            } else {
+                val left = if (start) x - d else x
+                a11yBounds.set(left.toInt(), y.toInt(), (left + d).toInt(), (y + d).toInt())
+            }
+            @Suppress("DEPRECATION")
+            node.setBoundsInParent(a11yBounds)
+            for (i in HANDLE_ACTIONS.indices) {
+                node.addAction(AccessibilityActionCompat(HANDLE_ACTIONS[i], context.getString(HANDLE_ACTION_LABELS[i])))
+            }
+        }
+
+        override fun onPerformActionForVirtualView(
+            id: Int,
+            action: Int,
+            arguments: Bundle?,
+        ): Boolean {
+            val i = HANDLE_ACTIONS.indexOf(action)
+            if (i < 0 || !selection.isActive) return false
+            moveHandle(
+                start = id == HANDLE_START,
+                words =
+                    if (i <
+                        2
+                    ) {
+                        (if (i == 0) -1 else 1)
+                    } else {
+                        0
+                    },
+                lines = if (i >= 2) (if (i == 2) -1 else 1) else 0,
+            )
+            invalidateVirtualView(id)
+            return true
+        }
+    }
+
+    private val a11yBounds = Rect()
+    private val a11y = HandleAccessibility().also { ViewCompat.setAccessibilityDelegate(this, it) }
+
+    override fun dispatchHoverEvent(event: MotionEvent): Boolean =
+        a11y.dispatchHoverEvent(event) || super.dispatchHoverEvent(event)
+
+    /** Move a handle by whole words (on visible rows) or lines (accessibility actions). */
+    private fun moveHandle(
+        start: Boolean,
+        words: Int,
+        lines: Int,
+    ) {
+        val p = (if (start) selection.start else selection.end) ?: return
+        val oldest = render.historyBase
+        val newest = render.historyBase + render.scrollbackRows + render.rows - 1
+        var row = (p.row + lines).coerceIn(oldest, newest)
+        var col = p.col
+        if (words != 0) {
+            val r = visibleRow(row)
+            if (r == OFF_SCREEN || r < 0) {
+                col = (col + words).coerceIn(0, render.cols - 1)
+            } else {
+                col =
+                    TerminalSelection.nextWordEdge(
+                        render.codepoints,
+                        r * render.cols,
+                        render.cols,
+                        col,
+                        words > 0,
+                        start,
+                    )
+            }
+        }
+        selection.beginDrag(start)
+        selection.dragTo(CellPos(row, col))
+        onSelectionChanged()
+    }
 
     companion object {
         const val DEFAULT_FONT_SP = 13f
@@ -1205,5 +1291,19 @@ class TerminalView(
         private const val EDGE_ZONE_DP = 32f
         private const val MAX_AUTO_SCROLL_ROWS = 0.6
         private val BOOLEANS = booleanArrayOf(true, false)
+        private val HANDLE_ACTIONS =
+            intArrayOf(
+                R.id.terminal_action_handle_previous_word,
+                R.id.terminal_action_handle_next_word,
+                R.id.terminal_action_handle_previous_line,
+                R.id.terminal_action_handle_next_line,
+            )
+        private val HANDLE_ACTION_LABELS =
+            intArrayOf(
+                R.string.terminal_handle_previous_word,
+                R.string.terminal_handle_next_word,
+                R.string.terminal_handle_previous_line,
+                R.string.terminal_handle_next_line,
+            )
     }
 }

@@ -19,7 +19,8 @@ import java.util.Base64
  * truecolor, bold, faint, italic, underline, strikethrough, inverse, invisible), DECTCEM (?25),
  * bracketed paste (?2004), DECSCUSR cursor shapes, OSC 0/2 title, OSC 7 cwd, OSC 52 clipboard, and
  * basic East-Asian-wide characters / combining marks. Scrollback only when [scrollbackLines] > 0 (rows
- * scrolled off the top, soft-wrap flags, viewport scrolling); no alternate screen, no reflow, no charsets,
+ * scrolled off the top, soft-wrap flags, viewport scrolling); a minimal alternate screen (?47/?1047/?1049,
+ * no scrollback while active); no reflow, no charsets,
  * no wrap-pending subtleties. Production uses `core:terminal-ghostty`.
  *
  * Like every engine it is not thread-safe; confine it to one thread.
@@ -44,8 +45,16 @@ class FakeTerminalEngine(
     private var dirty = BooleanArray(rows) { true }
     private var wrapped = BooleanArray(rows)
     private val history = ArrayDeque<HistoryRow>()
-    private var historyBase = 0L
+    private var evicted = 0L
     private var viewOffset = 0
+
+    // Alternate screen (?1049/?1047/?47): the primary screen is parked here; no scrollback while active.
+    private var alt = false
+    private var parked: Parked? = null
+    private val scrollback: Int get() = if (alt) 0 else history.size
+
+    private fun historyRow(screenRow: Int): HistoryRow? = if (alt) null else history.getOrNull(screenRow)
+
     private var fullDirty = true
     private var lastTarget: ScreenSnapshot? = null
 
@@ -136,7 +145,7 @@ class FakeTerminalEngine(
             val d = full || scrolled || dirty[r]
             snap.dirtyRows[r] = d
             if (!d) continue
-            copyRow(history.size - viewOffset + r, snap, r)
+            copyRow(scrollback - viewOffset + r, snap, r)
             dirty[r] = false
         }
         fullDirty = false
@@ -145,9 +154,10 @@ class FakeTerminalEngine(
         snap.cursorRow = curRow
         snap.cursorStyle = cursorStyle
         snap.cursorVisible = cursorVisible && viewOffset == 0
-        snap.scrollbackRows = history.size
+        snap.scrollbackRows = scrollback
         snap.viewportOffset = viewOffset
-        snap.historyBase = historyBase
+        snap.historyBase = evicted
+        snap.altScreen = alt
         snap.title = title
         return snap
     }
@@ -159,8 +169,8 @@ class FakeTerminalEngine(
         dst: Int,
     ) {
         val t = theme
-        val h = history.getOrNull(screenRow)
-        val src = screenRow - history.size
+        val h = historyRow(screenRow)
+        val src = screenRow - scrollback
         for (c in 0 until cols) {
             val o = dst * cols + c
             val srcCp: Int
@@ -204,7 +214,7 @@ class FakeTerminalEngine(
         target: ScreenSnapshot,
     ): Boolean {
         check(!closed) { "engine closed" }
-        if (screenRow !in 0 until history.size + rows) return false
+        if (screenRow !in 0 until scrollback + rows) return false
         target.resize(cols, 1)
         copyRow(screenRow, target, 0)
         target.dirtyRows[0] = true
@@ -218,15 +228,15 @@ class FakeTerminalEngine(
         endCol: Int,
     ): String {
         val b = RowTextBuilder()
-        val last = history.size + rows - 1
+        val last = scrollback + rows - 1
         for (r in startRow.coerceAtLeast(0)..endRow.coerceAtMost(last)) {
             val c0 = (if (r == startRow) startCol else 0).coerceIn(0, cols - 1)
             val c1 = (if (r == endRow) endCol else cols - 1).coerceIn(0, cols - 1)
-            val h = history.getOrNull(r)
+            val h = historyRow(r)
             if (h != null) {
                 b.appendRow(h.cp, h.attrs, 0, c0, minOf(c1, h.cp.size - 1), h.wrapped && r < endRow) { h.graphemes[it] }
             } else {
-                val s = r - history.size
+                val s = r - scrollback
                 b.appendRow(cp, attrs, s * cols, c0, c1, wrapped[s] && r < endRow) { graphemes[it] }
             }
         }
@@ -234,7 +244,15 @@ class FakeTerminalEngine(
     }
 
     override fun scrollViewport(deltaRows: Int) {
-        val v = (viewOffset - deltaRows).coerceIn(0, history.size)
+        val v = (viewOffset - deltaRows).coerceIn(0, scrollback)
+        if (v != viewOffset) fullDirty = true
+        viewOffset = v
+    }
+
+    override fun historyBase(): Long = evicted
+
+    override fun scrollViewportTo(screenRow: Int) {
+        val v = (scrollback - screenRow).coerceIn(0, scrollback)
         if (v != viewOffset) fullDirty = true
         viewOffset = v
     }
@@ -457,6 +475,7 @@ class FakeTerminalEngine(
                     when (p.getOrNull(0)) {
                         25 -> cursorVisible = on
                         2004 -> bracketedPaste = on
+                        47, 1047, 1049 -> setAltScreen(on)
                     }
                 }
             }
@@ -649,7 +668,7 @@ class FakeTerminalEngine(
             curRow++
             return
         }
-        if (scrollbackLines > 0) pushHistory()
+        if (scrollbackLines > 0 && !alt) pushHistory()
         // Scroll up by one row.
         System.arraycopy(wrapped, 1, wrapped, 0, rows - 1)
         wrapped[rows - 1] = false
@@ -663,6 +682,46 @@ class FakeTerminalEngine(
         graphemes.putAll(moved)
         clearCells((rows - 1) * cols, rows * cols)
         dirty.fill(true)
+    }
+
+    private fun setAltScreen(on: Boolean) {
+        if (on == alt) return
+        if (on) {
+            parked =
+                Parked(
+                    cp.copyOf(),
+                    fgSpec.copyOf(),
+                    bgSpec.copyOf(),
+                    attrs.copyOf(),
+                    HashMap(graphemes),
+                    wrapped.copyOf(),
+                    curCol,
+                    curRow,
+                )
+            viewOffset = 0
+            alt = true
+            clearCells(0, cols * rows)
+            wrapped.fill(false)
+        } else {
+            alt = false
+            val p = parked
+            parked = null
+            if (p != null && p.cp.size == cp.size) {
+                p.cp.copyInto(cp)
+                p.fg.copyInto(fgSpec)
+                p.bg.copyInto(bgSpec)
+                p.attrs.copyInto(attrs)
+                graphemes.clear()
+                graphemes.putAll(p.graphemes)
+                p.wrapped.copyInto(wrapped)
+                curCol = p.col
+                curRow = p.row
+            } else {
+                clearCells(0, cols * rows)
+            }
+        }
+        dirty.fill(true)
+        fullDirty = true
     }
 
     private fun pushHistory() {
@@ -680,7 +739,7 @@ class FakeTerminalEngine(
         )
         if (history.size > scrollbackLines) {
             history.removeFirst()
-            historyBase++
+            evicted++
         } else if (viewOffset > 0) {
             viewOffset++ // stay on the same content while scrolled up
         }
@@ -722,7 +781,7 @@ class FakeTerminalEngine(
     private fun reset() {
         clearCells(0, cols * rows)
         wrapped.fill(false)
-        historyBase += history.size
+        evicted += history.size
         history.clear()
         viewOffset = 0
         penReset()
@@ -743,6 +802,17 @@ class FakeTerminalEngine(
             spec and RGB_BIT != 0 -> (0xFF shl 24) or (spec and 0xFFFFFF)
             else -> indexed(spec and 0xFF, t)
         }
+
+    private class Parked(
+        val cp: IntArray,
+        val fg: IntArray,
+        val bg: IntArray,
+        val attrs: IntArray,
+        val graphemes: Map<Int, String>,
+        val wrapped: BooleanArray,
+        val col: Int,
+        val row: Int,
+    )
 
     private class HistoryRow(
         val cp: IntArray,

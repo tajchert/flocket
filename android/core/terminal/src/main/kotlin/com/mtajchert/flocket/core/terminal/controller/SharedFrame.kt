@@ -26,6 +26,21 @@ interface TerminalFrameSource {
      * is none (no scrollback above, or not [setRowAboveWanted]).
      */
     fun acquireRowAbove(target: RowSnapshot): Boolean = false
+
+    /**
+     * [acquireFrame] and [acquireRowAbove] together, so the row always belongs to the frame (sources
+     * that publish both override this under one lock). Returns [FRAME_CHANGED] | [ROW_ABOVE_CHANGED].
+     */
+    fun acquire(
+        target: ScreenSnapshot,
+        rowAbove: RowSnapshot,
+    ): Int =
+        (if (acquireFrame(target)) FRAME_CHANGED else 0) or (if (acquireRowAbove(rowAbove)) ROW_ABOVE_CHANGED else 0)
+
+    companion object {
+        const val FRAME_CHANGED = 1
+        const val ROW_ABOVE_CHANGED = 2
+    }
 }
 
 /** One screen row outside the viewport, `id` in [ScreenSnapshot.historyBase] space (-1 = none). */
@@ -96,7 +111,8 @@ internal fun copyRows(
         dst.cursorStyle != src.cursorStyle ||
         dst.viewportOffset != src.viewportOffset ||
         dst.scrollbackRows != src.scrollbackRows ||
-        dst.historyBase != src.historyBase
+        dst.historyBase != src.historyBase ||
+        dst.altScreen != src.altScreen
     ) {
         any = true
     }
@@ -107,6 +123,7 @@ internal fun copyRows(
     dst.scrollbackRows = src.scrollbackRows
     dst.viewportOffset = src.viewportOffset
     dst.historyBase = src.historyBase
+    dst.altScreen = src.altScreen
     dst.title = src.title
     return any
 }

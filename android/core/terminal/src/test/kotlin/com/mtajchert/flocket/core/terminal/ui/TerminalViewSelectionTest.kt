@@ -7,10 +7,15 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
 import androidx.test.core.app.ApplicationProvider
+import com.mtajchert.flocket.core.terminal.R
 import com.mtajchert.flocket.core.terminal.controller.StaticFrameSource
+import com.mtajchert.flocket.core.terminal.controller.TerminalFrameSource
+import com.mtajchert.flocket.core.terminal.controller.copyRows
+import com.mtajchert.flocket.core.terminal.engine.ScreenSnapshot
 import com.mtajchert.flocket.core.terminal.fake.FakeTerminalEngine
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -89,5 +94,60 @@ class TerminalViewSelectionTest {
         touch(MotionEvent.ACTION_DOWN, p)
         touch(MotionEvent.ACTION_UP, p)
         assertNull(view.selectedText())
+    }
+
+    /** A frame source whose screen the test replaces. */
+    private class MutableSource(
+        var snapshot: ScreenSnapshot,
+    ) : TerminalFrameSource {
+        private var delivered: ScreenSnapshot? = null
+
+        override fun acquireFrame(target: ScreenSnapshot): Boolean {
+            if (delivered === snapshot) return false
+            delivered = snapshot
+            copyRows(snapshot, BooleanArray(snapshot.rows) { true }, target, force = true)
+            return true
+        }
+    }
+
+    private fun swapScreen(
+        source: MutableSource,
+        cols: Int,
+        rows: Int,
+        bytes: String,
+    ) {
+        source.snapshot = FakeTerminalEngine(cols, rows).apply { feed(bytes.encodeToByteArray()) }.snapshot()
+        draw()
+    }
+
+    @Test
+    fun `switching to the alternate screen or changing width clears the selection, height does not`() {
+        val text = "cd ~/src/flocket now"
+        val source = MutableSource(FakeTerminalEngine(30, 4).apply { feed(text.encodeToByteArray()) }.snapshot())
+        view.bindSource(source)
+        draw()
+        longPress(view.cellCenter(col = 6, row = 0))
+        swapScreen(source, 30, 3, text) // IME shown: fewer rows, same ids
+        assertEquals("~/src/flocket", view.selectedText())
+        swapScreen(source, 30, 3, "\u001b[?1049hvim")
+        assertNull(view.selectedText())
+        longPress(view.cellCenter(col = 0, row = 0))
+        swapScreen(source, 40, 3, "\u001b[?1049hvim")
+        assertNull(view.selectedText())
+    }
+
+    @Test
+    fun `accessibility actions move a handle by word and line`() {
+        longPress(view.cellCenter(col = 0, row = 0))
+        val provider = view.accessibilityNodeProvider!!
+        val end = 2 // HANDLE_END virtual view id
+        assertTrue(provider.performAction(end, R.id.terminal_action_handle_next_word, null))
+        draw()
+        assertEquals("cd ~/src/flocket", view.selectedText())
+        assertTrue(provider.performAction(end, R.id.terminal_action_handle_next_line, null))
+        draw()
+        assertEquals("cd ~/src/flocket now\nsecond line here", view.selectedText())
+        val node = provider.createAccessibilityNodeInfo(end)!!
+        assertEquals("Selection end handle", node.contentDescription)
     }
 }

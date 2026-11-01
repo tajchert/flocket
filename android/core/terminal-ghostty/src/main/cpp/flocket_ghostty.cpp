@@ -33,6 +33,9 @@ struct Engine {
   GhosttyTrackedGridRef pin = nullptr;
   uint32_t pin_y = 0;
   int64_t trimmed = 0;
+  // nReadRow scratch, reused between calls.
+  std::vector<int32_t> row_cp, row_fg, row_bg, row_fl, row_g;
+  std::vector<uint32_t> row_buf = std::vector<uint32_t>(16);
 };
 
 // Upper bound for undrained events: the remote program controls titles, OSC 52 payloads and
@@ -646,6 +649,7 @@ jint nReadRow(JNIEnv* env, jclass, jlong h, jint row, jint cols, jintArray jcp, 
     throw_java(env, "java/lang/IllegalArgumentException", "row arrays smaller than cols");
     return -1;
   }
+  // One (possibly page-list-walking) SCREEN lookup for the row; columns reuse its node and y.
   GhosttyGridRef ref;
   if (row < 0 || !screen_ref(e, 0, row, &ref)) return -1;
   GhosttyColorRgb pal[256];
@@ -653,10 +657,15 @@ jint nReadRow(JNIEnv* env, jclass, jlong h, jint row, jint cols, jintArray jcp, 
   ghostty_terminal_get(e->terminal, GHOSTTY_TERMINAL_DATA_COLOR_PALETTE, pal);
   ghostty_terminal_get(e->terminal, GHOSTTY_TERMINAL_DATA_COLOR_FOREGROUND, &dfg);
   ghostty_terminal_get(e->terminal, GHOSTTY_TERMINAL_DATA_COLOR_BACKGROUND, &dbg);
-  std::vector<int32_t> cp(cols, 0), fgA(cols, pack(dfg)), bgA(cols, pack(dbg)), flA(cols, 0), g;
-  std::vector<uint32_t> buf(16);
+  std::vector<int32_t>&cp = e->row_cp, &fgA = e->row_fg, &bgA = e->row_bg, &flA = e->row_fl, &g = e->row_g;
+  std::vector<uint32_t>& buf = e->row_buf;
+  cp.assign(cols, 0);
+  fgA.assign(cols, pack(dfg));
+  bgA.assign(cols, pack(dbg));
+  flA.assign(cols, 0);
+  g.clear();
   for (int col = 0; col < cols; col++) {
-    if (!screen_ref(e, col, row, &ref)) continue;
+    ref.x = static_cast<uint16_t>(col);
     size_t n = 0;
     GhosttyResult r = ghostty_grid_ref_graphemes(&ref, buf.data(), buf.size(), &n);
     if (r == GHOSTTY_OUT_OF_SPACE) {
@@ -671,7 +680,7 @@ jint nReadRow(JNIEnv* env, jclass, jlong h, jint row, jint cols, jintArray jcp, 
       for (size_t i = 0; i < n; i++) g.push_back(static_cast<int32_t>(buf[i]));
     }
     GhosttyCell cell = 0;
-    ghostty_grid_ref_cell(&ref, &cell);
+    if (ghostty_grid_ref_cell(&ref, &cell) != GHOSTTY_SUCCESS) continue;
     GhosttyStyle st = GHOSTTY_INIT_SIZED(GhosttyStyle);
     ghostty_grid_ref_style(&ref, &st);
     GhosttyColorRgb fg = style_rgb(st.fg_color, pal, dfg), bg = style_rgb(st.bg_color, pal, dbg);
@@ -714,43 +723,87 @@ jint nReadRow(JNIEnv* env, jclass, jlong h, jint row, jint cols, jintArray jcp, 
   return static_cast<jint>(g.size());
 }
 
-// Rows that left the top of the primary screen since creation. A tracked ref sits on the last row;
-// rows removed above it (eviction, clear scrollback) lower its screen y. If the ref itself was
-// removed (huge burst, reset), every older row is gone: skip past all of them.
+// Rows that left the top of the primary screen since creation. A tracked ref (pin) sits on the
+// last active row; rows removed above it (eviction, clear scrollback) lower its screen y. While the
+// pin is in the active area its screen y is scrollback rows + active y (cheap: no page-list walk).
+// Only once it has scrolled into history (once per screenful of output) is it resolved in screen
+// coordinates and moved back to the last row. If the pin itself was removed (huge burst, reset),
+// every older row is gone: skip past all of them. The alternate screen never touches the primary.
 jlong nHistoryBase(JNIEnv*, jclass, jlong h) {
   Engine* e = H(h);
+  GhosttyTerminalScreen screen = GHOSTTY_TERMINAL_SCREEN_PRIMARY;
+  ghostty_terminal_get(e->terminal, GHOSTTY_TERMINAL_DATA_ACTIVE_SCREEN, &screen);
+  GhosttyTerminalScrollbar sb{};
+  if (screen != GHOSTTY_TERMINAL_SCREEN_PRIMARY ||
+      ghostty_terminal_get(e->terminal, GHOSTTY_TERMINAL_DATA_SCROLLBAR, &sb) != GHOSTTY_SUCCESS || sb.total == 0 ||
+      sb.len == 0) {
+    return static_cast<jlong>(e->trimmed);
+  }
+  const uint64_t above = sb.total > sb.len ? sb.total - sb.len : 0;
+  bool in_active = false;
   if (e->pin) {
     GhosttyPointCoordinate c{};
-    if (ghostty_tracked_grid_ref_point(e->pin, GHOSTTY_POINT_TAG_SCREEN, &c) == GHOSTTY_SUCCESS) {
-      if (c.y < e->pin_y) e->trimmed += e->pin_y - c.y;
-      e->pin_y = c.y;
+    uint64_t y = 0;
+    bool found = true;
+    if (ghostty_tracked_grid_ref_point(e->pin, GHOSTTY_POINT_TAG_ACTIVE, &c) == GHOSTTY_SUCCESS) {
+      y = above + c.y;
+      in_active = true;
+    } else if (ghostty_tracked_grid_ref_point(e->pin, GHOSTTY_POINT_TAG_SCREEN, &c) == GHOSTTY_SUCCESS) {
+      y = c.y;
+    } else {
+      found = false;
+    }
+    if (found) {
+      if (y < e->pin_y) e->trimmed += static_cast<int64_t>(e->pin_y - y);
+      e->pin_y = static_cast<uint32_t>(y);
     } else {
       e->trimmed += static_cast<int64_t>(e->pin_y) + 1;
       ghostty_tracked_grid_ref_free(e->pin);
       e->pin = nullptr;
     }
   }
-  GhosttyTerminalScreen screen = GHOSTTY_TERMINAL_SCREEN_PRIMARY;
-  ghostty_terminal_get(e->terminal, GHOSTTY_TERMINAL_DATA_ACTIVE_SCREEN, &screen);
-  GhosttyTerminalScrollbar sb{};
-  if (screen == GHOSTTY_TERMINAL_SCREEN_PRIMARY &&
-      ghostty_terminal_get(e->terminal, GHOSTTY_TERMINAL_DATA_SCROLLBAR, &sb) == GHOSTTY_SUCCESS && sb.total > 0) {
-    uint32_t last = static_cast<uint32_t>(sb.total - 1);
-    if (!e->pin || e->pin_y != last) {
-      GhosttyPoint p = {GHOSTTY_POINT_TAG_SCREEN, {}};
-      p.value.coordinate = {0, last};
-      bool ok = e->pin ? ghostty_tracked_grid_ref_set(e->pin, e->terminal, p) == GHOSTTY_SUCCESS
-                       : ghostty_terminal_grid_ref_track(e->terminal, p, &e->pin) == GHOSTTY_SUCCESS;
-      if (ok) e->pin_y = last;
-    }
+  if (!e->pin || !in_active) {
+    GhosttyPoint p = {GHOSTTY_POINT_TAG_ACTIVE, {}};
+    p.value.coordinate = {0, static_cast<uint32_t>(sb.len - 1)};
+    bool ok = e->pin ? ghostty_tracked_grid_ref_set(e->pin, e->terminal, p) == GHOSTTY_SUCCESS
+                     : ghostty_terminal_grid_ref_track(e->terminal, p, &e->pin) == GHOSTTY_SUCCESS;
+    if (ok) e->pin_y = static_cast<uint32_t>(sb.total - 1);
   }
   return static_cast<jlong>(e->trimmed);
+}
+
+// Absolute scroll: `row` (screen coordinates) becomes the viewport's top row; at or past the top of
+// the active area means the bottom, which follows output.
+void nScrollToRow(JNIEnv*, jclass, jlong h, jint row) {
+  Engine* e = H(h);
+  GhosttyTerminalScrollbar sb{};
+  if (ghostty_terminal_get(e->terminal, GHOSTTY_TERMINAL_DATA_SCROLLBAR, &sb) != GHOSTTY_SUCCESS) return;
+  const uint64_t above = sb.total > sb.len ? sb.total - sb.len : 0;
+  GhosttyTerminalScrollViewport b{};
+  if (row < 0 || static_cast<uint64_t>(row) >= above) {
+    b.tag = row < 0 ? GHOSTTY_SCROLL_VIEWPORT_ROW : GHOSTTY_SCROLL_VIEWPORT_BOTTOM;
+    b.value.row = 0;
+  } else {
+    b.tag = GHOSTTY_SCROLL_VIEWPORT_ROW;
+    b.value.row = static_cast<size_t>(row);
+  }
+  ghostty_terminal_scroll_viewport(e->terminal, b);
 }
 
 // Plain text between two screen cells (inclusive), unwrapped and trimmed like nText.
 jbyteArray nTextRange(JNIEnv* env, jclass, jlong h, jint r0, jint c0, jint r1, jint c1) {
   Engine* e = H(h);
   GhosttySelection sel = GHOSTTY_INIT_SIZED(GhosttySelection);
+  // Clamp the end to the last row of the active screen (a stale or alt-screen caller may overshoot).
+  GhosttyTerminalScrollbar sb{};
+  if (ghostty_terminal_get(e->terminal, GHOSTTY_TERMINAL_DATA_SCROLLBAR, &sb) != GHOSTTY_SUCCESS || sb.total == 0) {
+    return to_java(env, nullptr, 0);
+  }
+  const int64_t last = static_cast<int64_t>(sb.total) - 1;
+  if (r1 > last) {
+    r1 = static_cast<jint>(last);
+    c1 = e->cols - 1;
+  }
   if (r0 < 0 || r1 < r0 || !screen_ref(e, std::clamp(c0, 0, e->cols - 1), r0, &sel.start) ||
       !screen_ref(e, std::clamp(c1, 0, e->cols - 1), r1, &sel.end)) {
     return to_java(env, nullptr, 0);
@@ -796,6 +849,7 @@ const JNINativeMethod kMethods[] = {
     {"nativeReadRow", "(JII[I[I[I[I[I)I", reinterpret_cast<void*>(nReadRow)},
     {"nativeHistoryBase", "(J)J", reinterpret_cast<void*>(nHistoryBase)},
     {"nativeTextRange", "(JIIII)[B", reinterpret_cast<void*>(nTextRange)},
+    {"nativeScrollToRow", "(JI)V", reinterpret_cast<void*>(nScrollToRow)},
 };
 
 }  // namespace
