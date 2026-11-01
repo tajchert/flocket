@@ -23,7 +23,11 @@ switches, and process-death restores.
 - After a dropped link the session still re-attaches with `resumed:true`, which is passive.
   Once the link is back and the terminal is visible, the controller takes the size again.
 - If another viewer takes the size while the screen is open (the desktop user types), the
-  phone goes passive and shows "Fit to screen" until the user types or taps it.
+  phone goes passive and shows a "Sized for another screen" chip with "Fit to screen".
+  A keystroke, a tap on the terminal, the chip, or coming back to the screen (app
+  foregrounded, screen unlocked) takes the size again. *(Amended 2026-11-01: tap and return
+  added, because Herdr desktop can take the size without its user doing anything, e.g. a
+  same-size RESIZE or an automatic terminal reply sent as DATA.)*
 - `AttachMode.Passive` and `Observe` remain available in `core:session` and `core:terminal`.
 
 ## Consequences

@@ -70,7 +70,7 @@ vsync (Choreographer) ──▶ [engine thread] drainEvents + engine.snapshot(wo
 |---|---|---|
 | Passive (default `bind`; the app always binds as Owner, [ADR-0007](../../docs/decisions/0007-fit-terminal-on-open.md)) | mirrors `stream.size` | nothing (no RESIZE, FOCUS 1, FACTS). Rendered scaled to fit width; pinch zooms 1-4x with horizontal pan. |
 | Owner (`AttachMode.Owner`, first key/paste, or `fitToScreen()`) | viewport cols x rows | RESIZE on change (debounced 120 ms), FOCUS 1/0 with visibility and focus, FACTS on theme change. |
-| Another viewer took the size (a `size` event that is not what we requested, after the core confirmed our last RESIZE; sizes seen before that confirmation are stale and ignored) | mirrors `stream.size` | back to passive until the next keystroke or `fitToScreen()`. |
+| Another viewer took the size (a `size` event that is not what we requested, after the core confirmed our last RESIZE; sizes seen before that confirmation are stale and ignored) | mirrors `stream.size` | back to passive until the next keystroke, a tap on the terminal (`reclaimSize()`), `fitToScreen()`, or `setVisible(true)` after being invisible. A tap or a return never takes a size we did not own before. |
 | Link dropped (`connected = false`) | retained | back to passive: the session reattaches with `resumed:true` and sends a fresh first paint. A "Reconnecting…" chip is shown over the retained screen. Bound as Owner: takes the size again once connected and visible. |
 | Observe | mirrors `stream.size` | nothing; input refused (`isReadOnly`). |
 
@@ -104,7 +104,7 @@ one `TerminalController` (Ghostty engine via `TerminalControllerFactory`) and th
 - `onCleared()` (real close or another terminal replacing the two-pane detail, never rotation): `detach()` then
   `controller.close()` in the application scope. Covered by `TerminalRotationTest` (device, `ActivityScenario.recreate`)
   and `TerminalViewModelTest`.
-- Screen: Fit to screen (only while passive; it resizes for every viewer), keyboard toggle, Paste, Copy screen text,
+- Screen: "Sized for another screen · Fit to screen" chip (only while another viewer has the size), keyboard toggle, Paste, Copy screen text,
   Interrupt, Kill (confirm); OSC 52 consent dialog; keep-screen-on, font size (pinch persisted) and extra keys from
   `UserPreferences`; the pane takes focus when shown so hardware keyboards type immediately.
 

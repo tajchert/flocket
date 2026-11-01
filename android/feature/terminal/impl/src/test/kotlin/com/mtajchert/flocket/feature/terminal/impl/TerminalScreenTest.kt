@@ -10,6 +10,7 @@ import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
@@ -73,21 +74,35 @@ class TerminalScreenTest {
 
     @Test
     fun `toolbar actions call through`() {
-        show(live)
-        compose.onNodeWithContentDescription("Fit to screen").performClick()
+        show(live.copy(isOwner = true))
         compose.onNodeWithContentDescription("Show or hide keyboard").performClick()
         listOf("Paste", "Copy screen text", "Interrupt", "Kill").forEach { item ->
             compose.onNodeWithContentDescription("More actions").performClick()
             compose.onNodeWithText(item).performClick()
         }
-        assertEquals(listOf("fit", "keyboard", "paste", "copy", "interrupt", "kill"), clicks)
+        assertEquals(listOf("keyboard", "paste", "copy", "interrupt", "kill"), clicks)
     }
 
     @Test
-    fun `fit is offered only while passive`() {
+    fun `another screen taking the size shows a chip that fits on tap`() {
+        show(live.copy(isOwner = false))
+        compose.onNodeWithText("Sized for another screen").assertExists()
+        compose.onNodeWithTag("terminal_size_taken").performClick()
+        assertEquals(listOf("fit"), clicks)
+    }
+
+    @Test
+    fun `fit is offered only while another screen has the size`() {
         show(live.copy(isOwner = true))
         compose.onAllNodesWithText("Fit to screen").assertCountEquals(0)
+        compose.onAllNodesWithText("Sized for another screen").assertCountEquals(0)
         compose.onAllNodesWithContentDescriptionCount("Fit to screen", 0)
+    }
+
+    @Test
+    fun `the size chip is not shown while reconnecting`() {
+        show(live.copy(isOwner = false, streamConnected = false))
+        compose.onAllNodesWithText("Sized for another screen").assertCountEquals(0)
     }
 
     @Test

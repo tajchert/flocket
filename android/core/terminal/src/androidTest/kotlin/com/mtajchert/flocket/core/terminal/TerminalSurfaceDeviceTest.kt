@@ -210,6 +210,40 @@ class TerminalSurfaceDeviceTest {
     }
 
     @Test
+    fun aTapTakesTheSizeBackAfterAnotherViewerTookIt() {
+        ActivityScenario.launch(TerminalTestActivity::class.java).use { scenario ->
+            lateinit var vm: TerminalTestViewModel
+            scenario.onActivity { vm = it.vm }
+            waitFor { vm.controller.preferredSize() != TerminalSize(40, 12) } // laid out
+            vm.controller.fitToScreen()
+            waitFor { vm.controller.isOwner.value }
+            vm.stream.size.value = TerminalSize(200, 50) // the desktop took the size
+            waitFor { !vm.controller.isOwner.value }
+
+            var x = 0f
+            var y = 0f
+            scenario.onActivity { a ->
+                val view = findTerminal(a.window.decorView)!!
+                val loc = IntArray(2).also { view.getLocationOnScreen(it) }
+                x = loc[0] + view.width / 2f
+                y = loc[1] + view.height / 2f
+            }
+            val now = android.os.SystemClock.uptimeMillis()
+            val instrumentation = InstrumentationRegistry.getInstrumentation()
+            for ((action, t) in listOf(
+                android.view.MotionEvent.ACTION_DOWN to now,
+                android.view.MotionEvent.ACTION_UP to now + 50,
+            )) {
+                val e = android.view.MotionEvent.obtain(now, t, action, x, y, 0)
+                instrumentation.sendPointerSync(e)
+                e.recycle()
+            }
+            waitFor { vm.controller.isOwner.value }
+            assertEquals(vm.controller.preferredSize(), vm.stream.size.value)
+        }
+    }
+
+    @Test
     fun recreatingTheActivityKeepsTheControllerAndDoesNotReattach() {
         ActivityScenario.launch(TerminalTestActivity::class.java).use { scenario ->
             lateinit var before: TerminalController

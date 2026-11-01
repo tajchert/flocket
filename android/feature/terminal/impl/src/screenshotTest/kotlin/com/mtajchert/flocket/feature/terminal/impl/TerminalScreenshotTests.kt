@@ -103,6 +103,7 @@ private val live =
         connection = ConnectionState.Online(SampleData.coreInfo),
         phase = TerminalPhase.Live,
         streamConnected = true,
+        isOwner = true,
     )
 
 @Composable
@@ -137,6 +138,12 @@ private fun Shot(
 @PreviewPhoneDark
 @Composable
 private fun TerminalLiveScreenshot() = Shot(live)
+
+@PreviewTest
+@PreviewPhone
+@PreviewPhoneDark
+@Composable
+private fun TerminalSizeTakenScreenshot() = Shot(live.copy(isOwner = false), cols = 90, rows = 60)
 
 @PreviewTest
 @PreviewPhoneDark

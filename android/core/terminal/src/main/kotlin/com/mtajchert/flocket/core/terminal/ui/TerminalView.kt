@@ -706,7 +706,12 @@ class TerminalView(
                 }
 
                 override fun onSingleTapUp(e: MotionEvent): Boolean {
-                    if (selection.isActive) clearSelection() else showKeyboard()
+                    if (selection.isActive) {
+                        clearSelection()
+                    } else {
+                        controller?.reclaimSize()
+                        showKeyboard()
+                    }
                     performClick()
                     return true
                 }

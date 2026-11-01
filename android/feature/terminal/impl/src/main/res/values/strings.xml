@@ -14,7 +14,7 @@
     <string name="terminal_subtitle_host">%1$s · %2$s</string>
     <string name="terminal_subtitle_machine">%1$s · %2$s · %3$s</string>
     <string name="terminal_action_fit">Fit to screen</string>
-    <string name="terminal_action_fit_tooltip">Resizes the terminal for every viewer</string>
+    <string name="terminal_size_taken">Sized for another screen</string>
     <string name="terminal_action_paste">Paste</string>
     <string name="terminal_action_copy">Copy screen text</string>
     <string name="terminal_action_interrupt">Interrupt</string>

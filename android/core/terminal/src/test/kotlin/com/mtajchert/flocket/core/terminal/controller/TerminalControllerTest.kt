@@ -323,6 +323,100 @@ class TerminalControllerTest {
         }
 
     @Test
+    fun `a tap takes the size back after another viewer took it`() =
+        runTest {
+            val c = controller()
+            val s = FakeStream(TerminalSize(100, 70))
+            c.bind(s, AttachMode.Owner)
+            c.onViewportChanged(phone)
+            advanceUntilIdle()
+            s.size.value = TerminalSize(200, 50) // the desktop took the size
+            advanceUntilIdle()
+            assertFalse(c.isOwner.value)
+            s.calls.clear()
+            c.reclaimSize()
+            advanceUntilIdle()
+            assertTrue(c.isOwner.value)
+            assertEquals(listOf("resize 100x70", "display"), s.calls.toList())
+            assertEquals(TerminalSize(100, 70), c.gridSize.value)
+            c.close()
+        }
+
+    @Test
+    fun `a tap never resizes while we own the size, never owned it, or the link is down`() =
+        runTest {
+            val c = controller()
+            val s = FakeStream(TerminalSize(100, 70))
+            c.bind(s, AttachMode.Owner)
+            c.onViewportChanged(phone)
+            advanceUntilIdle()
+            s.calls.clear()
+            c.reclaimSize() // already the owner
+            advanceUntilIdle()
+            assertEquals(emptyList<String>(), s.calls.toList())
+
+            val passive = FakeStream(TerminalSize(200, 50))
+            c.bind(passive, AttachMode.Passive) // never owned: a tap is not a keystroke
+            advanceUntilIdle()
+            c.reclaimSize()
+            advanceUntilIdle()
+            assertFalse(c.isOwner.value)
+            assertEquals(emptyList<String>(), passive.calls.toList())
+
+            val dropped = FakeStream(TerminalSize(100, 70))
+            c.bind(dropped, AttachMode.Owner)
+            advanceUntilIdle()
+            dropped.size.value = TerminalSize(200, 50)
+            advanceUntilIdle()
+            dropped.connected.value = false
+            advanceUntilIdle()
+            dropped.calls.clear()
+            c.reclaimSize() // the reconnect takes the size again, not the tap
+            advanceUntilIdle()
+            assertFalse(c.isOwner.value)
+            assertEquals(emptyList<String>(), dropped.calls.toList())
+            c.close()
+        }
+
+    @Test
+    fun `coming back to the screen takes the size back after another viewer took it`() =
+        runTest {
+            val c = controller()
+            val s = FakeStream(TerminalSize(100, 70))
+            c.bind(s, AttachMode.Owner)
+            c.onViewportChanged(phone)
+            advanceUntilIdle()
+            c.setVisible(false)
+            advanceUntilIdle()
+            s.size.value = TerminalSize(200, 50) // the desktop took it while we were away
+            advanceUntilIdle()
+            assertFalse(c.isOwner.value)
+            s.calls.clear()
+            c.setVisible(true)
+            advanceUntilIdle()
+            assertTrue(c.isOwner.value)
+            assertEquals(listOf("resize 100x70", "display"), s.calls.toList())
+            c.close()
+        }
+
+    @Test
+    fun `coming back to the screen as the owner sends no resize`() =
+        runTest {
+            val c = controller()
+            val s = FakeStream(TerminalSize(100, 70))
+            c.bind(s, AttachMode.Owner)
+            c.onViewportChanged(phone)
+            advanceUntilIdle()
+            c.setVisible(false)
+            advanceUntilIdle()
+            s.calls.clear()
+            c.setVisible(true)
+            advanceUntilIdle()
+            assertEquals(emptyList<String>(), s.calls.filter { it.startsWith("resize") })
+            c.close()
+        }
+
+    @Test
     fun `focus follows visibility and view focus while owner`() =
         runTest {
             val c = controller()

@@ -117,6 +117,9 @@ class TerminalController(
 
     // Bound as Owner and the link dropped: take the size again when connected and visible.
     private var refitPending = false
+
+    // We were the owner and another viewer took the size: a tap or coming back to the screen takes it again.
+    private var takenByOther = false
     private var lastRequested: TerminalSize? = null
 
     // A RESIZE was sent and the core has not reported that size yet: sizes seen meanwhile are
@@ -242,6 +245,7 @@ class TerminalController(
             owner = false
             focusSent = false
             refitPending = false
+            takenByOther = false
             lastRequested = null
             awaitingSizeAck = false
             _isOwner.value = false
@@ -272,6 +276,7 @@ class TerminalController(
             stream = null
             owner = false
             refitPending = false
+            takenByOther = false
             _isOwner.value = false
             _connected.value = false
         }
@@ -285,6 +290,7 @@ class TerminalController(
             owner = false
             _isOwner.value = false
             focusSent = false
+            takenByOther = false
             lastRequested = null
             awaitingSizeAck = false
             if (mode == AttachMode.Owner) refitPending = true
@@ -389,6 +395,18 @@ class TerminalController(
         scope.launch { fit() }
     }
 
+    /**
+     * The user touched the terminal: if another viewer took the size from us, take it back (as
+     * [fitToScreen]). Does nothing otherwise, so a tap never resizes a terminal we did not own.
+     */
+    fun reclaimSize() {
+        scope.launch { reclaimIfTaken() }
+    }
+
+    private fun reclaimIfTaken() {
+        if (takenByOther && _connected.value) fit()
+    }
+
     private fun fit() {
         if (!owner) {
             becomeOwner()
@@ -399,10 +417,13 @@ class TerminalController(
 
     /** Lifecycle: app in foreground (STARTED) and screen on. Frames are not published while invisible. */
     fun setVisible(visible: Boolean) {
+        val cameBack = visible && !this.visible
         this.visible = visible
         visibleFlow.value = visible
         scope.launch {
             refitIfPending()
+            // Coming back to the screen counts as opening it again (ADR-0007).
+            if (cameBack) reclaimIfTaken()
             updateFocus()
         }
     }
@@ -500,6 +521,7 @@ class TerminalController(
         if (owner || mode == AttachMode.Observe) return
         val e = engine ?: return
         owner = true
+        takenByOther = false
         _isOwner.value = true
         resizeTo(viewport?.grid() ?: TerminalSize(e.cols, e.rows), force = true)
         if (visible && focused) {
@@ -541,6 +563,7 @@ class TerminalController(
         if (owner && lastRequested != null && size != lastRequested) {
             // Another viewer became the leader (SPEC §7.5); stay passive until the user interacts.
             owner = false
+            takenByOther = true
             _isOwner.value = false
             focusSent = false
         }

@@ -78,6 +78,9 @@ data class TerminalUiState(
 
     /** Input-affecting actions (paste, interrupt, kill, keyboard) make sense only on a live stream. */
     val canInteract: Boolean get() = phase == TerminalPhase.Live && streamConnected
+
+    /** Another viewer took the size (we always attach as owner, ADR-0007): drawn scaled down until we take it back. */
+    val sizeTakenByOther: Boolean get() = canInteract && !isOwner
 }
 
 /** The open rename dialog for a tab of the strip. */

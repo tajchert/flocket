@@ -47,7 +47,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.PlainTooltip
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.ScaffoldDefaults
 import androidx.compose.material3.SnackbarHost
@@ -55,12 +54,8 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TooltipAnchorPosition
-import androidx.compose.material3.TooltipBox
-import androidx.compose.material3.TooltipDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.rememberTooltipState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
@@ -181,6 +176,9 @@ fun TerminalScreen(
                 }
                 if (state.phase == TerminalPhase.Live && !state.streamConnected) {
                     ReconnectingChip(Modifier.align(Alignment.TopEnd).padding(8.dp))
+                }
+                if (state.sizeTakenByOther) {
+                    SizeTakenChip(actions.onFit, Modifier.align(Alignment.TopEnd).padding(8.dp))
                 }
             }
             EndBanner(state, actions)
@@ -326,9 +324,6 @@ private fun TerminalTopBar(
             }
         },
         actions = {
-            if (state.phase == TerminalPhase.Live && !state.isOwner && state.streamConnected) {
-                FitAction(actions.onFit)
-            }
             if (state.canInteract) {
                 IconButton(onClick = actions.onToggleKeyboard, modifier = Modifier.testTag("terminal_keyboard")) {
                     Icon(Icons.Outlined.Keyboard, stringResource(R.string.terminal_action_keyboard))
@@ -339,20 +334,6 @@ private fun TerminalTopBar(
         colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
         windowInsets = TopAppBarDefaults.windowInsets.only(paneInsetSides(layout)),
     )
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun FitAction(onFit: () -> Unit) {
-    TooltipBox(
-        positionProvider = TooltipDefaults.rememberTooltipPositionProvider(TooltipAnchorPosition.Below),
-        tooltip = { PlainTooltip { Text(stringResource(R.string.terminal_action_fit_tooltip)) } },
-        state = rememberTooltipState(),
-    ) {
-        IconButton(onClick = onFit) {
-            Icon(Icons.Outlined.FitScreen, stringResource(R.string.terminal_action_fit))
-        }
-    }
 }
 
 @Composable
@@ -541,6 +522,40 @@ private fun ProgressOverlay(
             CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
             Spacer(Modifier.width(12.dp))
             Text(label, style = MaterialTheme.typography.bodyMedium)
+        }
+    }
+}
+
+/**
+ * Another viewer (usually the desktop) took the terminal's size, so it is drawn scaled down. A tap
+ * on the terminal also takes the size back; this says why it looks small and offers the same.
+ */
+@Composable
+private fun SizeTakenChip(
+    onFit: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        onClick = onFit,
+        modifier = modifier.testTag("terminal_size_taken"),
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+        shadowElevation = 2.dp,
+    ) {
+        Row(
+            Modifier.padding(start = 12.dp, end = 8.dp, top = 4.dp, bottom = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(stringResource(R.string.terminal_size_taken), style = MaterialTheme.typography.labelMedium)
+            Spacer(Modifier.width(8.dp))
+            Icon(Icons.Outlined.FitScreen, contentDescription = null, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(4.dp))
+            Text(
+                stringResource(R.string.terminal_action_fit),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+            )
         }
     }
 }
