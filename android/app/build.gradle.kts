@@ -26,6 +26,8 @@ dependencies {
     implementation(projects.core.model)
     implementation(projects.core.common)
     implementation(projects.core.data)
+    implementation(projects.core.ssh)
+    implementation(projects.core.security)
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
