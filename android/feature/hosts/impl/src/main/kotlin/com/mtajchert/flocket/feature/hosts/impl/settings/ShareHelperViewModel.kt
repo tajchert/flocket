@@ -20,6 +20,7 @@ import dagger.hilt.InstallIn
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -199,6 +200,7 @@ class ShareHelperViewModel
 
         private suspend fun runInstall(machine: String?) {
             val session = session() ?: return
+            // Offline hides the rows (see ShareHelperSection), so this only closes a race: nothing is sent while stale.
             if (session.state.value.isStale) return
             set(machine, HelperStatus.Installing)
             val home =
@@ -207,7 +209,16 @@ class ShareHelperViewModel
                     is AppResult.Success -> r.value.trimEnd('/')
                 }
             val path = "$home/.local/bin/flocket-share"
-            val bytes = withContext(Dispatchers.IO) { assets.read(HELPER_ASSET) }
+            val bytes =
+                try {
+                    withContext(Dispatchers.IO) { assets.read(HELPER_ASSET) }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    // A missing or unreadable bundled asset must not crash the screen.
+                    val detail = "bundled $HELPER_ASSET unreadable: ${e::class.simpleName}"
+                    return set(machine, HelperStatus.Unknown(AppError.Storage(detail).toUiError()))
+                }
             // `file.write` creates the missing folders. Mutations are never retried: an unknown outcome stops here.
             when (val w = session.writeFile(machine, path, bytes)) {
                 is AppResult.Failure -> return set(machine, failure(w.error))

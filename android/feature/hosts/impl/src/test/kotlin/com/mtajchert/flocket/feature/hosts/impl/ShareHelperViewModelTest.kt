@@ -120,6 +120,26 @@ class ShareHelperViewModelTest {
         }
 
     @Test
+    fun `install with a missing bundled asset shows an error and sends nothing`() =
+        runTest {
+            val m = manager()
+            m.overview.value
+            val session = m.fakeSession(studio)!!
+            session.homeHandler = { AppResult.Success("/home/u") }
+            val vm =
+                ShareHelperViewModel(studio.value, m) { name ->
+                    if (name == "flocket-share") throw java.io.FileNotFoundException(name) else ByteArray(0)
+                }
+            vm.install(null)
+            vm.settled()
+            assertTrue(session.transferCalls.none { it.startsWith("write:") || it.contains("chmod") })
+            assertTrue(
+                vm.uiState.value.rows[0]
+                    .status is HelperStatus.Unknown,
+            )
+        }
+
+    @Test
     fun `install outcome unknown does not chmod`() =
         runTest {
             val m = manager()
