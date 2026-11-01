@@ -76,6 +76,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -209,8 +211,6 @@ fun TerminalScreen(
             }
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 terminal(Modifier.fillMaxSize())
-                // Over the terminal, never above it: a layout change would resize the remote terminal.
-                shares.card?.let { ShareCard(it, shareActions, Modifier.align(Alignment.TopCenter).padding(8.dp)) }
                 when (state.phase) {
                     TerminalPhase.Connecting -> {
                         ProgressOverlay(
@@ -230,19 +230,36 @@ fun TerminalScreen(
                         Unit
                     }
                 }
+                // Overlays sit over the terminal, never beside it: a layout change would resize the remote
+                // terminal. The chips stay on top (writes are disabled while stale), the share card below them.
                 Column(
-                    Modifier.align(Alignment.TopEnd).padding(8.dp),
+                    Modifier.fillMaxWidth().align(Alignment.TopCenter).padding(8.dp),
                     horizontalAlignment = Alignment.End,
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     if (fullScreen) FullScreenCorner(state, header, actions)
                     if (state.phase == TerminalPhase.Live && !state.streamConnected) ReconnectingChip()
                     if (state.sizeTakenByOther) SizeTakenChip(actions.onFit)
+                    shares.card?.let { ShareCard(it, shareActions, Modifier.align(Alignment.Start)) }
                 }
+                // BEGIN transfer
+                val shape = MaterialTheme.shapes.medium
+                Box(
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(8.dp)
+                        .shadow(6.dp, shape)
+                        .clip(shape),
+                ) {
+                    TransferStrip(
+                        transfer,
+                        actions.onTransferCancel,
+                        actions.onTransferRetry,
+                        actions.onTransferDismiss,
+                    )
+                }
+                // END transfer
             }
-            // BEGIN transfer
-            TransferStrip(transfer, actions.onTransferCancel, actions.onTransferRetry, actions.onTransferDismiss)
-            // END transfer
             EndBanner(state, actions)
             if (state.showExtraKeys && state.canInteract) {
                 ReplyBar(state.status, actions.onReply)

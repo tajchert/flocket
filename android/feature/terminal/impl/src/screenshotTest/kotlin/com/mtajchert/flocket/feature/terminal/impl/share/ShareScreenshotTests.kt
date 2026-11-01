@@ -25,6 +25,7 @@ import com.mtajchert.flocket.feature.terminal.impl.TerminalActions
 import com.mtajchert.flocket.feature.terminal.impl.TerminalPhase
 import com.mtajchert.flocket.feature.terminal.impl.TerminalScreen
 import com.mtajchert.flocket.feature.terminal.impl.TerminalUiState
+import com.mtajchert.flocket.feature.terminal.impl.transfer.TransferPhase
 
 @Preview(name = "Phone", showBackground = true, widthDp = 412, heightDp = 892, apiLevel = 36)
 private annotation class PreviewPhone
@@ -185,5 +186,27 @@ private fun ShareCardOverTerminalScreenshot() =
                 ),
             actions = TerminalActions(),
             shares = SharesUi(card = one, all = listOf(one)),
+        ) { modifier -> Box(modifier.background(Color(0xFF101418))) }
+    }
+
+@PreviewTest
+@PreviewPhoneDark
+@Composable
+private fun OverlaysTogetherScreenshot() =
+    FlocketTheme(darkTheme = true, dynamicColor = false) {
+        TerminalScreen(
+            state =
+                TerminalUiState(
+                    address = "t1",
+                    hostLabel = "Studio Mac",
+                    agentLabel = "claude",
+                    connection = ConnectionState.Online(SampleData.coreInfo),
+                    phase = TerminalPhase.Live,
+                    streamConnected = false,
+                    showExtraKeys = false,
+                ),
+            actions = TerminalActions(),
+            shares = SharesUi(card = one, all = listOf(one)),
+            transfer = TransferPhase.Uploading("screenshot.png"),
         ) { modifier -> Box(modifier.background(Color(0xFF101418))) }
     }
