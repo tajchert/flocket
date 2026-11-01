@@ -13,12 +13,15 @@ import com.mtajchert.flocket.core.protocol.wire.FrameKind
 import com.mtajchert.flocket.core.protocol.wire.ProtocolException
 import com.mtajchert.flocket.core.protocol.wire.WireLimits
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -764,7 +767,14 @@ class CoreConnectionTest {
     @Test
     fun `attach replies racing their timeout never leave a channel open`() =
         runBlocking(Dispatchers.Default) {
-            val scope = CoroutineScope(coroutineContext + SupervisorJob())
+            // A child of runBlocking, joined below: nothing from this real-thread test may outlive it, or a late
+            // failure is reported by the next runTest as UncaughtExceptionsBeforeTest (seen on slow CI runners).
+            val leaked = java.util.concurrent.ConcurrentLinkedQueue<Throwable>()
+            val scope =
+                CoroutineScope(
+                    coroutineContext + SupervisorJob(coroutineContext[Job]) +
+                        CoroutineExceptionHandler { _, e -> leaked += e },
+                )
             val core = fake(scope)
             val conn = CoreConnection.open(core.client, scope)
             repeat(200) { i ->
@@ -784,6 +794,7 @@ class CoreConnectionTest {
                     true
                 }
             assertEquals("channels left open: ${(1..allocated()).filter { it !in closed() }}", true, settled)
-            scope.cancel()
+            scope.coroutineContext[Job]!!.cancelAndJoin()
+            assertEquals("coroutines failed: ${leaked.map { it.stackTraceToString() }}", 0, leaked.size)
         }
 }
