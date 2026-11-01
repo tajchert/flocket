@@ -303,6 +303,26 @@ class TerminalControllerTest {
         }
 
     @Test
+    fun `the core's previous size arriving after our resize does not drop ownership`() =
+        runTest {
+            val c = controller()
+            val s = FakeStream(TerminalSize(200, 120)) // headless size from before our RESIZE
+            c.onViewportChanged(phone)
+            c.bind(s, AttachMode.Owner)
+            advanceUntilIdle()
+            assertTrue(c.isOwner.value)
+            assertEquals(TerminalSize(100, 70), c.gridSize.value)
+            s.size.value = TerminalSize(100, 70) // the core applied our size
+            advanceUntilIdle()
+            assertTrue(c.isOwner.value)
+            s.size.value = TerminalSize(200, 50) // now the desktop takes it
+            advanceUntilIdle()
+            assertFalse(c.isOwner.value)
+            assertEquals(200, engine.cols)
+            c.close()
+        }
+
+    @Test
     fun `focus follows visibility and view focus while owner`() =
         runTest {
             val c = controller()

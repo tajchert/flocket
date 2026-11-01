@@ -118,6 +118,10 @@ class TerminalController(
     // Bound as Owner and the link dropped: take the size again when connected and visible.
     private var refitPending = false
     private var lastRequested: TerminalSize? = null
+
+    // A RESIZE was sent and the core has not reported that size yet: sizes seen meanwhile are
+    // stale (sent before ours was applied), not another viewer taking over.
+    private var awaitingSizeAck = false
     private var theme = theme
 
     @Volatile private var visible = true
@@ -239,6 +243,7 @@ class TerminalController(
             focusSent = false
             refitPending = false
             lastRequested = null
+            awaitingSizeAck = false
             _isOwner.value = false
             _isReadOnly.value = mode == AttachMode.Observe
             applyRemoteSize(stream.size.value)
@@ -281,6 +286,7 @@ class TerminalController(
             _isOwner.value = false
             focusSent = false
             lastRequested = null
+            awaitingSizeAck = false
             if (mode == AttachMode.Owner) refitPending = true
         } else {
             refitIfPending()
@@ -504,12 +510,18 @@ class TerminalController(
             requestFrame()
         }
         lastRequested = size
+        // The core reports only changes: no ack comes for the size it already has.
+        awaitingSizeAck = stream?.size?.value != size
         stream?.resize(size.cols, size.rows)
     }
 
     private fun applyRemoteSize(size: TerminalSize) {
         val e = engine ?: return
         if (size.cols <= 0 || size.rows <= 0) return
+        if (owner && awaitingSizeAck) {
+            if (size == lastRequested) awaitingSizeAck = false
+            return
+        }
         if (owner && lastRequested != null && size != lastRequested) {
             // Another viewer became the leader (SPEC §7.5); stay passive until the user interacts.
             owner = false
