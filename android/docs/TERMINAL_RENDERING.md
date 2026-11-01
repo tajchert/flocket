@@ -12,6 +12,7 @@ How a terminal gets from `TerminalStream.output` bytes to pixels, and how keys g
 | `FrameClock` / `ChoreographerFrameClock` | `controller` | Vsync ticks; at most one published frame per tick. |
 | `TerminalFrameSource` / `StaticFrameSource` | `controller` | What the renderer pulls rows from (controller, or a fixed snapshot for previews). |
 | `TerminalView` | `ui` | Hardware-accelerated `View`: per-row `RenderNode`s, cursor/selection/IME overlay, `InputConnection`, hardware keys, gestures. |
+| `SmoothScroll`, `TerminalSelection` | `ui` | Pure models (JVM-tested): fractional scroll position and selection, both in row ids. |
 | `TerminalRenderer`, `BoxDrawing` | `ui` | Draws snapshot rows: merged background rects, text runs, per-cell fallback, geometric box/block glyphs. |
 | `TerminalSurface`, `TerminalExtraKeys`, `ExtraKeysRow`, `TerminalSnapshot` | `ui` | Compose entry points (`AndroidView` host, extra-keys row, static preview). |
 | `KeyEventMapper`, `TerminalInputConnection` | `input` | Android key events and IME calls to `KeyInput`/text. |
@@ -60,7 +61,8 @@ vsync (Choreographer) ──▶ [engine thread] drainEvents + engine.snapshot(wo
   rows (font glyphs leave gaps when line height exceeds glyph height). Double lines still use the font.
 - Underline/strikethrough: merged rects. Faint and inverse are already resolved by the engine. Invisible cells are not drawn.
 - Cursor: block (inverted glyph), bar, underline; hollow block when the view is not focused. No blink (battery).
-- Selection: translucent overlay; IME composing text is drawn at the cursor with an underline.
+- Selection: translucent overlay plus teardrop handles in Material `primary` (`TerminalView.selectionColor`, set by the
+  Compose wrappers; falls back to the theme's cursor color). IME composing text is drawn at the cursor with an underline.
 
 ## Size ownership (SPEC §7.5)
 
@@ -119,9 +121,39 @@ one `TerminalController` (Ghostty engine via `TerminalControllerFactory`) and th
   Home/End/PgUp/PgDn, `| ~ / -`.
 - Writes go through a bounded queue (256) to one writer coroutine: in order, never retried; a full queue or a failed
   `write` is emitted on `failures`. Input snaps the viewport to the bottom.
-- Gestures: vertical drag/fling scrolls scrollback in whole rows (the sub-row remainder is carried, not drawn), tap
-  focuses and shows the keyboard, long-press selects a word and dragging extends it, a floating Copy/Paste action mode
-  appears, two-finger tap pastes.
+- Gestures: vertical drag/fling scrolls scrollback pixel-smoothly (below), tap focuses and shows the keyboard (or
+  clears a selection), long-press selects a word (below), two-finger tap pastes.
+
+## Scrolling
+
+- Row ids: `ScreenSnapshot.historyBase` counts rows that left the screen buffer (eviction at the scrollback cap, clear
+  scrollback, reset), so `historyBase + screen row` names the same content while output arrives. Ghostty tracks it with
+  a tracked grid ref; the fake engine counts evictions.
+- `SmoothScroll` keeps a fractional top row id. The engine viewport only sits on whole rows: the view requests
+  `ceil(top)` with the absolute `TerminalController.scrollToRow` (moves still in flight never add up) and draws the
+  frame shifted down by the fraction, rounded to whole device pixels, with the row above the viewport filling the gap.
+  The controller reads that row (`TerminalEngine.readRow`, read-only) only while the view asks for it (touching or
+  scrolled up), and only when it is a different row; at the live bottom nothing extra happens per frame.
+- The engine lags a frame or two behind requests; the shift never exceeds the one row we have, so a fast fling moves
+  in whole rows and turns smooth as it slows. Fling: `OverScroller`, stopped at the oldest row and at the bottom.
+- Live (at the bottom) follows new output. Scrolled up stays on its content (ids are stable). Input snaps the engine
+  to the bottom and the view goes live; less than a row above the bottom with no new output keeps its fraction.
+- Alternate screen: no scrollback, so drags do nothing (as before).
+
+## Selection
+
+- `TerminalSelection` holds two cells in row ids, so it survives output and scrolling. It is cleared when its start row
+  is evicted, when cols x rows change (rotation, resize, reflow) and on any key.
+- Long-press selects a word (letters, digits, `-_./~:@%+=#`, any non-ASCII; a wide character whole) and dragging
+  extends the end. Two teardrop handles (start hangs below-left, end below-right) drag with the finger offset kept;
+  they may cross (ends swap) and auto-scroll near the top/bottom edge, into scrollback.
+- Toolbar: the platform floating `ActionMode` (TalkBack-friendly): Copy (then clears), Paste, Select all (whole
+  scrollback). Tap elsewhere clears. Ctrl+Shift+C/V copy/paste.
+- Text: `TerminalController.selectionText` calls `TerminalEngine.textRange` on the engine thread, so rows scrolled off
+  screen are included; wide characters and grapheme clusters appear once, soft-wrapped rows join without a newline,
+  line ends are trimmed. Static frame sources (previews) use the same rules on visible rows (`RowTextBuilder`).
+- Accessibility: the handles are virtual nodes ("Selection start handle", "Selection end handle").
+- "Copy screen text" in the terminal screen still copies the visible screen.
 
 ## Profiling
 
