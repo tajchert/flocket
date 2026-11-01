@@ -47,6 +47,11 @@ internal fun Project.configureAndroidCommon(extension: CommonExtension) {
     extension.compileOptions.targetCompatibility = JAVA_VERSION
     // Robolectric needs merged resources and manifests.
     extension.testOptions.unitTests.isIncludeAndroidResources = true
+    // Lint analyses production code only. Its K2 UAST analysis of test sources crashes
+    // intermittently ("Error while resolving FirRegularClassImpl from RAW_FIR"), which made CI
+    // flaky; test code is covered by compilation, ktlint and the tests themselves.
+    extension.lint.ignoreTestSources = true
+    extension.lint.checkTestSources = false
     configureTestJvm()
 }
 
