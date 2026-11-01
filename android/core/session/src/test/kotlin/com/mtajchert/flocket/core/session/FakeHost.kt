@@ -9,6 +9,7 @@ import com.mtajchert.flocket.core.model.HostId
 import com.mtajchert.flocket.core.protocol.testing.FakeCore
 import com.mtajchert.flocket.core.protocol.testing.FakeCoreConfig
 import com.mtajchert.flocket.core.protocol.transport.ByteTransport
+import com.mtajchert.flocket.core.protocol.transport.TransportException
 import com.mtajchert.flocket.core.protocol.wire.FrameKind
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -29,6 +30,19 @@ class TrackingTransport(
     @Volatile
     var closed = false
         private set
+
+    /** When set, every later write fails after it started (bytes may have left: outcome unknown). */
+    @Volatile
+    var failWritesAfterStart = false
+
+    override suspend fun write(
+        bytes: ByteArray,
+        offset: Int,
+        length: Int,
+    ) {
+        if (failWritesAfterStart) throw TransportException("link died mid-write")
+        delegate.write(bytes, offset, length)
+    }
 
     override suspend fun close() {
         closed = true

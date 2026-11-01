@@ -8,6 +8,7 @@ import com.mtajchert.flocket.core.model.ConnectionState
 import com.mtajchert.flocket.core.model.TerminalAddress
 import com.mtajchert.flocket.core.protocol.testing.FakeCore
 import com.mtajchert.flocket.core.protocol.testing.FakeCoreConfig
+import com.mtajchert.flocket.core.protocol.testing.FakeRpcError
 import com.mtajchert.flocket.core.protocol.wire.FrameKind
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.awaitCancellation
@@ -16,6 +17,8 @@ import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonArray
@@ -569,6 +572,71 @@ class CoreSessionTest {
             assertEquals(JsonPrimitive(true), host.core.attachParams()["resumed"])
             eventually("fresh paint") { out.toString().count("first-paint") == 2 }
             assertTrue(host.core.inputOf(host.core.attachChannelOf("t1")!!).isEmpty())
+            s.stop()
+        }
+
+    @Test
+    fun `transient reattach failure on a live link is retried with backoff, not left parked`() =
+        runTest {
+            val host = hostWith("t1")
+            val s = host.session(this)
+            s.start()
+            s.awaitOnline()
+            val stream = s.attachOk()
+            host.configure = { c -> c.errors["terminal.attach"] = FakeRpcError("internal") }
+            host.core.dropConnection()
+            s.awaitConnection { it is ConnectionState.Reconnecting }
+            s.awaitOnline()
+            val core2 = host.core
+            eventually("failed reattach") { core2.callsOf("terminal.attach").isNotEmpty() }
+            runCurrent()
+            assertFalse(stream.connected.value)
+            assertNull(stream.end.value)
+            core2.errors.remove("terminal.attach")
+            advanceTimeBy(1_100) // first retry after ~1 s (fixed jitter)
+            eventually("retried reattach") { stream.connected.value }
+            assertEquals(JsonPrimitive(true), core2.attachParams()["resumed"])
+            assertTrue(core2.controlKinds(core2.attachChannelOf("t1")!!).isEmpty())
+            assertTrue(s.state.value.connection is ConnectionState.Online)
+            s.stop()
+        }
+
+    @Test
+    fun `unavailable on reattach parks a running terminal but ends a waiting kept one`() =
+        runTest {
+            val waiting = JsonObject(FakeCore.terminal("t2") + ("pid" to JsonNull))
+            val host = hostWith("t1").apply { terminals += waiting }
+            val s = host.session(this)
+            s.start()
+            s.awaitOnline()
+            val running = s.attachOk()
+            val kept = s.attach(TerminalAddress("t2"), AttachRequest(80, 24)).getOrThrow()
+            host.configure = { c -> c.errors["terminal.attach"] = FakeRpcError("unavailable") }
+            host.core.dropConnection()
+            s.awaitConnection { it is ConnectionState.Reconnecting }
+            s.awaitOnline()
+            eventually("kept stream ended") { kept.end.value != null }
+            assertTrue(kept.end.value is StreamEnd.ProgramLost)
+            // e.g. a remote machine's line is down: the program still runs, keep the handle.
+            assertNull(running.end.value)
+            host.core.errors.remove("terminal.attach")
+            advanceTimeBy(1_100)
+            eventually("running stream re-attached") { running.connected.value }
+            s.stop()
+        }
+
+    @Test
+    fun `terminal input written before the link died is OutcomeUnknown, never retried`() =
+        runTest {
+            val host = hostWith("t1")
+            val s = host.session(this)
+            s.start()
+            s.awaitOnline()
+            val stream = s.attachOk()
+            val transport = host.transports.last()
+            transport.failWritesAfterStart = true
+            val r = stream.write("rm -rf build\r".toByteArray())
+            assertEquals(AppError.OutcomeUnknown("terminal.input"), r.errorOrNull())
             s.stop()
         }
 }

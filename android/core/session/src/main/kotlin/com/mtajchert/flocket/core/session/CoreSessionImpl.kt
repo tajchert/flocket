@@ -146,7 +146,16 @@ class CoreSessionImpl(
         while (true) {
             val epoch = epochs.incrementAndGet()
             setConnection(epoch, ConnectionState.Connecting(failures + 1))
-            val (error, wasOnline) = runLink(epoch)
+            val (error, wasOnline) =
+                try {
+                    runLink(epoch)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    // Never let a bug kill the loop for good (the session would hang in Online/Connecting).
+                    logger.warn(TAG, { "connection loop failed: ${e.javaClass.simpleName}" })
+                    AppError.Unexpected(e) to false
+                }
             failures = if (wasOnline) 1 else failures + 1
             if (error.needsUser()) {
                 logger.info(TAG) { "${endpoint.hostId.value}: needs attention (${error.javaClass.simpleName})" }
@@ -157,6 +166,7 @@ class CoreSessionImpl(
                 continue
             }
             val delayMs = config.backoffDelayMs(failures)
+            retrySignal.tryReceive() // a press made before this wait must not skip it
             setConnection(epoch, ConnectionState.Reconnecting(failures, error, clock.nowMillis() + delayMs))
             withTimeoutOrNull(delayMs) { retrySignal.receive() }
         }
@@ -244,7 +254,7 @@ class CoreSessionImpl(
     private suspend fun park(c: CoreConnection) {
         val open = streams.mapNotNull { s -> s.current?.channel?.takeIf { it.closeReason.value == null } }
         if (open.isEmpty() || c.isClosed) return
-        val j = scope.launch { open.forEach { ch -> runCatching { ch.close() } } }
+        val j = scope.launch { open.forEach { ch -> ch.closeQuietly(logger, TAG) } }
         withTimeoutOrNull(config.detachGrace) { j.join() }
     }
 
@@ -310,7 +320,13 @@ class CoreSessionImpl(
             val resync = sub.notifications.firstOrNull { n -> apply(l, n) }
             if (l.conn.isClosed) return
             if (resync == null) logger.warn(TAG, { "event channel ended (${sub.end.value}); resubscribing" })
-            runCatching { sub.close() }
+            try {
+                sub.close()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                logger.debug(TAG) { "unsubscribe failed: ${e.javaClass.simpleName}" }
+            }
             if (++resyncs > config.maxResyncsPerConnection) {
                 logger.warn(TAG, { "too many resyncs; rebuilding connection" })
                 l.conn.close()
@@ -426,11 +442,11 @@ class CoreSessionImpl(
             } catch (e: Exception) {
                 return AppResult.Failure(e.toAppError("terminal.attach"))
             }
+        val attached =
+            stream.install(l.epoch, ch, request.mode == AttachMode.Owner, request.cols, request.rows, request.display)
+                ?: error("fresh stream cannot be ended")
         streams.add(stream)
-        monitor(
-            stream,
-            stream.install(l.epoch, ch, request.mode == AttachMode.Owner, request.cols, request.rows, request.display),
-        )
+        monitor(stream, attached)
         return AppResult.Success(stream)
     }
 
@@ -451,43 +467,57 @@ class CoreSessionImpl(
         )
     }
 
-    /** Re-attach [s] on [l] with `resumed:true` unless it already has a live channel there. */
+    /**
+     * Re-attach [s] on [l] with `resumed:true` unless it already has a live channel there. A
+     * transient failure while [l] is still current is retried with backoff (otherwise the handle
+     * would stay disconnected until the next link drop). Attaching is not a write: retrying it is safe.
+     */
     private suspend fun reattach(
         s: TerminalStreamImpl,
         l: Link,
+        attempt: Int = 1,
     ) {
-        s.attachMutex.withLock {
-            if (s.isEnded || s.isDetaching || link.get() !== l) return
-            val cur = s.current
-            if (cur != null && cur.epoch == l.epoch && cur.channel.closeReason.value == null) return
-            val (cols, rows) = s.desiredSize()
-            val display = s.desiredDisplay()
-            val ch: AttachChannel =
-                try {
-                    l.conn.attach(attachParams(s, resumed = true))
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: RpcException) {
-                    endFromReattachError(s, e.kind)
-                    return
-                } catch (e: Exception) {
-                    logger.debug(
-                        TAG,
-                    ) { "reattach ${s.address} failed: ${e.javaClass.simpleName}; waiting for next link" }
-                    return
-                }
-            if (link.get() !== l || s.isEnded) {
-                runCatching { ch.close() }
-                return
+        val retry =
+            s.attachMutex.withLock {
+                if (s.isEnded || s.isDetaching || link.get() !== l) return
+                val cur = s.current
+                if (cur != null && cur.epoch == l.epoch && cur.channel.closeReason.value == null) return
+                val (cols, rows) = s.desiredSize()
+                val display = s.desiredDisplay()
+                val ch: AttachChannel =
+                    try {
+                        l.conn.attach(attachParams(s, resumed = true))
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: RpcException) {
+                        return@withLock !endFromReattachError(s, e.kind)
+                    } catch (e: Exception) {
+                        logger.debug(TAG) { "reattach ${s.address} failed: ${e.javaClass.simpleName}" }
+                        return@withLock true
+                    }
+                val a =
+                    if (link.get() === l && !s.isEnded && !s.isDetaching) {
+                        s.install(l.epoch, ch, active = false, cols = cols, rows = rows, display = display)
+                    } else {
+                        null
+                    }
+                if (a == null) ch.closeQuietly(logger, TAG) else monitor(s, a)
+                false
             }
-            monitor(s, s.install(l.epoch, ch, active = false, cols = cols, rows = rows, display = display))
+        if (retry && link.get() === l && !s.isEnded && !s.isDetaching) {
+            val wait = config.backoffDelayMs(attempt)
+            scope.launch {
+                delay(wait)
+                reattach(s, l, attempt + 1)
+            }
         }
     }
 
+    /** Ends [s] for a terminal-state attach error; returns false when the error is transient. */
     private fun endFromReattachError(
         s: TerminalStreamImpl,
         kind: String,
-    ) {
+    ): Boolean {
         val record = state.value.terminal(s.address)
         when (kind) {
             AppError.Rpc.FINISHED -> {
@@ -496,7 +526,10 @@ class CoreSessionImpl(
             }
 
             AppError.Rpc.UNAVAILABLE -> {
-                s.finish(StreamEnd.ProgramLost((record?.liveness as? Liveness.Waiting)?.reason))
+                // A kept terminal waiting for its new shell is over for this handle; anything else
+                // (e.g. a remote machine's line is down, SPEC §10) is transient: keep the handle parked.
+                val waiting = record?.liveness as? Liveness.Waiting ?: return false
+                s.finish(StreamEnd.ProgramLost(waiting.reason))
             }
 
             AppError.Rpc.NOT_FOUND, AppError.Rpc.MACHINE_UNKNOWN -> {
@@ -504,9 +537,11 @@ class CoreSessionImpl(
             }
 
             else -> {
-                logger.warn(TAG, { "reattach ${s.address}: rpc $kind; waiting for next link" })
+                logger.warn(TAG, { "reattach ${s.address}: rpc $kind; retrying" })
+                return false
             }
         }
+        return true
     }
 
     private fun monitor(

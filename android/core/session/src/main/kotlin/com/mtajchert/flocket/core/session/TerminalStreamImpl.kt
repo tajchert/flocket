@@ -14,12 +14,25 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
+
+/** Close [this] channel ignoring failures, but never swallowing cancellation. */
+internal suspend fun AttachChannel.closeQuietly(
+    logger: Logger,
+    tag: String,
+) {
+    try {
+        close()
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        logger.debug(tag) { "close channel $channel: ${e.javaClass.simpleName}" }
+    }
+}
 
 /** What a durable stream needs from its session. */
 internal interface StreamHost {
@@ -77,6 +90,9 @@ internal class TerminalStreamImpl(
     val attachMutex = Mutex()
 
     private val lock = Any()
+
+    /** Guards transitions of [slot], [connectedState] and [endState] together. */
+    private val stateLock = Any()
     private var desiredCols = cols
     private var desiredRows = rows
     private var desiredDisplay = display
@@ -114,7 +130,11 @@ internal class TerminalStreamImpl(
 
     fun desiredDisplay(): DisplayFacts? = synchronized(lock) { desiredDisplay }
 
-    /** Install a fresh channel; [active] = attached as size owner. Returns it for monitoring. */
+    /**
+     * Install a fresh channel; [active] = attached as size owner. Returns it for monitoring, or
+     * null when the handle already ended (the caller must close [channel]). Atomic with [finish]
+     * and [markDisconnected] so an ended handle never shows a live channel.
+     */
     fun install(
         epoch: Long,
         channel: AttachChannel,
@@ -122,18 +142,23 @@ internal class TerminalStreamImpl(
         cols: Int,
         rows: Int,
         display: DisplayFacts?,
-    ): Attached {
+    ): Attached? {
         val a = Attached(epoch, gens.incrementAndGet(), channel, active, cols, rows, display)
-        slot.value = Slot(a, slot.value.ended)
+        synchronized(stateLock) {
+            if (endState.value != null) return null
+            slot.value = Slot(a, false)
+            connectedState.value = true
+        }
         if (channel.terminal.cols > 0 && channel.terminal.rows > 0) {
             sizeState.value = TerminalSize(channel.terminal.cols, channel.terminal.rows)
         }
-        connectedState.value = true
         return a
     }
 
     fun markDisconnected(a: Attached) {
-        if (slot.value.attached?.gen == a.gen) connectedState.value = false
+        synchronized(stateLock) {
+            if (slot.value.attached?.gen == a.gen) connectedState.value = false
+        }
     }
 
     fun updateSize(
@@ -145,12 +170,17 @@ internal class TerminalStreamImpl(
 
     /** Ends the handle once; closes a still-open channel. */
     fun finish(end: StreamEnd) {
-        if (!endState.compareAndSet(null, end)) return
-        connectedState.value = false
-        slot.update { Slot(it.attached, true) }
+        val ch =
+            synchronized(stateLock) {
+                if (endState.value != null) return
+                endState.value = end
+                connectedState.value = false
+                val attached = slot.value.attached
+                slot.value = Slot(attached, true)
+                attached?.channel
+            }
         host.onFinished(this)
-        val ch = current?.channel
-        if (ch != null && ch.closeReason.value == null) scope.launch { runCatching { ch.close() } }
+        if (ch != null && ch.closeReason.value == null) scope.launch { ch.closeQuietly(logger, TAG) }
     }
 
     override suspend fun write(bytes: ByteArray): AppResult<Unit> {
@@ -170,7 +200,8 @@ internal class TerminalStreamImpl(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            AppResult.Failure(e.toAppError("terminal.input"))
+            // Bytes handed to the transport before the link died may have been typed: OutcomeUnknown.
+            AppResult.Failure(e.toAppError("terminal.input", mutating = true))
         }
     }
 
