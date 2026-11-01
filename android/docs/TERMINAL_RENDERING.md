@@ -122,7 +122,7 @@ one `TerminalController` (Ghostty engine via `TerminalControllerFactory`) and th
   Home/End/PgUp/PgDn, `| ~ / -`.
 - Writes go through a bounded queue (256) to one writer coroutine: in order, never retried; a full queue or a failed
   `write` is emitted on `failures`. Input snaps the viewport to the bottom.
-- Gestures: vertical drag/fling scrolls scrollback pixel-smoothly (below), tap focuses and shows the keyboard (or
+- Gestures: vertical drag/fling scrolls scrollback pixel-smoothly, or the program itself on the alternate screen or under mouse tracking (below), tap focuses and shows the keyboard (or
   clears a selection), long-press selects a word (below; on blank cells past the row's text it selects nothing), two-finger tap pastes.
 
 ## Scrolling
@@ -142,7 +142,12 @@ one `TerminalController` (Ghostty engine via `TerminalControllerFactory`) and th
   in whole rows and turns smooth as it slows. Fling: `OverScroller`, stopped at the oldest row and at the bottom.
 - Live (at the bottom) follows new output. Scrolled up stays on its content (ids are stable). Input snaps the engine
   to the bottom and the view goes live; less than a row above the bottom with no new output keeps its fraction.
-- Alternate screen: no scrollback, so drags do nothing (as before).
+- Programs that take the wheel (`ScreenSnapshot.scrollInput`, like a desktop terminal): while the program tracks the
+  mouse (?9/?1000/?1002/?1003, e.g. Codex), drag and fling send one wheel event per row of travel at the touched cell
+  (`TerminalController.scrollProgram` → `TerminalEngine.encodeScroll`, libghostty's mouse encoder, one write per
+  call); on the alternate screen without mouse tracking they send Up/Down keys (alternate scroll ?1007, on by default;
+  `less`, `man`). With ?1007 off the alternate screen ignores drags. Read-only viewers send nothing. Drag down = older
+  = wheel up / Up.
 
 ## Selection
 

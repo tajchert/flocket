@@ -383,6 +383,34 @@ class TerminalControllerTest {
         }
 
     @Test
+    fun `scrolling a program with mouse tracking writes its wheel events in one write`() =
+        runTest {
+            val c = controller()
+            val s = FakeStream()
+            c.bind(s, AttachMode.Owner)
+            advanceUntilIdle()
+            s.chunks.send("\u001b[?1049h\u001b[?1000h\u001b[?1006h".encodeToByteArray())
+            advanceUntilIdle()
+            assertTrue(c.scrollProgram(-3, col = 0, row = 0))
+            advanceUntilIdle()
+            assertEquals(listOf("\u001b[<64;1;1M".repeat(3)), s.writes.map { it.decodeToString() })
+            c.close()
+        }
+
+    @Test
+    fun `scrolling the program writes nothing on the main screen`() =
+        runTest {
+            val c = controller()
+            val s = FakeStream()
+            c.bind(s, AttachMode.Owner)
+            advanceUntilIdle()
+            c.scrollProgram(-3, col = 0, row = 0)
+            advanceUntilIdle()
+            assertTrue(s.writes.isEmpty())
+            c.close()
+        }
+
+    @Test
     fun `sticky ctrl applies to the next IME character once`() =
         runTest {
             val c = controller()

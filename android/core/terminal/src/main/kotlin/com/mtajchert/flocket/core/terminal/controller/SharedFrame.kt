@@ -112,7 +112,8 @@ internal fun copyRows(
         dst.viewportOffset != src.viewportOffset ||
         dst.scrollbackRows != src.scrollbackRows ||
         dst.historyBase != src.historyBase ||
-        dst.altScreen != src.altScreen
+        dst.altScreen != src.altScreen ||
+        dst.scrollInput != src.scrollInput
     ) {
         any = true
     }
@@ -124,6 +125,7 @@ internal fun copyRows(
     dst.viewportOffset = src.viewportOffset
     dst.historyBase = src.historyBase
     dst.altScreen = src.altScreen
+    dst.scrollInput = src.scrollInput
     dst.title = src.title
     return any
 }

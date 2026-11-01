@@ -60,6 +60,18 @@ interface TerminalEngine : AutoCloseable {
     /** Encode pasted text (bracketed paste when the program enabled it). */
     fun encodePaste(text: String): ByteArray
 
+    /**
+     * Encode a vertical swipe of [lines] rows (negative = toward older output) for the program, at
+     * viewport cell ([col], [row]), following the current [ScreenSnapshot.scrollInput]: one mouse
+     * wheel event per row, or one Up/Down key per row. Empty for [ScrollInput.Scrollback] and
+     * [ScrollInput.None].
+     */
+    fun encodeScroll(
+        lines: Int,
+        col: Int,
+        row: Int,
+    ): ByteArray = ByteArray(0)
+
     /** Side effects produced since the last call (title, bell, clipboard, …). */
     fun drainEvents(): List<TerminalEvent>
 
@@ -166,6 +178,9 @@ class ScreenSnapshot(
     /** The alternate screen is active (no scrollback; row ids are not comparable across a switch). */
     var altScreen: Boolean = false
 
+    /** What a vertical swipe scrolls right now (see [TerminalEngine.encodeScroll]). */
+    var scrollInput: ScrollInput = ScrollInput.Scrollback
+
     var title: String = ""
 
     fun resize(
@@ -212,6 +227,20 @@ object CellFlags {
 }
 
 enum class CursorStyle { Block, Underline, Bar }
+
+/**
+ * Where a vertical swipe goes, like a desktop terminal's mouse wheel: the program gets wheel events
+ * while it tracks the mouse (any screen), Up/Down keys on the alternate screen with alternate scroll
+ * mode (?1007, on by default), otherwise the view scrolls the scrollback.
+ */
+enum class ScrollInput {
+    Scrollback,
+    MouseWheel,
+    ArrowKeys,
+
+    /** Alternate screen with alternate scroll mode off: swipes do nothing. */
+    None,
+}
 
 /** A key press from IME, hardware keyboard or the extra-keys row. */
 data class KeyInput(

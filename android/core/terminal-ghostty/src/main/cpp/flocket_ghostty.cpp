@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <string>
 #include <vector>
@@ -23,6 +24,8 @@ struct Engine {
   GhosttyRenderStateRowCells cells = nullptr;
   GhosttyKeyEncoder key_encoder = nullptr;
   GhosttyKeyEvent key_event = nullptr;
+  GhosttyMouseEncoder mouse_encoder = nullptr;
+  GhosttyMouseEvent mouse_event = nullptr;
   int cols = 0;
   int row_count = 0;
   std::vector<int32_t> graphemes;  // [cellIndex, n, cp0..cpN-1]*
@@ -37,6 +40,21 @@ struct Engine {
   std::vector<int32_t> row_cp, row_fg, row_bg, row_fl, row_g;
   std::vector<uint32_t> row_buf = std::vector<uint32_t>(16);
 };
+
+// What a vertical swipe scrolls (Kotlin ScrollInput ordinal), like a desktop terminal's wheel:
+// 0 scrollback, 1 mouse wheel events (the program tracks the mouse, any screen), 2 Up/Down keys
+// (alternate screen with alternate scroll mode ?1007, on by default), 3 nothing (?1007 off).
+int32_t scroll_input(Engine* e) {
+  bool tracking = false;
+  ghostty_terminal_get(e->terminal, GHOSTTY_TERMINAL_DATA_MOUSE_TRACKING, &tracking);
+  if (tracking) return 1;
+  GhosttyTerminalScreen screen = GHOSTTY_TERMINAL_SCREEN_PRIMARY;
+  ghostty_terminal_get(e->terminal, GHOSTTY_TERMINAL_DATA_ACTIVE_SCREEN, &screen);
+  if (screen != GHOSTTY_TERMINAL_SCREEN_ALTERNATE) return 0;
+  GhosttyTerminalModeConfig m{GHOSTTY_MODE_ALT_SCROLL, false};
+  ghostty_terminal_get(e->terminal, GHOSTTY_TERMINAL_DATA_MODE, &m);
+  return m.value ? 2 : 3;
+}
 
 // Upper bound for undrained events: the remote program controls titles, OSC 52 payloads and
 // notifications, so an owner that drains rarely must not let it grow native memory without limit.
@@ -157,7 +175,11 @@ jlong nCreate(JNIEnv*, jclass, jint cols, jint rows, jint scrollbackLines) {
       ghostty_render_state_row_iterator_new(nullptr, &e->rows) != GHOSTTY_SUCCESS ||
       ghostty_render_state_row_cells_new(nullptr, &e->cells) != GHOSTTY_SUCCESS ||
       ghostty_key_encoder_new(nullptr, &e->key_encoder) != GHOSTTY_SUCCESS ||
-      ghostty_key_event_new(nullptr, &e->key_event) != GHOSTTY_SUCCESS) {
+      ghostty_key_event_new(nullptr, &e->key_event) != GHOSTTY_SUCCESS ||
+      ghostty_mouse_encoder_new(nullptr, &e->mouse_encoder) != GHOSTTY_SUCCESS ||
+      ghostty_mouse_event_new(nullptr, &e->mouse_event) != GHOSTTY_SUCCESS) {
+    ghostty_mouse_event_free(e->mouse_event);
+    ghostty_mouse_encoder_free(e->mouse_encoder);
     ghostty_key_event_free(e->key_event);
     ghostty_key_encoder_free(e->key_encoder);
     ghostty_render_state_row_cells_free(e->cells);
@@ -190,6 +212,8 @@ jlong nCreate(JNIEnv*, jclass, jint cols, jint rows, jint scrollbackLines) {
 void nFree(JNIEnv*, jclass, jlong h) {
   Engine* e = H(h);
   if (!e) return;
+  ghostty_mouse_event_free(e->mouse_event);
+  ghostty_mouse_encoder_free(e->mouse_encoder);
   ghostty_key_event_free(e->key_event);
   ghostty_key_encoder_free(e->key_encoder);
   ghostty_render_state_row_cells_free(e->cells);
@@ -422,6 +446,7 @@ void nSnapshot(JNIEnv* env, jclass, jlong h, jboolean full, jint cols, jint rows
   hdr[9] = screen == GHOSTTY_TERMINAL_SCREEN_ALTERNATE ? 1 : 0;
   hdr[10] = any ? 1 : 0;
   hdr[11] = e->title_gen;
+  hdr[12] = scroll_input(e);
 }
 
 void nFetchGraphemes(JNIEnv* env, jclass, jlong h, jintArray out) {
@@ -552,6 +577,38 @@ jbyteArray nEncodeKey(JNIEnv* env, jclass, jlong h, jint key, jint mods, jbyteAr
   ghostty_key_event_set_utf8(e->key_event, nullptr, 0);
   if (r != GHOSTTY_SUCCESS) written = 0;
   return to_java(env, reinterpret_cast<uint8_t*>(buf.data()), written);
+}
+
+jint nScrollInput(JNIEnv*, jclass, jlong h) { return scroll_input(H(h)); }
+
+// |lines| wheel events (button 4 = up when lines < 0, 5 = down) at viewport cell (col, row), in the
+// tracking mode and format the program asked for. Empty when it does not track the mouse.
+jbyteArray nEncodeWheel(JNIEnv* env, jclass, jlong h, jint lines, jint col, jint row) {
+  Engine* e = H(h);
+  ghostty_mouse_encoder_setopt_from_terminal(e->mouse_encoder, e->terminal);
+  // Positions in cell units: a 1x1 px cell makes the surface position the cell coordinate.
+  GhosttyMouseEncoderSize size = GHOSTTY_INIT_SIZED(GhosttyMouseEncoderSize);
+  size.screen_width = static_cast<uint32_t>(e->cols);
+  size.screen_height = static_cast<uint32_t>(e->row_count);
+  size.cell_width = 1;
+  size.cell_height = 1;
+  ghostty_mouse_encoder_setopt(e->mouse_encoder, GHOSTTY_MOUSE_ENCODER_OPT_SIZE, &size);
+  ghostty_mouse_event_set_action(e->mouse_event, GHOSTTY_MOUSE_ACTION_PRESS);
+  ghostty_mouse_event_set_button(e->mouse_event, lines < 0 ? GHOSTTY_MOUSE_BUTTON_FOUR : GHOSTTY_MOUSE_BUTTON_FIVE);
+  ghostty_mouse_event_set_mods(e->mouse_event, 0);
+  const int c = std::clamp(static_cast<int>(col), 0, std::max(e->cols - 1, 0));
+  const int r = std::clamp(static_cast<int>(row), 0, std::max(e->row_count - 1, 0));
+  ghostty_mouse_event_set_position(e->mouse_event, GhosttyMousePosition{c + 0.5f, r + 0.5f});
+  char one[64];
+  size_t written = 0;
+  if (ghostty_mouse_encoder_encode(e->mouse_encoder, e->mouse_event, one, sizeof(one), &written) != GHOSTTY_SUCCESS) {
+    written = 0;
+  }
+  const int n = written ? std::min(std::abs(static_cast<int>(lines)), 1000) : 0;
+  std::vector<uint8_t> out;
+  out.reserve(written * static_cast<size_t>(n));
+  for (int i = 0; i < n; i++) out.insert(out.end(), one, one + written);
+  return to_java(env, out.data(), out.size());
 }
 
 jbyteArray nEncodePaste(JNIEnv* env, jclass, jlong h, jbyteArray jtext) {
@@ -850,6 +907,8 @@ const JNINativeMethod kMethods[] = {
     {"nativeScrollToBottom", "(J)V", reinterpret_cast<void*>(nScrollBottom)},
     {"nativeEncodeKey", "(JII[BI)[B", reinterpret_cast<void*>(nEncodeKey)},
     {"nativeEncodePaste", "(J[B)[B", reinterpret_cast<void*>(nEncodePaste)},
+    {"nativeScrollInput", "(J)I", reinterpret_cast<void*>(nScrollInput)},
+    {"nativeEncodeWheel", "(JIII)[B", reinterpret_cast<void*>(nEncodeWheel)},
     {"nativeDrainEvents", "(J)[B", reinterpret_cast<void*>(nDrainEvents)},
     {"nativeTitle", "(J)[B", reinterpret_cast<void*>(nTitle)},
     {"nativeText", "(JI)[B", reinterpret_cast<void*>(nText)},

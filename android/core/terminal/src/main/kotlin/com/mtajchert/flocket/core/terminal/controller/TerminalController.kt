@@ -322,6 +322,17 @@ class TerminalController(
 
     fun paste(text: String): Boolean = offer(Input.Paste(text))
 
+    /**
+     * A vertical swipe of [lines] rows (negative = toward older output) at viewport cell ([col],
+     * [row]) for the program: wheel events or Up/Down keys, as [ScreenSnapshot.scrollInput] says at
+     * delivery. One write per call. Nothing is sent while the view scrolls its own scrollback.
+     */
+    fun scrollProgram(
+        lines: Int,
+        col: Int,
+        row: Int,
+    ): Boolean = lines == 0 || offer(Input.Scroll(lines, col, row))
+
     fun toggleStickyCtrl() {
         _stickyCtrl.value = !_stickyCtrl.value
     }
@@ -340,6 +351,10 @@ class TerminalController(
     private suspend fun deliver(cmd: Input) {
         val e = engine ?: return
         val s = stream
+        // A swipe that the program does not take (scrollback, or read-only) is not input: no
+        // ownership, no snap to the bottom, no failure.
+        val scroll = (cmd as? Input.Scroll)?.let { e.encodeScroll(it.lines, it.col, it.row) }
+        if (scroll != null && (scroll.isEmpty() || s == null || mode == AttachMode.Observe)) return
         if (s == null || mode == AttachMode.Observe) {
             _failures.tryEmit(if (s == null) AppError.ConnectionLost else AppError.InvalidInput("input", "read-only"))
             return
@@ -354,6 +369,7 @@ class TerminalController(
                 is Input.KeyPress -> e.encodeKey(cmd.key)
                 is Input.Paste -> e.encodePaste(cmd.text)
                 is Input.Raw -> cmd.bytes
+                is Input.Scroll -> scroll!!
             }
         if (bytes.isEmpty()) return
         val result = s.write(bytes)
@@ -649,6 +665,12 @@ class TerminalController(
 
         class Raw(
             val bytes: ByteArray,
+        ) : Input
+
+        class Scroll(
+            val lines: Int,
+            val col: Int,
+            val row: Int,
         ) : Input
     }
 

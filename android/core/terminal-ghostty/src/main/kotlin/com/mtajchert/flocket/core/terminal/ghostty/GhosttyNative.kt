@@ -101,6 +101,17 @@ internal object GhosttyNative {
         text: ByteArray,
     ): ByteArray
 
+    /** [com.mtajchert.flocket.core.terminal.engine.ScrollInput] ordinal for the current modes. */
+    @JvmStatic external fun nativeScrollInput(handle: Long): Int
+
+    /** |lines| wheel events (up when negative) at viewport cell (col, row); empty when the mouse is not tracked. */
+    @JvmStatic external fun nativeEncodeWheel(
+        handle: Long,
+        lines: Int,
+        col: Int,
+        row: Int,
+    ): ByteArray
+
     @JvmStatic external fun nativeDrainEvents(handle: Long): ByteArray?
 
     @JvmStatic external fun nativeTitle(handle: Long): ByteArray
@@ -152,4 +163,5 @@ internal object SnapshotHeader {
     const val GRAPHEME_INTS = 6
     const val ALT_SCREEN = 9
     const val TITLE_GENERATION = 11
+    const val SCROLL_INPUT = 12
 }

@@ -6,10 +6,12 @@ import com.mtajchert.flocket.core.terminal.engine.Key
 import com.mtajchert.flocket.core.terminal.engine.KeyInput
 import com.mtajchert.flocket.core.terminal.engine.RowTextBuilder
 import com.mtajchert.flocket.core.terminal.engine.ScreenSnapshot
+import com.mtajchert.flocket.core.terminal.engine.ScrollInput
 import com.mtajchert.flocket.core.terminal.engine.TerminalEngine
 import com.mtajchert.flocket.core.terminal.engine.TerminalEvent
 import com.mtajchert.flocket.core.terminal.engine.TerminalTheme
 import java.util.Base64
+import kotlin.math.abs
 
 /**
  * A tiny, pure-Kotlin [TerminalEngine] for previews, screenshot tests and JVM unit tests.
@@ -17,7 +19,8 @@ import java.util.Base64
  * NOT a real terminal emulator. It understands: printable UTF-8 (split sequences across feeds),
  * CR/LF/BS/TAB/BEL, CSI cursor movement (CUU/CUD/CUF/CUB/CUP/HVP/CHA/VPA), ED/EL, SGR (16/256/
  * truecolor, bold, faint, italic, underline, strikethrough, inverse, invisible), DECTCEM (?25),
- * bracketed paste (?2004), DECSCUSR cursor shapes, OSC 0/2 title, OSC 7 cwd, OSC 52 clipboard, and
+ * bracketed paste (?2004), mouse tracking for wheel scrolling (?9/?1000/?1002/?1003, SGR ?1006, alternate
+ * scroll ?1007), DECSCUSR cursor shapes, OSC 0/2 title, OSC 7 cwd, OSC 52 clipboard, and
  * basic East-Asian-wide characters / combining marks. Scrollback only when [scrollbackLines] > 0 (rows
  * scrolled off the top, soft-wrap flags, viewport scrolling); a minimal alternate screen (?47/?1047/?1049,
  * no scrollback while active); no reflow, no charsets,
@@ -63,6 +66,9 @@ class FakeTerminalEngine(
     private var cursorVisible = true
     private var cursorStyle = CursorStyle.Block
     private var bracketedPaste = false
+    private var mouseTracking = 0 // bit per mode: 9, 1000, 1002, 1003
+    private var sgrMouse = false
+    private var alternateScroll = true
 
     // Current SGR pen.
     private var penFg = DEFAULT_COLOR
@@ -158,6 +164,7 @@ class FakeTerminalEngine(
         snap.viewportOffset = viewOffset
         snap.historyBase = evicted
         snap.altScreen = alt
+        snap.scrollInput = scrollInput()
         snap.title = title
         return snap
     }
@@ -263,6 +270,42 @@ class FakeTerminalEngine(
     }
 
     override fun encodeKey(event: KeyInput): ByteArray = encodeKeyInput(event).encodeToByteArray()
+
+    private fun scrollInput(): ScrollInput =
+        when {
+            mouseTracking != 0 -> ScrollInput.MouseWheel
+            !alt -> ScrollInput.Scrollback
+            alternateScroll -> ScrollInput.ArrowKeys
+            else -> ScrollInput.None
+        }
+
+    override fun encodeScroll(
+        lines: Int,
+        col: Int,
+        row: Int,
+    ): ByteArray {
+        val up = lines < 0
+        val one =
+            when (scrollInput()) {
+                ScrollInput.MouseWheel -> {
+                    val button = if (up) 64 else 65
+                    if (sgrMouse) {
+                        "\u001b[<$button;${col + 1};${row + 1}M"
+                    } else {
+                        "\u001b[M" + (32 + button).toChar() + (33 + col).toChar() + (33 + row).toChar()
+                    }
+                }
+
+                ScrollInput.ArrowKeys -> {
+                    encodeKeyInput(KeyInput(if (up) Key.Up else Key.Down))
+                }
+
+                ScrollInput.Scrollback, ScrollInput.None -> {
+                    return ByteArray(0)
+                }
+            }
+        return one.repeat(abs(lines)).encodeToByteArray()
+    }
 
     override fun encodePaste(text: String): ByteArray {
         val body = text.replace("\r\n", "\r").replace('\n', '\r')
@@ -473,9 +516,30 @@ class FakeTerminalEngine(
                 if (private) {
                     val on = b.toChar() == 'h'
                     when (p.getOrNull(0)) {
-                        25 -> cursorVisible = on
-                        2004 -> bracketedPaste = on
-                        47, 1047, 1049 -> setAltScreen(on)
+                        25 -> {
+                            cursorVisible = on
+                        }
+
+                        2004 -> {
+                            bracketedPaste = on
+                        }
+
+                        9, 1000, 1002, 1003 -> {
+                            val bit = 1 shl listOf(9, 1000, 1002, 1003).indexOf(p[0])
+                            mouseTracking = if (on) mouseTracking or bit else mouseTracking and bit.inv()
+                        }
+
+                        1006 -> {
+                            sgrMouse = on
+                        }
+
+                        1007 -> {
+                            alternateScroll = on
+                        }
+
+                        47, 1047, 1049 -> {
+                            setAltScreen(on)
+                        }
                     }
                 }
             }

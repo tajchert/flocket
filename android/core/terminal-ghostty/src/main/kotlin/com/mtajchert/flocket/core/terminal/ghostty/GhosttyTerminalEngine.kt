@@ -4,9 +4,11 @@ import com.mtajchert.flocket.core.terminal.engine.CursorStyle
 import com.mtajchert.flocket.core.terminal.engine.Key
 import com.mtajchert.flocket.core.terminal.engine.KeyInput
 import com.mtajchert.flocket.core.terminal.engine.ScreenSnapshot
+import com.mtajchert.flocket.core.terminal.engine.ScrollInput
 import com.mtajchert.flocket.core.terminal.engine.TerminalEngine
 import com.mtajchert.flocket.core.terminal.engine.TerminalEvent
 import com.mtajchert.flocket.core.terminal.engine.TerminalTheme
+import kotlin.math.abs
 
 /**
  * [TerminalEngine] backed by libghostty-vt through JNI (ADR-0003).
@@ -113,6 +115,7 @@ class GhosttyTerminalEngine(
         snap.viewportOffset = header[SnapshotHeader.VIEWPORT_OFFSET]
         snap.historyBase = GhosttyNative.nativeHistoryBase(handle)
         snap.altScreen = header[SnapshotHeader.ALT_SCREEN] != 0
+        snap.scrollInput = ScrollInput.entries[header[SnapshotHeader.SCROLL_INPUT]]
         val gen = header[SnapshotHeader.TITLE_GENERATION]
         if (gen != lastTitleGeneration) {
             lastTitleGeneration = gen
@@ -171,6 +174,29 @@ class GhosttyTerminalEngine(
     }
 
     override fun encodePaste(text: String): ByteArray = GhosttyNative.nativeEncodePaste(h(), text.encodeToByteArray())
+
+    override fun encodeScroll(
+        lines: Int,
+        col: Int,
+        row: Int,
+    ): ByteArray {
+        if (lines == 0) return ByteArray(0)
+        return when (ScrollInput.entries[GhosttyNative.nativeScrollInput(h())]) {
+            ScrollInput.MouseWheel -> {
+                GhosttyNative.nativeEncodeWheel(h(), lines, col, row)
+            }
+
+            ScrollInput.ArrowKeys -> {
+                // Honors application cursor mode (DECCKM) like any arrow key.
+                val key = encodeKey(KeyInput(if (lines < 0) Key.Up else Key.Down))
+                ByteArray(key.size * minOf(abs(lines), MAX_SCROLL_LINES)) { key[it % key.size] }
+            }
+
+            ScrollInput.Scrollback, ScrollInput.None -> {
+                ByteArray(0)
+            }
+        }
+    }
 
     override fun drainEvents(): List<TerminalEvent> {
         val raw = GhosttyNative.nativeDrainEvents(h()) ?: return emptyList()
@@ -251,6 +277,9 @@ class GhosttyTerminalEngine(
         private const val MOD_CTRL = 2
         private const val MOD_ALT = 4
         private const val MOD_META = 8
+
+        // Same cap as nEncodeWheel: a runaway fling never becomes megabytes of input.
+        private const val MAX_SCROLL_LINES = 1000
 
         /** libghostty sizes are uint16 and snapshot arrays hold cols*rows ints. */
         private const val MAX_DIMENSION = 0xFFFF

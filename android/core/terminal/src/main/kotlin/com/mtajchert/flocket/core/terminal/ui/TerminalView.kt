@@ -41,6 +41,7 @@ import com.mtajchert.flocket.core.terminal.controller.TerminalViewport
 import com.mtajchert.flocket.core.terminal.engine.CellFlags
 import com.mtajchert.flocket.core.terminal.engine.CursorStyle
 import com.mtajchert.flocket.core.terminal.engine.ScreenSnapshot
+import com.mtajchert.flocket.core.terminal.engine.ScrollInput
 import com.mtajchert.flocket.core.terminal.engine.TerminalTheme
 import com.mtajchert.flocket.core.terminal.engine.textRange
 import com.mtajchert.flocket.core.terminal.fake.FakeTerminalEngine
@@ -176,6 +177,9 @@ class TerminalView(
 
     private val scroller = OverScroller(context)
     private var flingLastY = 0
+
+    // Swipe pixels not yet sent to the program as whole rows (wheel events or arrow keys).
+    private var programScrollPx = 0f
     private var twoFingerDownAt = 0L
     private var scaled = false
 
@@ -727,7 +731,7 @@ class TerminalView(
                     velocityX: Float,
                     velocityY: Float,
                 ): Boolean {
-                    if (!smooth.canScroll) return false
+                    if (!scrollsProgram() && !smooth.canScroll) return false
                     flingLastY = 0
                     scroller.fling(0, 0, 0, (-velocityY).toInt(), 0, 0, Int.MIN_VALUE / 2, Int.MAX_VALUE / 2)
                     postInvalidateOnAnimation()
@@ -785,6 +789,7 @@ class TerminalView(
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 scaled = false
+                programScrollPx = 0f
                 smooth.interacting = true
                 updateRowAboveWanted()
                 val h = handleAt(event.x, event.y)
@@ -849,7 +854,11 @@ class TerminalView(
             val dy = y - flingLastY
             scrollPixels(dy.toFloat())
             flingLastY = y
-            if (dy != 0 && smooth.atEdge) scroller.forceFinished(true) else postInvalidateOnAnimation()
+            if (dy != 0 && !scrollsProgram() && smooth.atEdge) {
+                scroller.forceFinished(true)
+            } else {
+                postInvalidateOnAnimation()
+            }
             if (scroller.isFinished) {
                 smooth.interacting = false
                 updateRowAboveWanted()
@@ -857,12 +866,30 @@ class TerminalView(
         }
     }
 
-    /** Positive = toward newer output. Moves [smooth] and asks the engine for the whole row under it. */
+    /**
+     * Positive = toward newer output. Moves [smooth] and asks the engine for the whole row under it,
+     * or, while the program takes the wheel ([ScrollInput]), sends it one wheel event or arrow key per
+     * row of travel, at the touched cell.
+     */
     private fun scrollPixels(dy: Float) {
         val rowPx = renderer.cellHeight * scale
         if (rowPx <= 0f) return
-        scrollRows(dy / rowPx.toDouble())
+        if (!scrollsProgram()) {
+            scrollRows(dy / rowPx.toDouble())
+            return
+        }
+        programScrollPx += dy
+        val lines = (programScrollPx / rowPx).toInt()
+        if (lines == 0) return
+        programScrollPx -= lines * rowPx
+        val cell = cellAt(lastTouchX, lastTouchY, clamp = true) ?: return
+        val row = (cell.row - smooth.frameTop).toInt().coerceIn(0, render.rows - 1)
+        controller?.scrollProgram(lines, cell.col, row)
     }
+
+    /** The program, not the view, scrolls (mouse tracking, or the alternate screen). */
+    private fun scrollsProgram(): Boolean =
+        render.scrollInput == ScrollInput.MouseWheel || render.scrollInput == ScrollInput.ArrowKeys
 
     private fun scrollRows(rows: Double) {
         if (!smooth.canScroll) return

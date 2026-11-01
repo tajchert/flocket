@@ -7,6 +7,7 @@ import com.mtajchert.flocket.core.terminal.engine.CursorStyle
 import com.mtajchert.flocket.core.terminal.engine.Key
 import com.mtajchert.flocket.core.terminal.engine.KeyInput
 import com.mtajchert.flocket.core.terminal.engine.ScreenSnapshot
+import com.mtajchert.flocket.core.terminal.engine.ScrollInput
 import com.mtajchert.flocket.core.terminal.engine.TerminalEvent
 import com.mtajchert.flocket.core.terminal.engine.TerminalTheme
 import org.junit.After
@@ -57,6 +58,35 @@ class GhosttyTerminalEngineTest {
         alt: Boolean = false,
         shift: Boolean = false,
     ) = engine.encodeKey(KeyInput(k, text, ctrl = ctrl, alt = alt, shift = shift)).toString(Charsets.ISO_8859_1)
+
+    private fun scroll(lines: Int) = engine.encodeScroll(lines, col = 2, row = 3).toString(Charsets.ISO_8859_1)
+
+    @Test
+    fun mainScreenSwipesScrollTheScrollback() {
+        assertEquals(ScrollInput.Scrollback, engine.snapshot().scrollInput)
+        assertEquals("", scroll(-2))
+    }
+
+    @Test
+    fun codexModesTurnSwipesIntoSgrWheelEvents() {
+        // What Codex sets (captured from hc 0.1.16): alternate screen, button + any-event tracking, SGR.
+        feed("\u001b[?1049h\u001b[?1000h\u001b[?1002h\u001b[?1003h\u001b[?1006h")
+        assertEquals(ScrollInput.MouseWheel, engine.snapshot().scrollInput)
+        assertEquals("\u001b[<64;3;4M\u001b[<64;3;4M", scroll(-2))
+        assertEquals("\u001b[<65;3;4M", scroll(1))
+    }
+
+    @Test
+    fun alternateScreenWithoutMouseGetsArrowKeysHonoringAppCursor() {
+        feed("\u001b[?1049h")
+        assertEquals(ScrollInput.ArrowKeys, engine.snapshot().scrollInput)
+        assertEquals("\u001b[A\u001b[A", scroll(-2))
+        feed("\u001b[?1h") // DECCKM
+        assertEquals("\u001bOB", scroll(1))
+        feed("\u001b[?1007l")
+        assertEquals(ScrollInput.None, engine.snapshot().scrollInput)
+        assertEquals("", scroll(1))
+    }
 
     @Test
     fun zwjFamilyIsOneWideGrapheme() {
