@@ -104,6 +104,8 @@ fun HostControl.assertSizeStays(
  * A second viewer on the Mac, like Herdr desktop: an hc terminal whose pty is [size] runs `hc attach <address>`,
  * which makes it the most recently active viewer (it takes the size, SPEC §7.5). [takeSize] presses a key in it
  * (the desktop user typing) to take the size back. Killed with the other terminals by `HostControl.killAll`.
+ * The command uses the absolute `hc` path: the core's terminals inherit its PATH, which is minimal
+ * (`/usr/bin:/bin:...`) when the core was started over the harness sshd.
  */
 class MacViewer private constructor(
     private val host: HostControl,
@@ -136,7 +138,7 @@ class MacViewer private constructor(
                             "/tmp",
                             "sh",
                             "-c",
-                            "stty cols ${size.cols} rows ${size.rows}; exec hc attach $address",
+                            "stty cols ${size.cols} rows ${size.rows}; exec ${host.args.hcPath} attach $address",
                         ),
                     ).getString("address")
             host.awaitSize(address, "the Mac viewer to take the size") { it == size }
