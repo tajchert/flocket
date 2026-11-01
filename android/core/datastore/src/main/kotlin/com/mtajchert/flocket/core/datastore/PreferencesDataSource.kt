@@ -20,42 +20,24 @@ data class StoredPreferences(
     val showExtraKeys: Boolean = true,
     val notificationPermissionAsked: Boolean = false,
     val keepConnectedInBackground: Boolean = true,
+    /** Enum entry names; unknown values fall back to the defaults in the mapper. */
+    val terminalColorScheme: String = "FollowApp",
+    val clipboardWritePolicy: String = "Ask",
+    val bell: String = "Haptic",
+    val autoConnect: Boolean = true,
+    val defaultWorkingDirectory: String = "~",
 )
 
 /** Reads and writes [StoredPreferences] on a Preferences DataStore. Unreadable files reset to defaults. */
 class PreferencesDataSource(
     private val store: DataStore<Preferences>,
 ) {
-    val preferences: Flow<StoredPreferences> =
-        store.data.map { p ->
-            val d = StoredPreferences()
-            StoredPreferences(
-                onboardingCompleted = p[ONBOARDING] ?: d.onboardingCompleted,
-                theme = p[THEME] ?: d.theme,
-                dynamicColor = p[DYNAMIC_COLOR] ?: d.dynamicColor,
-                terminalFontSize = p[FONT_SIZE] ?: d.terminalFontSize,
-                keepScreenOnInTerminal = p[KEEP_SCREEN_ON] ?: d.keepScreenOnInTerminal,
-                showExtraKeys = p[EXTRA_KEYS] ?: d.showExtraKeys,
-                notificationPermissionAsked = p[NOTIFICATIONS_ASKED] ?: d.notificationPermissionAsked,
-                keepConnectedInBackground = p[KEEP_CONNECTED] ?: d.keepConnectedInBackground,
-            )
-        }
+    val preferences: Flow<StoredPreferences> = store.data.map { it.toStored() }
 
     /** Atomic read-modify-write. */
     suspend fun update(transform: (StoredPreferences) -> StoredPreferences) {
         store.edit { p ->
-            val current =
-                StoredPreferences(
-                    onboardingCompleted = p[ONBOARDING] ?: false,
-                    theme = p[THEME] ?: "System",
-                    dynamicColor = p[DYNAMIC_COLOR] ?: true,
-                    terminalFontSize = p[FONT_SIZE] ?: 13f,
-                    keepScreenOnInTerminal = p[KEEP_SCREEN_ON] ?: true,
-                    showExtraKeys = p[EXTRA_KEYS] ?: true,
-                    notificationPermissionAsked = p[NOTIFICATIONS_ASKED] ?: false,
-                    keepConnectedInBackground = p[KEEP_CONNECTED] ?: true,
-                )
-            val n = transform(current)
+            val n = transform(p.toStored())
             p[ONBOARDING] = n.onboardingCompleted
             p[THEME] = n.theme
             p[DYNAMIC_COLOR] = n.dynamicColor
@@ -64,7 +46,31 @@ class PreferencesDataSource(
             p[EXTRA_KEYS] = n.showExtraKeys
             p[NOTIFICATIONS_ASKED] = n.notificationPermissionAsked
             p[KEEP_CONNECTED] = n.keepConnectedInBackground
+            p[COLOR_SCHEME] = n.terminalColorScheme
+            p[CLIPBOARD_POLICY] = n.clipboardWritePolicy
+            p[BELL] = n.bell
+            p[AUTO_CONNECT] = n.autoConnect
+            p[DEFAULT_CWD] = n.defaultWorkingDirectory
         }
+    }
+
+    private fun Preferences.toStored(): StoredPreferences {
+        val d = StoredPreferences()
+        return StoredPreferences(
+            onboardingCompleted = this[ONBOARDING] ?: d.onboardingCompleted,
+            theme = this[THEME] ?: d.theme,
+            dynamicColor = this[DYNAMIC_COLOR] ?: d.dynamicColor,
+            terminalFontSize = this[FONT_SIZE] ?: d.terminalFontSize,
+            keepScreenOnInTerminal = this[KEEP_SCREEN_ON] ?: d.keepScreenOnInTerminal,
+            showExtraKeys = this[EXTRA_KEYS] ?: d.showExtraKeys,
+            notificationPermissionAsked = this[NOTIFICATIONS_ASKED] ?: d.notificationPermissionAsked,
+            keepConnectedInBackground = this[KEEP_CONNECTED] ?: d.keepConnectedInBackground,
+            terminalColorScheme = this[COLOR_SCHEME] ?: d.terminalColorScheme,
+            clipboardWritePolicy = this[CLIPBOARD_POLICY] ?: d.clipboardWritePolicy,
+            bell = this[BELL] ?: d.bell,
+            autoConnect = this[AUTO_CONNECT] ?: d.autoConnect,
+            defaultWorkingDirectory = this[DEFAULT_CWD] ?: d.defaultWorkingDirectory,
+        )
     }
 
     private companion object {
@@ -76,5 +82,10 @@ class PreferencesDataSource(
         val EXTRA_KEYS = booleanPreferencesKey("show_extra_keys")
         val NOTIFICATIONS_ASKED = booleanPreferencesKey("notification_permission_asked")
         val KEEP_CONNECTED = booleanPreferencesKey("keep_connected_in_background")
+        val COLOR_SCHEME = stringPreferencesKey("terminal_color_scheme")
+        val CLIPBOARD_POLICY = stringPreferencesKey("clipboard_write_policy")
+        val BELL = stringPreferencesKey("terminal_bell")
+        val AUTO_CONNECT = booleanPreferencesKey("auto_connect")
+        val DEFAULT_CWD = stringPreferencesKey("default_working_directory")
     }
 }

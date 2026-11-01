@@ -2,19 +2,26 @@ package com.mtajchert.flocket.core.testing
 
 import com.mtajchert.flocket.core.common.error.AppError
 import com.mtajchert.flocket.core.common.result.AppResult
+import com.mtajchert.flocket.core.data.AutoConnectSettings
 import com.mtajchert.flocket.core.data.DeviceKeyRepository
 import com.mtajchert.flocket.core.data.HostDraft
 import com.mtajchert.flocket.core.data.HostRepository
+import com.mtajchert.flocket.core.data.HostSettingsRepository
 import com.mtajchert.flocket.core.data.HostTrustRepository
 import com.mtajchert.flocket.core.data.PreferencesRepository
 import com.mtajchert.flocket.core.data.UserPreferences
 import com.mtajchert.flocket.core.model.DeviceKey
+import com.mtajchert.flocket.core.model.EffectiveHostSettings
 import com.mtajchert.flocket.core.model.Host
 import com.mtajchert.flocket.core.model.HostId
+import com.mtajchert.flocket.core.model.HostSettingsOverrides
 import com.mtajchert.flocket.core.model.PinnedHostKey
+import com.mtajchert.flocket.core.model.resolve
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 
 /** In-memory [HostRepository]. Set [nextError] to make the next write fail. */
@@ -142,6 +149,63 @@ class FakePreferencesRepository(
 
     override suspend fun update(transform: (UserPreferences) -> UserPreferences): AppResult<Unit> {
         state.update(transform)
+        return AppResult.Success(Unit)
+    }
+}
+
+/** In-memory [HostSettingsRepository] over [prefs]; [overridesNow] exposes the current rows to assertions. */
+class FakeHostSettingsRepository(
+    private val prefs: PreferencesRepository = FakePreferencesRepository(),
+    initial: Map<HostId, HostSettingsOverrides> = emptyMap(),
+) : HostSettingsRepository {
+    private val rows = MutableStateFlow(initial)
+    val overridesNow: Map<HostId, HostSettingsOverrides> get() = rows.value
+
+    override fun overrides(hostId: HostId): Flow<HostSettingsOverrides> =
+        rows.map { it[hostId] ?: HostSettingsOverrides() }
+
+    override fun effective(hostId: HostId): Flow<EffectiveHostSettings> =
+        combine(prefs.preferences, overrides(hostId)) { p, o -> resolve(p.terminal, o) }
+
+    override val customizedHosts: Flow<Set<HostId>> =
+        rows.map { r -> r.filterValues { !it.isEmpty }.keys }
+
+    override val autoConnect: Flow<AutoConnectSettings> =
+        combine(prefs.preferences, rows) { p, r ->
+            AutoConnectSettings(
+                p.terminal.autoConnect,
+                r
+                    .mapNotNull { (k, v) ->
+                        v.autoConnect?.let { k to it }
+                    }.toMap(),
+            )
+        }
+
+    override suspend fun update(
+        hostId: HostId,
+        transform: (HostSettingsOverrides) -> HostSettingsOverrides,
+    ): AppResult<Unit> {
+        rows.update { r ->
+            val next = transform(r[hostId] ?: HostSettingsOverrides())
+            if (next.isEmpty) r - hostId else r + (hostId to next)
+        }
+        return AppResult.Success(Unit)
+    }
+
+    override suspend fun resetAll(hostId: HostId): AppResult<Unit> {
+        rows.update { it - hostId }
+        return AppResult.Success(Unit)
+    }
+
+    override suspend fun setFontSize(
+        hostId: HostId,
+        sizeSp: Float,
+    ): AppResult<Unit> {
+        if (rows.value[hostId]?.fontSizeSp != null) {
+            update(hostId) { it.copy(fontSizeSp = sizeSp) }
+        } else {
+            prefs.update { it.copy(terminal = it.terminal.copy(fontSizeSp = sizeSp)) }
+        }
         return AppResult.Success(Unit)
     }
 }

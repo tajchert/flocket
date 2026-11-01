@@ -52,3 +52,21 @@ interface PinnedHostKeyDao {
         port: Int,
     )
 }
+
+@Dao
+interface HostSettingsDao {
+    @Query("SELECT * FROM host_settings")
+    fun observeAll(): Flow<List<HostSettingsEntity>>
+
+    @Query("SELECT * FROM host_settings WHERE hostId = :hostId")
+    fun observe(hostId: String): Flow<HostSettingsEntity?>
+
+    @Query("SELECT * FROM host_settings WHERE hostId = :hostId")
+    suspend fun get(hostId: String): HostSettingsEntity?
+
+    @Upsert
+    suspend fun upsert(settings: HostSettingsEntity)
+
+    @Query("DELETE FROM host_settings WHERE hostId = :hostId")
+    suspend fun delete(hostId: String)
+}

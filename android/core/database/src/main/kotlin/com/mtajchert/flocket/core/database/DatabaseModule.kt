@@ -28,4 +28,7 @@ object DatabaseModule {
 
     @Provides
     fun providePinnedHostKeyDao(db: FlocketDatabase): PinnedHostKeyDao = db.pinnedHostKeyDao()
+
+    @Provides
+    fun provideHostSettingsDao(db: FlocketDatabase): HostSettingsDao = db.hostSettingsDao()
 }
