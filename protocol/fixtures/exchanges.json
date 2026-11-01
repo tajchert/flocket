@@ -1,0 +1,1190 @@
+{
+ "plain_hello": {
+  "id": 1,
+  "jsonrpc": "2.0",
+  "result": {
+   "core": {
+    "id": "86bd470d4c557443479c94e20b614001",
+    "name": "tajchertminim6"
+   },
+   "features": [
+    "framed",
+    "attach",
+    "events",
+    "status",
+    "shell"
+   ],
+   "framed": false,
+   "generation": 1,
+   "methods": [
+    "hello",
+    "server.status",
+    "server.stop",
+    "server.restart",
+    "terminal.run",
+    "templates.list",
+    "terminal.list",
+    "terminal.get",
+    "terminal.kill",
+    "terminal.rm",
+    "terminal.keep",
+    "terminal.label",
+    "terminal.read",
+    "terminal.attach",
+    "terminal.send",
+    "terminal.wait",
+    "terminal.keys",
+    "terminal.interrupt",
+    "terminal.put",
+    "machine.exec",
+    "file.read",
+    "file.write",
+    "file.edit",
+    "doc.get",
+    "doc.set",
+    "events.subscribe",
+    "machine.add",
+    "machine.list",
+    "machine.connect",
+    "machine.rename",
+    "machine.rm",
+    "rpc.discover"
+   ],
+   "version": "0.1.15"
+  }
+ },
+ "plain_bad_generation": {
+  "error": {
+   "code": -32000,
+   "data": {
+    "hint": "this core speaks generation 1",
+    "kind": "unsupported_generation"
+   },
+   "message": "protocol generation 2 not supported"
+  },
+  "id": 2,
+  "jsonrpc": "2.0"
+ },
+ "plain_list": {
+  "id": 3,
+  "jsonrpc": "2.0",
+  "result": {
+   "hidden_finished": 0,
+   "terminals": []
+  }
+ },
+ "plain_not_found": {
+  "error": {
+   "code": -32000,
+   "data": {
+    "hint": "see `hc ls --all`",
+    "kind": "not_found"
+   },
+   "message": "no terminal \"t9zz\""
+  },
+  "id": 4,
+  "jsonrpc": "2.0"
+ },
+ "plain_bad_address": {
+  "error": {
+   "code": -32000,
+   "data": {
+    "hint": "no machines yet: hc machine add <ssh-target>",
+    "kind": "machine_unknown"
+   },
+   "message": "unknown machine \"nosuch\""
+  },
+  "id": 5,
+  "jsonrpc": "2.0"
+ },
+ "plain_attach_needs_framed": {
+  "error": {
+   "code": -32000,
+   "data": {
+    "hint": "send hello with framed: true first, or use `hc attach`",
+    "kind": "needs_framed"
+   },
+   "message": "attach needs a framed connection"
+  },
+  "id": 6,
+  "jsonrpc": "2.0"
+ },
+ "plain_unknown_method": {
+  "error": {
+   "code": -32601,
+   "data": {
+    "hint": "see `hc schema`",
+    "kind": "unknown_method"
+   },
+   "message": "unknown method \"no.such\""
+  },
+  "id": 7,
+  "jsonrpc": "2.0"
+ },
+ "plain_invalid_params": {
+  "error": {
+   "code": -32602,
+   "data": {
+    "hint": "see `hc schema`",
+    "kind": "invalid_params"
+   },
+   "message": "missing field `terminal`"
+  },
+  "id": 8,
+  "jsonrpc": "2.0"
+ },
+ "plain_no_params": {
+  "id": 99,
+  "jsonrpc": "2.0",
+  "result": {
+   "hidden_finished": 0,
+   "terminals": []
+  }
+ },
+ "plain_parse_error": {
+  "error": {
+   "code": -32700,
+   "data": {
+    "hint": "see `hc schema`",
+    "kind": "parse_error"
+   },
+   "message": "key must be a string at line 1 column 2"
+  },
+  "id": null,
+  "jsonrpc": "2.0"
+ },
+ "plain_server_status": {
+  "id": 9,
+  "jsonrpc": "2.0",
+  "result": {
+   "core": {
+    "id": "86bd470d4c557443479c94e20b614001",
+    "name": "tajchertminim6"
+   },
+   "finished": 0,
+   "holder": null,
+   "holders": [],
+   "installed_by": null,
+   "live": 0,
+   "pid": 71606,
+   "uptime_ms": 3892,
+   "version": "0.1.15"
+  }
+ },
+ "plain_templates": {
+  "id": 10,
+  "jsonrpc": "2.0",
+  "result": {
+   "templates": []
+  }
+ },
+ "plain_machines": {
+  "id": 11,
+  "jsonrpc": "2.0",
+  "result": {
+   "machines": []
+  }
+ },
+ "plain_subscribe": {
+  "id": 12,
+  "jsonrpc": "2.0",
+  "result": {
+   "channel": null,
+   "seq": 0,
+   "terminals": []
+  }
+ },
+ "plain_helper_doc_set": {
+  "id": 2,
+  "jsonrpc": "2.0",
+  "result": {
+   "version": 1
+  }
+ },
+ "plain_notifications": [
+  {
+   "jsonrpc": "2.0",
+   "method": "event",
+   "params": {
+    "data": {
+     "name": "flocket-research-plain",
+     "version": 1
+    },
+    "seq": 1,
+    "type": "doc"
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "heartbeat",
+   "params": {
+    "seq": 1
+   }
+  }
+ ],
+ "framed_hello": {
+  "id": 0,
+  "jsonrpc": "2.0",
+  "result": {
+   "core": {
+    "id": "86bd470d4c557443479c94e20b614001",
+    "name": "tajchertminim6"
+   },
+   "features": [
+    "framed",
+    "attach",
+    "events",
+    "status",
+    "shell"
+   ],
+   "framed": true,
+   "generation": 1,
+   "methods": [
+    "hello",
+    "server.status",
+    "server.stop",
+    "server.restart",
+    "terminal.run",
+    "templates.list",
+    "terminal.list",
+    "terminal.get",
+    "terminal.kill",
+    "terminal.rm",
+    "terminal.keep",
+    "terminal.label",
+    "terminal.read",
+    "terminal.attach",
+    "terminal.send",
+    "terminal.wait",
+    "terminal.keys",
+    "terminal.interrupt",
+    "terminal.put",
+    "machine.exec",
+    "file.read",
+    "file.write",
+    "file.edit",
+    "doc.get",
+    "doc.set",
+    "events.subscribe",
+    "machine.add",
+    "machine.list",
+    "machine.connect",
+    "machine.rename",
+    "machine.rm",
+    "rpc.discover"
+   ],
+   "version": "0.1.15"
+  }
+ },
+ "framed_subscribe": {
+  "id": 1,
+  "jsonrpc": "2.0",
+  "result": {
+   "channel": 1,
+   "seq": 1,
+   "terminals": []
+  }
+ },
+ "framed_list": {
+  "id": 2,
+  "jsonrpc": "2.0",
+  "result": {
+   "hidden_finished": 0,
+   "terminals": []
+  }
+ },
+ "framed_status": {
+  "id": 3,
+  "jsonrpc": "2.0",
+  "result": {
+   "core": {
+    "id": "86bd470d4c557443479c94e20b614001",
+    "name": "tajchertminim6"
+   },
+   "finished": 0,
+   "holder": null,
+   "holders": [],
+   "installed_by": null,
+   "live": 0,
+   "pid": 71606,
+   "uptime_ms": 7239,
+   "version": "0.1.15"
+  }
+ },
+ "framed_run": {
+  "id": 4,
+  "jsonrpc": "2.0",
+  "result": {
+   "address": "t1",
+   "argv": [
+    "sh"
+   ],
+   "cols": 200,
+   "created_ms": 1793495351242,
+   "cwd": "/private/tmp/claude-501/-Users-mtajchert-coding-priv-flocket/4f19ce6e-b8f7-4817-8d40-b9adfe4dc5a1/scratchpad",
+   "die_with_parent": false,
+   "exit_code": null,
+   "finished_ms": null,
+   "identity": "ghostty",
+   "keep": false,
+   "labels": {
+    "app": "flocket",
+    "where": "flocket / research"
+   },
+   "name": "probe",
+   "notify": true,
+   "parent": null,
+   "pid": 71730,
+   "reason": null,
+   "reported": false,
+   "rm": false,
+   "rows": 120,
+   "screen": "exact",
+   "signal": null,
+   "state": "live",
+   "status": null,
+   "status_ms": null,
+   "template": null,
+   "title": "",
+   "turn": 0
+  }
+ },
+ "events_after_run": [
+  {
+   "jsonrpc": "2.0",
+   "method": "event",
+   "params": {
+    "data": {
+     "address": "t1",
+     "argv": [
+      "sh"
+     ],
+     "cols": 200,
+     "created_ms": 1793495351242,
+     "cwd": "/private/tmp/claude-501/-Users-mtajchert-coding-priv-flocket/4f19ce6e-b8f7-4817-8d40-b9adfe4dc5a1/scratchpad",
+     "die_with_parent": false,
+     "exit_code": null,
+     "finished_ms": null,
+     "identity": "ghostty",
+     "keep": false,
+     "labels": {
+      "app": "flocket",
+      "where": "flocket / research"
+     },
+     "name": "probe",
+     "notify": true,
+     "parent": null,
+     "pid": 71730,
+     "reason": null,
+     "reported": false,
+     "rm": false,
+     "rows": 120,
+     "screen": "exact",
+     "signal": null,
+     "state": "live",
+     "status": null,
+     "status_ms": null,
+     "template": null,
+     "title": "",
+     "turn": 0
+    },
+    "seq": 2,
+    "terminal": "t1",
+    "type": "created"
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "event",
+   "params": {
+    "data": {
+     "argv": [
+      "sh"
+     ],
+     "cwd": "/private/tmp/claude-501/-Users-mtajchert-coding-priv-flocket/4f19ce6e-b8f7-4817-8d40-b9adfe4dc5a1/scratchpad",
+     "name": "bash",
+     "pid": 71730
+    },
+    "seq": 3,
+    "terminal": "t1",
+    "type": "foreground"
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "heartbeat",
+   "params": {
+    "seq": 3
+   }
+  }
+ ],
+ "framed_attach": {
+  "id": 5,
+  "jsonrpc": "2.0",
+  "result": {
+   "channel": 2,
+   "terminal": {
+    "address": "t1",
+    "argv": [
+     "sh"
+    ],
+    "cols": 80,
+    "created_ms": 1793495351242,
+    "cwd": "/private/tmp/claude-501/-Users-mtajchert-coding-priv-flocket/4f19ce6e-b8f7-4817-8d40-b9adfe4dc5a1/scratchpad",
+    "die_with_parent": false,
+    "exit_code": null,
+    "finished_ms": null,
+    "foreground": {
+     "argv": [
+      "sh"
+     ],
+     "cwd": "/private/tmp/claude-501/-Users-mtajchert-coding-priv-flocket/4f19ce6e-b8f7-4817-8d40-b9adfe4dc5a1/scratchpad",
+     "name": "bash",
+     "pid": 71730
+    },
+    "identity": "ghostty",
+    "keep": false,
+    "labels": {
+     "app": "flocket",
+     "where": "flocket / research"
+    },
+    "name": "probe",
+    "notify": true,
+    "parent": null,
+    "pid": 71730,
+    "reason": null,
+    "reported": false,
+    "rm": false,
+    "rows": 24,
+    "screen": "exact",
+    "signal": null,
+    "state": "live",
+    "status": null,
+    "status_ms": null,
+    "template": null,
+    "title": "",
+    "turn": 0
+   }
+  }
+ },
+ "events_after_status": [
+  {
+   "jsonrpc": "2.0",
+   "method": "event",
+   "params": {
+    "data": {
+     "cols": 80,
+     "rows": 24
+    },
+    "seq": 4,
+    "terminal": "t1",
+    "type": "size"
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "heartbeat",
+   "params": {
+    "seq": 4
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "event",
+   "params": {
+    "data": {
+     "records": {},
+     "reported": true,
+     "status": {
+      "app": "probe",
+      "state": "working"
+     }
+    },
+    "seq": 5,
+    "terminal": "t1",
+    "type": "status"
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "event",
+   "params": {
+    "data": {
+     "argv": [
+      "sleep",
+      "0.5"
+     ],
+     "cwd": "/private/tmp/claude-501/-Users-mtajchert-coding-priv-flocket/4f19ce6e-b8f7-4817-8d40-b9adfe4dc5a1/scratchpad",
+     "name": "sleep",
+     "pid": 71732
+    },
+    "seq": 6,
+    "terminal": "t1",
+    "type": "foreground"
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "event",
+   "params": {
+    "data": {
+     "records": {},
+     "reported": true,
+     "status": {
+      "app": "probe",
+      "state": "idle"
+     }
+    },
+    "seq": 7,
+    "terminal": "t1",
+    "type": "status"
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "event",
+   "params": {
+    "data": {
+     "state": "idle",
+     "turn": 1
+    },
+    "seq": 8,
+    "terminal": "t1",
+    "type": "turn"
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "event",
+   "params": {
+    "data": {
+     "argv": [
+      "sh"
+     ],
+     "cwd": "/private/tmp/claude-501/-Users-mtajchert-coding-priv-flocket/4f19ce6e-b8f7-4817-8d40-b9adfe4dc5a1/scratchpad",
+     "name": "bash",
+     "pid": 71730
+    },
+    "seq": 9,
+    "terminal": "t1",
+    "type": "foreground"
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "heartbeat",
+   "params": {
+    "seq": 9
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "heartbeat",
+   "params": {
+    "seq": 9
+   }
+  }
+ ],
+ "events_after_resize": [
+  {
+   "jsonrpc": "2.0",
+   "method": "event",
+   "params": {
+    "data": {
+     "cols": 100,
+     "rows": 30
+    },
+    "seq": 10,
+    "terminal": "t1",
+    "type": "size"
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "heartbeat",
+   "params": {
+    "seq": 10
+   }
+  }
+ ],
+ "read": {
+  "id": 6,
+  "jsonrpc": "2.0",
+  "result": {
+   "complete": true,
+   "how": "history",
+   "text": "sh-3.2$ echo hello-flocket\nhello-flocket\nsh-3.2$ printf '\\033]7501;state=working:app=probe\\033\\\\'; sleep 0.5; printf '\\033]7501;state=idle:app=probe\\033\\\\'\nsh-3.2$"
+  }
+ },
+ "label": {
+  "id": 7,
+  "jsonrpc": "2.0",
+  "result": {
+   "address": "t1",
+   "argv": [
+    "sh"
+   ],
+   "cols": 100,
+   "created_ms": 1793495351242,
+   "cwd": "/private/tmp/claude-501/-Users-mtajchert-coding-priv-flocket/4f19ce6e-b8f7-4817-8d40-b9adfe4dc5a1/scratchpad",
+   "die_with_parent": false,
+   "exit_code": null,
+   "finished_ms": null,
+   "foreground": {
+    "argv": [
+     "sh"
+    ],
+    "cwd": "/private/tmp/claude-501/-Users-mtajchert-coding-priv-flocket/4f19ce6e-b8f7-4817-8d40-b9adfe4dc5a1/scratchpad",
+    "name": "bash",
+    "pid": 71730
+   },
+   "identity": "ghostty",
+   "keep": false,
+   "labels": {
+    "group": "a",
+    "where": "flocket / research"
+   },
+   "name": "probe",
+   "notify": true,
+   "parent": null,
+   "pid": 71730,
+   "reason": null,
+   "reported": true,
+   "rm": false,
+   "rows": 30,
+   "screen": "exact",
+   "signal": null,
+   "state": "live",
+   "status": {
+    "app": "probe",
+    "state": "idle"
+   },
+   "status_ms": 1793495356753,
+   "template": null,
+   "title": "",
+   "turn": 1
+  }
+ },
+ "keys": {
+  "id": 8,
+  "jsonrpc": "2.0",
+  "result": {
+   "status": "idle",
+   "turn": 1
+  }
+ },
+ "events_after_label": [
+  {
+   "jsonrpc": "2.0",
+   "method": "event",
+   "params": {
+    "data": {
+     "labels": {
+      "group": "a",
+      "where": "flocket / research"
+     }
+    },
+    "seq": 11,
+    "terminal": "t1",
+    "type": "labels"
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "heartbeat",
+   "params": {
+    "seq": 11
+   }
+  }
+ ],
+ "doc_get_herdr_app": {
+  "id": 9,
+  "jsonrpc": "2.0",
+  "result": {
+   "value": null,
+   "version": 0
+  }
+ },
+ "doc_get_new": {
+  "id": 10,
+  "jsonrpc": "2.0",
+  "result": {
+   "value": null,
+   "version": 0
+  }
+ },
+ "doc_set_1": {
+  "id": 11,
+  "jsonrpc": "2.0",
+  "result": {
+   "version": 1
+  }
+ },
+ "doc_set_conflict": {
+  "error": {
+   "code": -32000,
+   "data": {
+    "hint": "read doc.get and retry with its version",
+    "kind": "conflict"
+   },
+   "message": "document \"flocket-research\" is at version 1, not 0"
+  },
+  "id": 12,
+  "jsonrpc": "2.0"
+ },
+ "doc_get_after": {
+  "id": 13,
+  "jsonrpc": "2.0",
+  "result": {
+   "value": {
+    "groups": [],
+    "x": 1
+   },
+   "version": 1
+  }
+ },
+ "doc_set_null": {
+  "id": 14,
+  "jsonrpc": "2.0",
+  "result": {
+   "version": 2
+  }
+ },
+ "doc_get_deleted": {
+  "id": 15,
+  "jsonrpc": "2.0",
+  "result": {
+   "value": null,
+   "version": 2
+  }
+ },
+ "doc_bad_name": {
+  "error": {
+   "code": -32602,
+   "data": {
+    "hint": "see `hc schema`",
+    "kind": "invalid_params"
+   },
+   "message": "bad name \"Bad Name\": use 1-32 of a-z 0-9 - _ . starting with a letter or digit, not shaped like an id (t7)"
+  },
+  "id": 16,
+  "jsonrpc": "2.0"
+ },
+ "events_after_docs": [
+  {
+   "jsonrpc": "2.0",
+   "method": "event",
+   "params": {
+    "data": {
+     "name": "flocket-research",
+     "version": 1
+    },
+    "seq": 12,
+    "type": "doc"
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "event",
+   "params": {
+    "data": {
+     "name": "flocket-research",
+     "version": 2
+    },
+    "seq": 13,
+    "type": "doc"
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "heartbeat",
+   "params": {
+    "seq": 13
+   }
+  }
+ ],
+ "detach_frames": [
+  {
+   "channel": 2,
+   "kind": 0,
+   "len": 1,
+   "hex": "07"
+  },
+  {
+   "channel": 2,
+   "kind": 2,
+   "len": 0,
+   "hex": ""
+  }
+ ],
+ "events_after_detach": [
+  {
+   "jsonrpc": "2.0",
+   "method": "event",
+   "params": {
+    "data": {
+     "cols": 200,
+     "rows": 120
+    },
+    "seq": 14,
+    "terminal": "t1",
+    "type": "size"
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "heartbeat",
+   "params": {
+    "seq": 14
+   }
+  }
+ ],
+ "framed_attach_observe": {
+  "id": 17,
+  "jsonrpc": "2.0",
+  "result": {
+   "channel": 3,
+   "terminal": {
+    "address": "t1",
+    "argv": [
+     "sh"
+    ],
+    "cols": 200,
+    "created_ms": 1793495351242,
+    "cwd": "/private/tmp/claude-501/-Users-mtajchert-coding-priv-flocket/4f19ce6e-b8f7-4817-8d40-b9adfe4dc5a1/scratchpad",
+    "die_with_parent": false,
+    "exit_code": null,
+    "finished_ms": null,
+    "foreground": {
+     "argv": [
+      "sh"
+     ],
+     "cwd": "/private/tmp/claude-501/-Users-mtajchert-coding-priv-flocket/4f19ce6e-b8f7-4817-8d40-b9adfe4dc5a1/scratchpad",
+     "name": "bash",
+     "pid": 71730
+    },
+    "identity": "ghostty",
+    "keep": false,
+    "labels": {
+     "group": "a",
+     "where": "flocket / research"
+    },
+    "name": "probe",
+    "notify": true,
+    "parent": null,
+    "pid": 71730,
+    "reason": null,
+    "reported": true,
+    "rm": false,
+    "rows": 120,
+    "screen": "exact",
+    "signal": null,
+    "state": "live",
+    "status": {
+     "app": "probe",
+     "state": "idle"
+    },
+    "status_ms": 1793495356753,
+    "template": null,
+    "title": "",
+    "turn": 1
+   }
+  }
+ },
+ "send": {
+  "id": 18,
+  "jsonrpc": "2.0",
+  "result": {
+   "started": false,
+   "status": "idle",
+   "turn": 1
+  }
+ },
+ "interrupt": {
+  "id": 19,
+  "jsonrpc": "2.0",
+  "result": {
+   "key": "esc",
+   "outcome": "stopped"
+  }
+ },
+ "kill": {
+  "id": 20,
+  "jsonrpc": "2.0",
+  "result": {
+   "address": "t1",
+   "argv": [
+    "sh"
+   ],
+   "cols": 200,
+   "created_ms": 1793495351242,
+   "cwd": "/private/tmp/claude-501/-Users-mtajchert-coding-priv-flocket/4f19ce6e-b8f7-4817-8d40-b9adfe4dc5a1/scratchpad",
+   "die_with_parent": false,
+   "exit_code": null,
+   "finished_ms": 1793495374594,
+   "identity": "ghostty",
+   "keep": false,
+   "labels": {
+    "group": "a",
+    "where": "flocket / research"
+   },
+   "name": "probe",
+   "notify": true,
+   "parent": null,
+   "pid": 71730,
+   "reason": "killed",
+   "reported": true,
+   "rm": false,
+   "rows": 120,
+   "screen": "exact",
+   "signal": 1,
+   "state": "finished",
+   "status": null,
+   "status_ms": 1793495374594,
+   "template": null,
+   "title": "",
+   "turn": 1
+  }
+ },
+ "kill_close_frames": [
+  {
+   "channel": 3,
+   "kind": 0,
+   "len": 13,
+   "hex": "73656e742d62792d6170690d0a",
+   "text": null
+  },
+  {
+   "channel": 3,
+   "kind": 0,
+   "len": 8,
+   "hex": "73682d332e322420",
+   "text": null
+  },
+  {
+   "channel": 3,
+   "kind": 2,
+   "len": 75,
+   "hex": "7b22657869745f636f6465223a6e756c6c2c2266696e69736865645f6d73223a313739333439353337343539342c22726561736f6e223a226b696c6c6564222c227369676e616c223a317d",
+   "text": "{\"exit_code\":null,\"finished_ms\":1793495374594,\"reason\":\"killed\",\"signal\":1}"
+  }
+ ],
+ "attach_finished": {
+  "error": {
+   "code": -32000,
+   "data": {
+    "hint": "read what it left: hc read t1",
+    "kind": "finished"
+   },
+   "message": "t1 has finished"
+  },
+  "id": 21,
+  "jsonrpc": "2.0"
+ },
+ "rm_live_error_check": null,
+ "get_finished": {
+  "id": 22,
+  "jsonrpc": "2.0",
+  "result": {
+   "address": "t1",
+   "argv": [
+    "sh"
+   ],
+   "cols": 200,
+   "created_ms": 1793495351242,
+   "cwd": "/private/tmp/claude-501/-Users-mtajchert-coding-priv-flocket/4f19ce6e-b8f7-4817-8d40-b9adfe4dc5a1/scratchpad",
+   "die_with_parent": false,
+   "exit_code": null,
+   "finished_ms": 1793495374594,
+   "identity": "ghostty",
+   "keep": false,
+   "labels": {
+    "group": "a",
+    "where": "flocket / research"
+   },
+   "name": "probe",
+   "notify": true,
+   "parent": null,
+   "pid": 71730,
+   "reason": "killed",
+   "reported": true,
+   "rm": false,
+   "rows": 120,
+   "screen": "exact",
+   "signal": 1,
+   "state": "finished",
+   "status": null,
+   "status_ms": 1793495374594,
+   "template": null,
+   "title": "",
+   "turn": 1
+  }
+ },
+ "rm": {
+  "id": 23,
+  "jsonrpc": "2.0",
+  "result": {
+   "removed": "t1"
+  }
+ },
+ "events_after_kill_rm": [
+  {
+   "jsonrpc": "2.0",
+   "method": "heartbeat",
+   "params": {
+    "seq": 14
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "heartbeat",
+   "params": {
+    "seq": 14
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "heartbeat",
+   "params": {
+    "seq": 14
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "event",
+   "params": {
+    "data": {
+     "records": {},
+     "reported": true,
+     "status": null
+    },
+    "seq": 15,
+    "terminal": "t1",
+    "type": "status"
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "event",
+   "params": {
+    "data": {
+     "exit_code": null,
+     "finished_ms": 1793495374594,
+     "reason": "killed",
+     "signal": 1
+    },
+    "seq": 16,
+    "terminal": "t1",
+    "type": "finished"
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "heartbeat",
+   "params": {
+    "seq": 16
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "event",
+   "params": {
+    "data": {},
+    "seq": 17,
+    "terminal": "t1",
+    "type": "removed"
+   }
+  }
+ ],
+ "attach_unknown_machine": {
+  "error": {
+   "code": -32000,
+   "data": {
+    "hint": "no machines yet: hc machine add <ssh-target>",
+    "kind": "machine_unknown"
+   },
+   "message": "unknown machine \"rohan\""
+  },
+  "id": 24,
+  "jsonrpc": "2.0"
+ },
+ "subscribe_unknown_machine": {
+  "error": {
+   "code": -32000,
+   "data": {
+    "hint": "this core only runs local terminals; use an address like t7",
+    "kind": "machine_unknown"
+   },
+   "message": "unknown machine \"rohan\""
+  },
+  "id": 25,
+  "jsonrpc": "2.0"
+ },
+ "filtered_subscribe": {
+  "id": 26,
+  "jsonrpc": "2.0",
+  "result": {
+   "channel": 4,
+   "seq": 17,
+   "terminals": []
+  }
+ },
+ "doc_set_2": {
+  "id": 27,
+  "jsonrpc": "2.0",
+  "result": {
+   "version": 3
+  }
+ },
+ "filtered_events": [],
+ "unfiltered_events_doc": [
+  {
+   "jsonrpc": "2.0",
+   "method": "event",
+   "params": {
+    "data": {
+     "name": "flocket-research",
+     "version": 3
+    },
+    "seq": 18,
+    "type": "doc"
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "heartbeat",
+   "params": {
+    "seq": 18
+   }
+  }
+ ],
+ "event_close_reply": [
+  {
+   "channel": 4,
+   "kind": 0,
+   "len": 59
+  },
+  {
+   "channel": 4,
+   "kind": 2,
+   "len": 0
+  }
+ ],
+ "heartbeat_framed": [
+  {
+   "jsonrpc": "2.0",
+   "method": "heartbeat",
+   "params": {
+    "seq": 18
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "heartbeat",
+   "params": {
+    "seq": 18
+   }
+  }
+ ],
+ "leftover_frames": []
+}

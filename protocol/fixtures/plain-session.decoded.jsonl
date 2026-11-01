@@ -1,0 +1,31 @@
+{"t_ms": 0, "dir": "out", "mode": "plain", "msg": {"jsonrpc": "2.0", "id": 1, "method": "hello", "params": {"generation": 1}}}
+{"t_ms": 2, "dir": "in", "mode": "plain", "msg": {"id": 1, "jsonrpc": "2.0", "result": {"core": {"id": "86bd470d4c557443479c94e20b614001", "name": "tajchertminim6"}, "features": ["framed", "attach", "events", "status", "shell"], "framed": false, "generation": 1, "methods": ["hello", "server.status", "server.stop", "server.restart", "terminal.run", "templates.list", "terminal.list", "terminal.get", "terminal.kill", "terminal.rm", "terminal.keep", "terminal.label", "terminal.read", "terminal.attach", "terminal.send", "terminal.wait", "terminal.keys", "terminal.interrupt", "terminal.put", "machine.exec", "file.read", "file.write", "file.edit", "doc.get", "doc.set", "events.subscribe", "machine.add", "machine.list", "machine.connect", "machine.rename", "machine.rm", "rpc.discover"], "version": "0.1.15"}}}
+{"t_ms": 2, "dir": "out", "mode": "plain", "msg": {"jsonrpc": "2.0", "id": 2, "method": "hello", "params": {"generation": 2}}}
+{"t_ms": 2, "dir": "in", "mode": "plain", "msg": {"error": {"code": -32000, "data": {"hint": "this core speaks generation 1", "kind": "unsupported_generation"}, "message": "protocol generation 2 not supported"}, "id": 2, "jsonrpc": "2.0"}}
+{"t_ms": 2, "dir": "out", "mode": "plain", "msg": {"jsonrpc": "2.0", "id": 3, "method": "terminal.list", "params": {}}}
+{"t_ms": 2, "dir": "in", "mode": "plain", "msg": {"id": 3, "jsonrpc": "2.0", "result": {"hidden_finished": 0, "terminals": []}}}
+{"t_ms": 2, "dir": "out", "mode": "plain", "msg": {"jsonrpc": "2.0", "id": 4, "method": "terminal.get", "params": {"terminal": "t9zz"}}}
+{"t_ms": 2, "dir": "in", "mode": "plain", "msg": {"error": {"code": -32000, "data": {"hint": "see `hc ls --all`", "kind": "not_found"}, "message": "no terminal \"t9zz\""}, "id": 4, "jsonrpc": "2.0"}}
+{"t_ms": 2, "dir": "out", "mode": "plain", "msg": {"jsonrpc": "2.0", "id": 5, "method": "terminal.get", "params": {"terminal": "nosuch/t1"}}}
+{"t_ms": 2, "dir": "in", "mode": "plain", "msg": {"error": {"code": -32000, "data": {"hint": "no machines yet: hc machine add <ssh-target>", "kind": "machine_unknown"}, "message": "unknown machine \"nosuch\""}, "id": 5, "jsonrpc": "2.0"}}
+{"t_ms": 2, "dir": "out", "mode": "plain", "msg": {"jsonrpc": "2.0", "id": 6, "method": "terminal.attach", "params": {"terminal": "t1", "cols": 80, "rows": 24}}}
+{"t_ms": 2, "dir": "in", "mode": "plain", "msg": {"error": {"code": -32000, "data": {"hint": "send hello with framed: true first, or use `hc attach`", "kind": "needs_framed"}, "message": "attach needs a framed connection"}, "id": 6, "jsonrpc": "2.0"}}
+{"t_ms": 2, "dir": "out", "mode": "plain", "msg": {"jsonrpc": "2.0", "id": 7, "method": "no.such", "params": {}}}
+{"t_ms": 2, "dir": "in", "mode": "plain", "msg": {"error": {"code": -32601, "data": {"hint": "see `hc schema`", "kind": "unknown_method"}, "message": "unknown method \"no.such\""}, "id": 7, "jsonrpc": "2.0"}}
+{"t_ms": 2, "dir": "out", "mode": "plain", "msg": {"jsonrpc": "2.0", "id": 8, "method": "terminal.get", "params": {}}}
+{"t_ms": 2, "dir": "in", "mode": "plain", "msg": {"error": {"code": -32602, "data": {"hint": "see `hc schema`", "kind": "invalid_params"}, "message": "missing field `terminal`"}, "id": 8, "jsonrpc": "2.0"}}
+{"t_ms": 2, "dir": "out", "mode": "plain", "msg": {"jsonrpc": "2.0", "id": 99, "method": "terminal.list"}}
+{"t_ms": 2, "dir": "in", "mode": "plain", "msg": {"id": 99, "jsonrpc": "2.0", "result": {"hidden_finished": 0, "terminals": []}}}
+{"t_ms": 2, "dir": "out", "mode": "plain", "raw": "{not json"}
+{"t_ms": 3, "dir": "in", "mode": "plain", "msg": {"error": {"code": -32700, "data": {"hint": "see `hc schema`", "kind": "parse_error"}, "message": "key must be a string at line 1 column 2"}, "id": null, "jsonrpc": "2.0"}}
+{"t_ms": 3, "dir": "out", "mode": "plain", "msg": {"jsonrpc": "2.0", "id": 9, "method": "server.status", "params": {}}}
+{"t_ms": 3, "dir": "in", "mode": "plain", "msg": {"id": 9, "jsonrpc": "2.0", "result": {"core": {"id": "86bd470d4c557443479c94e20b614001", "name": "tajchertminim6"}, "finished": 0, "holder": null, "holders": [], "installed_by": null, "live": 0, "pid": 71606, "uptime_ms": 3892, "version": "0.1.15"}}}
+{"t_ms": 3, "dir": "out", "mode": "plain", "msg": {"jsonrpc": "2.0", "id": 10, "method": "templates.list", "params": {}}}
+{"t_ms": 3, "dir": "in", "mode": "plain", "msg": {"id": 10, "jsonrpc": "2.0", "result": {"templates": []}}}
+{"t_ms": 3, "dir": "out", "mode": "plain", "msg": {"jsonrpc": "2.0", "id": 11, "method": "machine.list", "params": {}}}
+{"t_ms": 3, "dir": "in", "mode": "plain", "msg": {"id": 11, "jsonrpc": "2.0", "result": {"machines": []}}}
+{"t_ms": 3, "dir": "out", "mode": "plain", "msg": {"jsonrpc": "2.0", "id": 12, "method": "events.subscribe", "params": {}}}
+{"t_ms": 3, "dir": "in", "mode": "plain", "msg": {"id": 12, "jsonrpc": "2.0", "result": {"channel": null, "seq": 0, "terminals": []}}}
+{"t_ms": 3, "dir": "out", "mode": "plain", "msg": {"jsonrpc": "2.0", "id": 500, "method": "server.status", "params": {}}}
+{"t_ms": 10, "dir": "in", "mode": "plain", "msg": {"jsonrpc": "2.0", "method": "event", "params": {"data": {"name": "flocket-research-plain", "version": 1}, "seq": 1, "type": "doc"}}}
+{"t_ms": 2005, "dir": "in", "mode": "plain", "msg": {"jsonrpc": "2.0", "method": "heartbeat", "params": {"seq": 1}}}

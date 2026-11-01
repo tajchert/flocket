@@ -1,0 +1,164 @@
+{
+ "pipelined_hello": {
+  "id": 0,
+  "jsonrpc": "2.0",
+  "result": {
+   "core": {
+    "id": "86bd470d4c557443479c94e20b614001",
+    "name": "tajchertminim6"
+   },
+   "features": [
+    "framed",
+    "attach",
+    "events",
+    "status",
+    "shell"
+   ],
+   "framed": true,
+   "generation": 1,
+   "methods": [
+    "hello",
+    "server.status",
+    "server.stop",
+    "server.restart",
+    "terminal.run",
+    "templates.list",
+    "terminal.list",
+    "terminal.get",
+    "terminal.kill",
+    "terminal.rm",
+    "terminal.keep",
+    "terminal.label",
+    "terminal.read",
+    "terminal.attach",
+    "terminal.send",
+    "terminal.wait",
+    "terminal.keys",
+    "terminal.interrupt",
+    "terminal.put",
+    "machine.exec",
+    "file.read",
+    "file.write",
+    "file.edit",
+    "doc.get",
+    "doc.set",
+    "events.subscribe",
+    "machine.add",
+    "machine.list",
+    "machine.connect",
+    "machine.rename",
+    "machine.rm",
+    "rpc.discover"
+   ],
+   "version": "0.1.15"
+  }
+ },
+ "pipelined_subscribe": {
+  "id": 1,
+  "jsonrpc": "2.0",
+  "result": {
+   "channel": 1,
+   "seq": 18,
+   "terminals": []
+  }
+ },
+ "credit_paint_bytes": 267,
+ "credit_bytes_received_without_credit_incl_paint": 262144,
+ "credit_max_frame_payload": 2048,
+ "credit_total_after_crediting": 600350,
+ "behind_bytes_before_credit": 262144,
+ "behind_bytes_after_credit": 1545758,
+ "behind_contains_repaint_DECSTR": true,
+ "behind_total_vs_6MB": true,
+ "filtered_one_terminal_subscribe_seq": 22,
+ "multi_viewer_size_events": [
+  {
+   "cols": 80,
+   "rows": 24
+  },
+  {
+   "cols": 120,
+   "rows": 40
+  },
+  {
+   "cols": 80,
+   "rows": 24
+  },
+  {
+   "cols": 120,
+   "rows": 40
+  },
+  {
+   "cols": 80,
+   "rows": 24
+  },
+  {
+   "cols": 200,
+   "rows": 120
+  }
+ ],
+ "run_line": {
+  "id": 4,
+  "jsonrpc": "2.0",
+  "result": {
+   "address": "t3",
+   "argv": [
+    "sh",
+    "-c",
+    "sleep 1; exit 3"
+   ],
+   "cols": 200,
+   "created_ms": 1793495470842,
+   "cwd": "/private/tmp/claude-501/-Users-mtajchert-coding-priv-flocket/4f19ce6e-b8f7-4817-8d40-b9adfe4dc5a1/scratchpad",
+   "die_with_parent": false,
+   "exit_code": null,
+   "finished_ms": null,
+   "identity": "ghostty",
+   "keep": false,
+   "labels": {},
+   "name": "exit-probe",
+   "notify": true,
+   "parent": null,
+   "pid": 73304,
+   "reason": null,
+   "reported": false,
+   "rm": false,
+   "rows": 120,
+   "screen": "exact",
+   "signal": null,
+   "state": "live",
+   "status": null,
+   "status_ms": null,
+   "template": null,
+   "title": "",
+   "turn": 0
+  }
+ },
+ "exit_close_payload": [
+  "{\"exit_code\":3,\"finished_ms\":1793495471878,\"reason\":\"exited\",\"signal\":null}"
+ ],
+ "lazy_subscribe_seq": 32,
+ "lazy_received_before_credit": 262144,
+ "lazy_lines": 624,
+ "lazy_unparseable_lines": 0,
+ "lazy_missed_count": 1,
+ "lazy_missed_sample": {
+  "seq": 2134,
+  "n_terminals": 2,
+  "terminal_addresses": [
+   "t2",
+   "t3"
+  ]
+ },
+ "lazy_event_seq_before_missed": [
+  154,
+  155,
+  156
+ ],
+ "lazy_event_seq_after_missed": [
+  2135,
+  2136,
+  2137
+ ],
+ "lazy_elapsed_s": 18.0
+}
