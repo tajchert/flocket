@@ -26,6 +26,9 @@ sessions' SSH links alive.
   its own ADR.
 
 ## Consequences
+- Settings → Connection → "Keep connected in background" (on by default) is an app-level
+  opt-out: when off, leaving the app detaches at once, with no service or notification, and
+  the notification permission is never requested.
 - The notification permission (`POST_NOTIFICATIONS`, Android 13+) is requested
   contextually. Without it the service still runs; only the notification is hidden.
 - The service starts while the app is still in the foreground state, when the terminal

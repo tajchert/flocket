@@ -60,7 +60,11 @@ the same steps were always in order, so type with the IME disabled and re-enable
    from the extra keys stops it.
 5. Open `macsh` (headless 200x120) from the list: `hc get` still says 200x120 (passive, scaled to
    fit); the first key resizes it to the phone grid.
-6. Lifecycle: see the matrix. Watch `grep -c "Accepted publickey" $FLOCKET_SSHD_DIR/sshd.log` for
+6. Lifecycle: see the matrix. With a terminal open, leaving the app starts the `shortService`
+   keep-alive (ADR-0006): `adb shell dumpsys activity services com.mtajchert.flocket.debug` shows
+   `TerminalKeepAliveService` with `isForeground=true types=0x00000800`, and `dumpsys netpolicy`
+   shows the uid with `procState=FGS … effective=NONE` (not blocked). The first terminal screen asks
+   once for the notification permission ("Allow notifications?" → system dialog). Watch `grep -c "Accepted publickey" $FLOCKET_SSHD_DIR/sshd.log` for
    reconnects, `hc get <t>` (200x120 = no viewer left) and `adb logcat | grep -E "CoreSession|InetDiagMessage"`.
 7. Smoothness: in an owned terminal run a 5 MB colour flood
    (`yes "$(printf '\033[3%dmflocket\033[0m ' 1 2 3 4 5 6)" | head -c 5000000`) and read
@@ -102,15 +106,25 @@ Throughput: the same 5 MB flood finishes in ~3 s with no viewer but takes ~70 s 
 attached, while the app, `hc connect` and the core are all near 0 % CPU. The stream is latency
 bound somewhere between the SSH channel window (sshj) and CREDIT return, not CPU bound.
 
+## Results, 2026-11-01 (ADR-0006 background keep-alive)
+
+Debug build of `feat/background-service`; same AVD (API 36). Owner terminal `t7` (52x28 on the phone,
+200x120 headless). Reconnects counted with `grep -c "Accepted publickey" sshd.log`.
+
+| Case | Result | Evidence |
+|---|---|---|
+| Notification permission prompt | PASS | Rationale dialog on the first terminal open, Continue → system dialog → Allow; not shown again. |
+| 6c' Lock 30 s → unlock | PASS | FGS start allowed (`code:ACTIVITY_VISIBILITY_GRACE_PERIOD`, from ProcessLifecycle ON_STOP); `types=0x800`; `InetDiagMessage` destroyed other uids' sockets, not ours; `hc get` stayed 52x28 (owner kept); 0 new SSH accepts; service stopped on unlock. |
+| 6h HOME → Settings 60 s → back | PASS | netpolicy `procState=FGS blocked=APP_BACKGROUND … effective=NONE`; notification "Flocket connected · 1 terminal"; instant return, typing works, 0 new accepts. |
+| 6i Background > 3 min | PASS | At 170 s: `ConnectionManager: detaching 1 session(s): window over`, service and notification gone, core size back to 200x120 (viewer left), uid then `effective=APP_BACKGROUND`. No `onTimeout`/ANR. Return: 1 reconnect, passive attach, input works. |
+| 6j Background from the list (no terminal) | PASS | `detaching … background, no terminal open` at once, no FGS; return reconnects (1 accept). |
+| 6k Setting "Keep connected in background" off, terminal open, HOME | PASS | `detaching … keep-alive off` at once; no FGS, no notification. |
+
 ## Known issues (ranked)
 
-1. **Background network block (Android 15+/16).** The 60 s grace period in `ConnectionManagerImpl`
-   cannot hold: the platform cuts network for backgrounded apps after ~5 s (screen lock or HOME).
-   Fix needs a product decision: e.g. a `shortService` foreground service started on ON_STOP while
-   terminals are open (exempt from the background chain), or accept and shorten the grace period.
+1. ~~Background network block (Android 15+/16).~~ Fixed by ADR-0006 (see the results above). With
+   only the list open, a lock still detaches and the unlock reconnects (by design).
 2. **Flood throughput** ~70 KB/s through the phone (see above); investigate the sshj receive
    window / window-adjust timing and CREDIT round trips on a physical device.
-3. Exit banner shows "Exited (code N)" for killed terminals; the core's `reason` is not used.
-4. The host header counts hidden finished terminals ("4 terminals" with 2 rows).
-5. The device key picker shows the alias (`key-<uuid>`) instead of the label.
-6. The New terminal FAB has no accessible label in the UI dump.
+3. ~~Exit banner reason~~, ~~host header count~~ ("1 shown · 6 total"), ~~key alias in pickers~~
+   (label from the public-key comment) and ~~unlabelled FABs~~: fixed on `feat/background-service`.
