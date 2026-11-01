@@ -122,7 +122,7 @@ one `TerminalController` (Ghostty engine via `TerminalControllerFactory`) and th
 - Writes go through a bounded queue (256) to one writer coroutine: in order, never retried; a full queue or a failed
   `write` is emitted on `failures`. Input snaps the viewport to the bottom.
 - Gestures: vertical drag/fling scrolls scrollback pixel-smoothly (below), tap focuses and shows the keyboard (or
-  clears a selection), long-press selects a word (below), two-finger tap pastes.
+  clears a selection), long-press selects a word (below; on blank cells past the row's text it selects nothing), two-finger tap pastes.
 
 ## Scrolling
 
@@ -251,3 +251,7 @@ adb shell am instrument -w -e class com.mtajchert.flocket.core.terminal.DeviceTh
   com.mtajchert.flocket.core.terminal.test/androidx.test.runner.AndroidJUnitRunner
 adb logcat -d -s THROUGHPUT:I     # results; afterwards: HC_SESSION=flocket-test-tpdev TMPDIR=/tmp hc server stop
 ```
+
+## Back with a selection
+
+While a selection exists, `TerminalView` registers an `OnBackInvokedCallback` (PRIORITY_OVERLAY, API 33+; older versions use `onKeyDown`) so Back clears the selection, handles and toolbar first and only the next Back navigates. The floating toolbar does not consume Back, and Navigation 3's callback would otherwise win. The callback is unregistered with a `post` so the same Back does not also reach navigation. With the IME open the first Back hides the IME (platform), so it takes up to three presses from selection to the list.

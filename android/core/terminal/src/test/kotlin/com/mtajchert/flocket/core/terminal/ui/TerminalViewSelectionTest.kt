@@ -81,6 +81,37 @@ class TerminalViewSelectionTest {
     }
 
     @Test
+    fun `dismissing the selection toolbar, as Back does, clears the selection`() {
+        val activity =
+            org.robolectric.Robolectric
+                .buildActivity(android.app.Activity::class.java)
+                .setup()
+                .get()
+        (view.parent as? android.view.ViewGroup)?.removeView(view)
+        activity.setContentView(view, android.view.ViewGroup.LayoutParams(1200, 400))
+        view.measure(
+            View.MeasureSpec.makeMeasureSpec(1200, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(400, View.MeasureSpec.EXACTLY),
+        )
+        view.layout(0, 0, 1200, 400)
+        draw()
+        longPress(view.cellCenter(col = 6, row = 0))
+        assertEquals("~/src/flocket", view.selectedText())
+        assertTrue("no selection toolbar", view.finishActionModeForTest())
+        assertNull(view.selectedText())
+    }
+
+    @Test
+    fun `back clears an active selection first and does nothing without one`() {
+        assertEquals(false, view.handleBack())
+        longPress(view.cellCenter(col = 6, row = 0))
+        assertEquals("~/src/flocket", view.selectedText())
+        assertEquals(true, view.handleBack())
+        assertNull(view.selectedText())
+        assertEquals(false, view.handleBack())
+    }
+
+    @Test
     fun `dragging the end handle extends the selection across rows`() {
         longPress(view.cellCenter(col = 0, row = 0))
         assertEquals("cd", view.selectedText())
