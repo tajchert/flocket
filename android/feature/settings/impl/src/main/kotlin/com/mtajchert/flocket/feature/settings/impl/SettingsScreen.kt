@@ -65,6 +65,9 @@ import androidx.compose.ui.unit.sp
 import com.mtajchert.flocket.core.data.ThemePreference
 import com.mtajchert.flocket.core.ui.component.CenteredContent
 import com.mtajchert.flocket.core.ui.component.PublicKeyCard
+import com.mtajchert.flocket.core.ui.terminalsettings.TerminalSettingsCallbacks
+import com.mtajchert.flocket.core.ui.terminalsettings.TerminalSettingsForm
+import com.mtajchert.flocket.core.ui.terminalsettings.TerminalSettingsFormState
 
 @Immutable
 data class AppInfo(
@@ -76,9 +79,7 @@ data class AppInfo(
 class SettingsCallbacks(
     val onTheme: (ThemePreference) -> Unit = {},
     val onDynamicColor: (Boolean) -> Unit = {},
-    val onFontSize: (Float) -> Unit = {},
-    val onExtraKeys: (Boolean) -> Unit = {},
-    val onKeepScreenOn: (Boolean) -> Unit = {},
+    val terminal: TerminalSettingsCallbacks = TerminalSettingsCallbacks(),
     val onKeepConnected: (Boolean) -> Unit = {},
     val onGenerateKey: () -> Unit = {},
     val onImportKey: () -> Unit = {},
@@ -190,62 +191,18 @@ private fun AppearanceSection(
 }
 
 @Composable
-private fun TerminalSection(
+internal fun TerminalSection(
     state: SettingsUiState,
     callbacks: SettingsCallbacks,
 ) {
-    SectionHeader(stringResource(R.string.section_terminal))
-    // The slider keeps its own value while dragging and saves once on release, so DataStore isn't written per pixel.
-    var draft by remember(
-        state.preferences.terminalFontSize,
-    ) { mutableFloatStateOf(state.preferences.terminalFontSize) }
-    Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                stringResource(R.string.font_size),
-                style = MaterialTheme.typography.bodyLarge,
-                modifier = Modifier.weight(1f),
-            )
-            Text(
-                stringResource(R.string.font_size_value, draft.toInt()),
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        Slider(
-            value = draft,
-            onValueChange = { draft = it },
-            onValueChangeFinished = { callbacks.onFontSize(draft) },
-            valueRange = SettingsViewModel.MIN_FONT_SP..SettingsViewModel.MAX_FONT_SP,
-            steps = (SettingsViewModel.MAX_FONT_SP - SettingsViewModel.MIN_FONT_SP).toInt() - 1,
-        )
-        val previewDescription = stringResource(R.string.font_preview_description)
-        Surface(
-            shape = MaterialTheme.shapes.medium,
-            color = MaterialTheme.colorScheme.surfaceContainerHighest,
-            modifier = Modifier.fillMaxWidth().semantics { contentDescription = previewDescription },
-        ) {
-            Text(
-                stringResource(R.string.font_preview),
-                fontFamily = FontFamily.Monospace,
-                fontSize = draft.sp,
-                lineHeight = (draft * 1.3f).sp,
-                modifier = Modifier.padding(12.dp),
-            )
-        }
-    }
-    SwitchRow(
-        stringResource(R.string.extra_keys),
-        stringResource(R.string.extra_keys_hint),
-        state.preferences.showExtraKeys,
-        callbacks.onExtraKeys,
+    SectionHeader(stringResource(R.string.section_terminal_defaults))
+    Text(
+        stringResource(R.string.terminal_defaults_intro),
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(horizontal = 16.dp),
     )
-    SwitchRow(
-        stringResource(R.string.keep_screen_on),
-        stringResource(R.string.keep_screen_on_hint),
-        state.preferences.keepScreenOnInTerminal,
-        callbacks.onKeepScreenOn,
-    )
+    TerminalSettingsForm(TerminalSettingsFormState(state.preferences.terminal), callbacks.terminal)
 }
 
 @Composable

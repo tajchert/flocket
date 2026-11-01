@@ -53,5 +53,7 @@
     <string name="terminal_clipboard_title">Allow clipboard access?</string>
     <string name="terminal_clipboard_message">The program wants to copy this to your clipboard:</string>
     <string name="terminal_clipboard_allow">Copy</string>
+    <string name="terminal_clipboard_always">Always allow for this host</string>
+    <string name="terminal_clipboard_written">A program copied text to your clipboard</string>
     <string name="terminal_clipboard_deny">Don\'t copy</string>
 </resources>

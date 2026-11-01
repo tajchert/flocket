@@ -31,6 +31,17 @@
     <string name="detail_not_found">This host no longer exists.</string>
     <string name="detail_edit">Edit</string>
     <string name="detail_delete">Delete host</string>
+    <string name="detail_connect">Connect</string>
+    <string name="detail_host_settings">Host settings</string>
+    <string name="detail_host_settings_defaults">Using the app defaults</string>
+    <plurals name="detail_host_settings_custom">
+        <item quantity="one">%1$d custom setting</item>
+        <item quantity="other">%1$d custom settings</item>
+    </plurals>
+    <string name="host_custom_badge">Custom</string>
+    <string name="host_settings_title">Host settings</string>
+    <string name="host_settings_reset_all">Reset all</string>
+    <string name="host_settings_intro">These apply to %1$s only. Settings that use the app default follow Settings, Terminal defaults.</string>
     <string name="detail_core">herdr-core</string>
     <string name="detail_core_name">Name</string>
     <string name="detail_core_version">Version</string>

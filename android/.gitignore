@@ -41,3 +41,4 @@ google-services.json
 
 # Python helper caches
 __pycache__/
+core/database/schemas.lck

@@ -22,8 +22,10 @@ import androidx.navigation3.runtime.NavKey
 import com.mtajchert.flocket.core.model.HostId
 import com.mtajchert.flocket.core.ui.nav.EntryProviderInstaller
 import com.mtajchert.flocket.core.ui.nav.Navigator
+import com.mtajchert.flocket.core.ui.terminalsettings.TerminalSettingsCallbacks
 import com.mtajchert.flocket.feature.hosts.api.HostDetailRoute
 import com.mtajchert.flocket.feature.hosts.api.HostEditRoute
+import com.mtajchert.flocket.feature.hosts.api.HostSettingsRoute
 import com.mtajchert.flocket.feature.hosts.api.HostsRoute
 import com.mtajchert.flocket.feature.hosts.impl.detail.HostDetailCallbacks
 import com.mtajchert.flocket.feature.hosts.impl.detail.HostDetailNavigation
@@ -33,6 +35,9 @@ import com.mtajchert.flocket.feature.hosts.impl.edit.HostEditScreen
 import com.mtajchert.flocket.feature.hosts.impl.edit.HostEditViewModel
 import com.mtajchert.flocket.feature.hosts.impl.list.HostsScreen
 import com.mtajchert.flocket.feature.hosts.impl.list.HostsViewModel
+import com.mtajchert.flocket.feature.hosts.impl.settings.HostSettingsCallbacks
+import com.mtajchert.flocket.feature.hosts.impl.settings.HostSettingsScreen
+import com.mtajchert.flocket.feature.hosts.impl.settings.HostSettingsViewModel
 import com.mtajchert.flocket.feature.onboarding.api.OnboardingRoute
 import dagger.Module
 import dagger.Provides
@@ -63,6 +68,7 @@ object HostsNavigationModule {
                 HostDetailRoute(key.hostId, navigator)
             }
             scope.entry<HostEditRoute> { key -> HostEditRoute(key.hostId, navigator) }
+            scope.entry<HostSettingsRoute> { key -> HostSettingsRoute(key.hostId, navigator) }
         }
 }
 
@@ -113,6 +119,8 @@ private fun HostDetailRoute(
             HostDetailCallbacks(
                 onBack = if (rememberIsMultiPane()) null else navigator::back,
                 onEdit = { navigator.navigate(HostEditRoute(hostId)) },
+                onHostSettings = { navigator.navigate(HostSettingsRoute(hostId)) },
+                onConnect = viewModel::retry,
                 onErrorAction = {
                     when (viewModel.onErrorAction(it)) {
                         HostDetailNavigation.Edit -> navigator.navigate(HostEditRoute(hostId))
@@ -127,6 +135,38 @@ private fun HostDetailRoute(
                 onForget = viewModel::forgetPinned,
                 onSubmitPassword = viewModel::submitPassword,
                 onDelete = viewModel::delete,
+            ),
+    )
+}
+
+@Composable
+private fun HostSettingsRoute(
+    hostId: String,
+    navigator: Navigator,
+) {
+    val viewModel =
+        hiltViewModel<HostSettingsViewModel, HostSettingsViewModel.Factory>(
+            key = "settings/$hostId",
+        ) { it.create(hostId) }
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
+    HostSettingsScreen(
+        state = state,
+        callbacks =
+            HostSettingsCallbacks(
+                onBack = navigator::back,
+                onResetAll = viewModel::resetAll,
+                terminal =
+                    TerminalSettingsCallbacks(
+                        onFontSize = viewModel::setFontSize,
+                        onColorScheme = viewModel::setColorScheme,
+                        onExtraKeys = viewModel::setShowExtraKeys,
+                        onKeepScreenOn = viewModel::setKeepScreenOn,
+                        onClipboard = viewModel::setClipboardPolicy,
+                        onBell = viewModel::setBell,
+                        onAutoConnect = viewModel::setAutoConnect,
+                        onWorkingDirectory = viewModel::setWorkingDirectory,
+                        onUseAppDefault = viewModel::setUseAppDefault,
+                    ),
             ),
     )
 }

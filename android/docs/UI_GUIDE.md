@@ -32,3 +32,14 @@ Trust: `HostKeyTrustDialog` for first contact (pin with `HostTrustRepository.pin
 - A detail pane draws no back arrow when two panes are visible (`rememberIsMultiPane()` in hosts).
 - Respect insets (`safeDrawing`) in custom bars; use `imePadding()` on forms.
 - Screenshot every screen at phone, foldable and tablet widths (`@PreviewFormFactors`), at font scale 1.5 and in dark.
+
+## Settings layering
+
+Terminal settings come in two layers. App-only: theme, dynamic color, keep connected in background. Overridable per host (Settings, "Terminal defaults" and Host detail, "Host settings"): font size, color scheme, extra keys, keep screen on, clipboard write policy, bell, connect on launch, new-terminal folder.
+
+- Model and resolver: `core:model` `TerminalPreferences`, `HostSettingsOverrides` (null = "Use app default") and `resolve(app, overrides)`. Consumers read `HostSettingsRepository.effective(hostId)`; never merge by hand.
+- Storage: app defaults in DataStore (`UserPreferences.terminal`), overrides in the Room `host_settings` table (schema v2, one row per host that overrides anything, cascades with the host, no row = all defaults).
+- UI: one shared `TerminalSettingsForm` (`core:ui`) serves both screens. Host mode adds a "Use app default (value)" switch per setting; turning it off starts from the current app default. The hosts list shows a "Custom" badge.
+- Pinch-zoom writes the host's font override when it has one, else the app default.
+- `autoConnect` off: the host stays Idle until `ConnectionManager.connect(hostId)` (opening the host or one of its terminals, pull to refresh, Connect).
+- New terminal folder: last folder used on the host wins, else the effective default.

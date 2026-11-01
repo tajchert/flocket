@@ -127,4 +127,37 @@
     <string name="form_error_session">1–32 characters: a–z, 0–9, - _ . and starting with a letter or digit</string>
     <string name="form_error_hc_path">Use an absolute path starting with /</string>
     <string name="form_error_key">Choose or create a device key</string>
+
+    <!-- Terminal settings form (app defaults and per-host overrides) -->
+    <string name="ts_preview_description">Preview of the terminal with these settings</string>
+    <string name="ts_font_size">Font size</string>
+    <string name="ts_font_size_value">%1$d sp</string>
+    <string name="ts_color_scheme">Color scheme</string>
+    <string name="ts_color_scheme_hint">Follow app uses a light or dark scheme to match the app theme.</string>
+    <string name="ts_scheme_follow_app">Follow app</string>
+    <string name="ts_scheme_light">Light</string>
+    <string name="ts_scheme_dark">Dark</string>
+    <string name="ts_scheme_solarized_light">Solarized Light</string>
+    <string name="ts_scheme_solarized_dark">Solarized Dark</string>
+    <string name="ts_scheme_high_contrast">High contrast</string>
+    <string name="ts_extra_keys">Extra keys row</string>
+    <string name="ts_extra_keys_hint">Esc, Tab, Ctrl and arrows above the keyboard.</string>
+    <string name="ts_keep_screen_on">Keep screen on</string>
+    <string name="ts_keep_screen_on_hint">While a terminal is open.</string>
+    <string name="ts_clipboard">Clipboard access</string>
+    <string name="ts_clipboard_hint">When a program in the terminal asks to copy text to your clipboard (OSC 52).</string>
+    <string name="ts_clipboard_ask">Ask</string>
+    <string name="ts_clipboard_allow">Allow</string>
+    <string name="ts_clipboard_deny">Deny</string>
+    <string name="ts_bell">Terminal bell</string>
+    <string name="ts_bell_hint">What happens when a program rings the bell.</string>
+    <string name="ts_bell_haptic">Vibrate</string>
+    <string name="ts_bell_off">Off</string>
+    <string name="ts_auto_connect">Connect on launch</string>
+    <string name="ts_auto_connect_hint">Connect when Flocket opens. Off: only when you open the host.</string>
+    <string name="ts_working_directory">New terminal folder</string>
+    <string name="ts_working_directory_hint">The folder new terminals start in. ~ is the home folder.</string>
+    <string name="ts_use_app_default">Use app default (%1$s)</string>
+    <string name="ts_on">on</string>
+    <string name="ts_off">off</string>
 </resources>

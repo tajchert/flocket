@@ -7,7 +7,9 @@ import com.mtajchert.flocket.core.common.error.AppError
 import com.mtajchert.flocket.core.common.result.AppResult
 import com.mtajchert.flocket.core.data.ApplicationScope
 import com.mtajchert.flocket.core.data.ConnectionManager
+import com.mtajchert.flocket.core.data.HostSettingsRepository
 import com.mtajchert.flocket.core.data.PreferencesRepository
+import com.mtajchert.flocket.core.model.ClipboardWritePolicy
 import com.mtajchert.flocket.core.model.ConnectionState
 import com.mtajchert.flocket.core.model.HostId
 import com.mtajchert.flocket.core.model.Liveness
@@ -71,6 +73,7 @@ class TerminalViewModel
         private val savedState: SavedStateHandle,
         private val connections: ConnectionManager,
         private val preferences: PreferencesRepository,
+        private val hostSettings: HostSettingsRepository,
         controllerFactory: TerminalControllerFactory,
         @ApplicationScope private val appScope: CoroutineScope,
     ) : ViewModel() {
@@ -122,8 +125,9 @@ class TerminalViewModel
                 connections.overview.map { list -> list.firstOrNull { it.host.id == hostId }?.host?.label },
                 combine(phase, local, ::Pair),
                 controllerState,
-                preferences.preferences,
-            ) { st, hostLabel, (ph, loc), (connected, owner, programTitle), prefs ->
+                combine(preferences.preferences, hostSettings.effective(hostId), ::Pair),
+            ) { st, hostLabel, (ph, loc), (connected, owner, programTitle), (prefs, effective) ->
+                val terminal = effective.terminal
                 val record = st?.terminal(address)
                 TerminalUiState(
                     address = route.address,
@@ -137,9 +141,11 @@ class TerminalViewModel
                     streamConnected = connected,
                     isOwner = owner,
                     freshShell = loc.freshShell,
-                    fontSizeSp = loc.fontSizeSp ?: prefs.terminalFontSize,
-                    showExtraKeys = prefs.showExtraKeys,
-                    keepScreenOn = prefs.keepScreenOnInTerminal,
+                    fontSizeSp = loc.fontSizeSp ?: terminal.fontSizeSp,
+                    showExtraKeys = terminal.showExtraKeys,
+                    keepScreenOn = terminal.keepScreenOn,
+                    colorScheme = terminal.colorScheme,
+                    bell = terminal.bell,
                     clipboardRequest = loc.clipboardRequest,
                     confirmKill = loc.confirmKill,
                     offerNotificationPermission =
@@ -167,7 +173,8 @@ class TerminalViewModel
             viewModelScope.launch {
                 // Pinch emits continuously; persist once it settles.
                 fontSizes.filterNotNull().debounce(FONT_SAVE_DEBOUNCE_MS).collect { size ->
-                    preferences.update { it.copy(terminalFontSize = size) }
+                    // The host's own font override when it has one, else the app default.
+                    hostSettings.setFontSize(hostId, size)
                 }
             }
         }
@@ -283,6 +290,8 @@ class TerminalViewModel
         }
 
         private suspend fun awaitSession(): CoreSession? {
+            // Opening a terminal is an explicit connect for hosts that don't connect on launch.
+            connections.connect(hostId)
             connections.session(hostId)?.let { return it }
             // `session()` is null until the manager saw the hosts (startup, process death).
             val found =
@@ -382,7 +391,40 @@ class TerminalViewModel
 
         fun dismissFreshShell() = local.update { it.copy(freshShell = false) }
 
-        fun onClipboardWriteRequest(text: String) = local.update { it.copy(clipboardRequest = text) }
+        /** OSC 52: the host's effective policy decides. Allow writes silently (with a note), Deny drops it. */
+        fun onClipboardWriteRequest(text: String) {
+            viewModelScope.launch {
+                when (
+                    hostSettings
+                        .effective(hostId)
+                        .first()
+                        .terminal.clipboardWritePolicy
+                ) {
+                    ClipboardWritePolicy.Allow -> {
+                        send(TerminalScreenEvent.CopyToClipboard(text))
+                        send(TerminalScreenEvent.Message(UiText.Res(R.string.terminal_clipboard_written)))
+                    }
+
+                    ClipboardWritePolicy.Deny -> {
+                        Unit
+                    }
+
+                    ClipboardWritePolicy.Ask -> {
+                        local.update { it.copy(clipboardRequest = text) }
+                    }
+                }
+            }
+        }
+
+        /** "Always allow for this host": copies now and makes Allow this host's own policy. */
+        fun alwaysAllowClipboard() {
+            val text = local.value.clipboardRequest ?: return
+            local.update { it.copy(clipboardRequest = null) }
+            send(TerminalScreenEvent.CopyToClipboard(text))
+            viewModelScope.launch {
+                hostSettings.update(hostId) { it.copy(clipboardWritePolicy = ClipboardWritePolicy.Allow) }
+            }
+        }
 
         fun answerClipboardRequest(allow: Boolean) {
             val text = local.value.clipboardRequest ?: return
