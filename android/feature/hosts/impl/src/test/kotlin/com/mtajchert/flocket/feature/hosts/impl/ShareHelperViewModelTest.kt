@@ -74,7 +74,7 @@ class ShareHelperViewModelTest {
             val vm = vm(m)
             val rows = vm.uiState.value.rows
             assertEquals(listOf(null, "rohan"), rows.map { it.machine })
-            assertEquals(HelperStatus.Installed("/home/u/.local/bin/flocket-share"), rows[0].status)
+            assertEquals(HelperStatus.Installed("/home/u/.local/bin/flocket-share", onPath = true), rows[0].status)
             assertEquals(HelperStatus.NotInstalled, rows[1].status)
             val argv = ShareHelperViewModel.STATUS_ARGV.joinToString(" ")
             assertTrue(session.transferCalls.contains("exec:null:$argv:false"))
@@ -144,4 +144,62 @@ class ShareHelperViewModelTest {
         val vm = vm(m)
         assertEquals("Run flocket-share PATH.", vm.uiState.value.instruction)
     }
+
+    @Test
+    fun `failed login PATH check shows no warning`() =
+        runTest {
+            val m = manager()
+            m.overview.value
+            val session = m.fakeSession(studio)!!
+            session.execHandler = { _, argv, _ ->
+                if (argv[1] ==
+                    "-lc"
+                ) {
+                    AppResult.Failure(AppError.ConnectionLost)
+                } else {
+                    ok(0, "/home/u/.local/bin/flocket-share")
+                }
+            }
+            val vm = vm(m)
+            assertEquals(
+                null,
+                (
+                    vm.uiState.value.rows[0]
+                        .status as HelperStatus.Installed
+                ).onPath,
+            )
+        }
+
+    @Test
+    fun `PATH warning persists across a recheck`() =
+        runTest {
+            val m = manager()
+            m.overview.value
+            val session = m.fakeSession(studio)!!
+            session.execHandler =
+                { _, argv, _ -> if (argv[1] == "-lc") ok(1) else ok(0, "/home/u/.local/bin/flocket-share") }
+            val vm = vm(m)
+            vm.recheck()
+            assertEquals(
+                false,
+                (
+                    vm.uiState.value.rows[0]
+                        .status as HelperStatus.Installed
+                ).onPath,
+            )
+        }
+
+    @Test
+    fun `install does nothing while the session is stale`() =
+        runTest {
+            val m = manager()
+            m.overview.value
+            val session = m.fakeSession(studio)!!
+            val vm = vm(m)
+            session.update { it.copy(connection = ConnectionState.Idle) }
+            val before = session.transferCalls.size
+            vm.install(null)
+            assertEquals(before, session.transferCalls.size)
+            assertTrue(session.calls.none { it.startsWith("home") })
+        }
 }

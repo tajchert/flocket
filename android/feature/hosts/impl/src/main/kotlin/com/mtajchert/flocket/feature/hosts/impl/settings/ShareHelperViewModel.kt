@@ -21,6 +21,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -123,11 +124,20 @@ class ShareHelperViewModel
         fun connect() = connections.connect(id)
 
         fun recheck() {
-            viewModelScope.launch { local.value.rows.forEach { check(it.machine) } }
+            val machines = local.value.rows.map { it.machine }
+            startRound { machines.forEach { check(it) } }
         }
 
         fun install(machine: String?) {
             viewModelScope.launch { runInstall(machine) }
+        }
+
+        /** One round of checks at a time: a new session state supersedes the previous round. */
+        private var round: Job? = null
+
+        private fun startRound(block: suspend () -> Unit) {
+            round?.cancel()
+            round = viewModelScope.launch { block() }
         }
 
         private fun onSessionChanged(
@@ -141,7 +151,8 @@ class ShareHelperViewModel
                     rows = if (online) names.map { n -> HelperRow(n) } else st.rows,
                 )
             }
-            if (online) viewModelScope.launch { names.forEach { n -> check(n) } }
+            round?.cancel()
+            if (online) startRound { names.forEach { n -> check(n) } }
         }
 
         private fun set(
@@ -153,7 +164,7 @@ class ShareHelperViewModel
 
         private fun session(): CoreSession? = connections.session(id)
 
-        /** Reads the status; returns it too so [runInstall] can add the PATH check. */
+        /** Reads the status, plus the login-shell PATH check when installed. */
         private suspend fun check(machine: String?): HelperStatus {
             set(machine, HelperStatus.Checking)
             val session = session() ?: return HelperStatus.Checking
@@ -175,6 +186,13 @@ class ShareHelperViewModel
                         }
                     }
                 }
+            if (status is HelperStatus.Installed) {
+                // Only a completed login-shell check that finds nothing is a PATH problem; a failed check says nothing.
+                val login = session.exec(machine, LOGIN_PATH_ARGV, mutating = false)
+                val onPath = (login as? AppResult.Success)?.let { it.value.code == 0 }
+                set(machine, status.copy(onPath = onPath))
+                return status.copy(onPath = onPath)
+            }
             set(machine, status)
             return status
         }
@@ -207,12 +225,7 @@ class ShareHelperViewModel
                     }
                 }
             }
-            val status = check(machine)
-            if (status is HelperStatus.Installed) {
-                val login = session.exec(machine, LOGIN_PATH_ARGV, mutating = false)
-                val onPath = login is AppResult.Success && login.value.code == 0
-                set(machine, status.copy(onPath = onPath))
-            }
+            check(machine)
         }
 
         private fun failure(error: AppError): HelperStatus =
