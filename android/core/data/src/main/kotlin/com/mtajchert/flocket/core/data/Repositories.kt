@@ -92,6 +92,19 @@ interface ConnectionManager {
         hostId: HostId,
         password: CharArray,
     )
+
+    /**
+     * A terminal screen is attached under [token] (ADR-0006): while at least one is held, leaving the app
+     * keeps the sessions connected through a short foreground service instead of detaching at once.
+     * Idempotent per token; pair with [releaseTerminal].
+     */
+    fun holdTerminal(token: Any) = Unit
+
+    /** The screen behind [token] detached or closed. */
+    fun releaseTerminal(token: Any) = Unit
+
+    /** The keep-alive service ended on its own (timeout, or it could not go foreground): detach now. */
+    fun keepAliveEnded() = Unit
 }
 
 data class HostOverview(
@@ -115,6 +128,13 @@ data class UserPreferences(
     val keepScreenOnInTerminal: Boolean = true,
     /** Show the extra-keys row (Esc, Tab, Ctrl, arrows…) above the soft keyboard. */
     val showExtraKeys: Boolean = true,
+    /** The terminal screen already asked for POST_NOTIFICATIONS once (Android 13+); never nag again. */
+    val notificationPermissionAsked: Boolean = false,
+    /**
+     * App-level opt-out of the background keep-alive (ADR-0006). Off: leaving the app detaches at once,
+     * with no foreground service and no notification.
+     */
+    val keepConnectedInBackground: Boolean = true,
 )
 
 enum class ThemePreference { System, Light, Dark }

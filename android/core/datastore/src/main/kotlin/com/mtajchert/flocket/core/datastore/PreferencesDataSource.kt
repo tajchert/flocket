@@ -18,6 +18,8 @@ data class StoredPreferences(
     val terminalFontSize: Float = 13f,
     val keepScreenOnInTerminal: Boolean = true,
     val showExtraKeys: Boolean = true,
+    val notificationPermissionAsked: Boolean = false,
+    val keepConnectedInBackground: Boolean = true,
 )
 
 /** Reads and writes [StoredPreferences] on a Preferences DataStore. Unreadable files reset to defaults. */
@@ -34,6 +36,8 @@ class PreferencesDataSource(
                 terminalFontSize = p[FONT_SIZE] ?: d.terminalFontSize,
                 keepScreenOnInTerminal = p[KEEP_SCREEN_ON] ?: d.keepScreenOnInTerminal,
                 showExtraKeys = p[EXTRA_KEYS] ?: d.showExtraKeys,
+                notificationPermissionAsked = p[NOTIFICATIONS_ASKED] ?: d.notificationPermissionAsked,
+                keepConnectedInBackground = p[KEEP_CONNECTED] ?: d.keepConnectedInBackground,
             )
         }
 
@@ -48,6 +52,8 @@ class PreferencesDataSource(
                     terminalFontSize = p[FONT_SIZE] ?: 13f,
                     keepScreenOnInTerminal = p[KEEP_SCREEN_ON] ?: true,
                     showExtraKeys = p[EXTRA_KEYS] ?: true,
+                    notificationPermissionAsked = p[NOTIFICATIONS_ASKED] ?: false,
+                    keepConnectedInBackground = p[KEEP_CONNECTED] ?: true,
                 )
             val n = transform(current)
             p[ONBOARDING] = n.onboardingCompleted
@@ -56,6 +62,8 @@ class PreferencesDataSource(
             p[FONT_SIZE] = n.terminalFontSize
             p[KEEP_SCREEN_ON] = n.keepScreenOnInTerminal
             p[EXTRA_KEYS] = n.showExtraKeys
+            p[NOTIFICATIONS_ASKED] = n.notificationPermissionAsked
+            p[KEEP_CONNECTED] = n.keepConnectedInBackground
         }
     }
 
@@ -66,5 +74,7 @@ class PreferencesDataSource(
         val FONT_SIZE = floatPreferencesKey("terminal_font_size")
         val KEEP_SCREEN_ON = booleanPreferencesKey("keep_screen_on_in_terminal")
         val EXTRA_KEYS = booleanPreferencesKey("show_extra_keys")
+        val NOTIFICATIONS_ASKED = booleanPreferencesKey("notification_permission_asked")
+        val KEEP_CONNECTED = booleanPreferencesKey("keep_connected_in_background")
     }
 }

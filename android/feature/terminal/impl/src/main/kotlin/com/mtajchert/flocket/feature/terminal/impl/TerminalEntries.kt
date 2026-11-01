@@ -1,15 +1,26 @@
 package com.mtajchert.flocket.feature.terminal.impl
 
+import android.Manifest
 import android.annotation.SuppressLint
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.isImeVisible
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Notifications
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi
 import androidx.compose.material3.adaptive.navigation3.ListDetailSceneStrategy
 import androidx.compose.runtime.Composable
@@ -23,6 +34,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.res.stringResource
+import androidx.core.content.ContextCompat
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mtajchert.flocket.core.terminal.controller.TerminalController
@@ -172,6 +185,9 @@ fun TerminalRouteContent(
                 onClipboardAnswer = viewModel::answerClipboardRequest,
             )
         }
+    if (state.offerNotificationPermission) {
+        NotificationPermissionPrompt(onAnswer = viewModel::onNotificationPermissionAsked)
+    }
     TerminalScreen(
         modifier = modifier,
         state = state,
@@ -197,3 +213,34 @@ fun TerminalRouteContent(
 }
 
 private fun Context.clipboard(): ClipboardManager? = getSystemService(ClipboardManager::class.java)
+
+/**
+ * Asks once, in context, for POST_NOTIFICATIONS (Android 13+) so the keep-alive notification can show while
+ * the terminal stays connected in the background (ADR-0006). Denying is fine: the service runs anyway.
+ */
+@Composable
+private fun NotificationPermissionPrompt(onAnswer: () -> Unit) {
+    val context = LocalContext.current
+    val needed =
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { onAnswer() }
+    if (!needed) return
+    AlertDialog(
+        onDismissRequest = onAnswer,
+        icon = { Icon(Icons.Outlined.Notifications, contentDescription = null) },
+        title = { Text(stringResource(R.string.terminal_notifications_title)) },
+        text = { Text(stringResource(R.string.terminal_notifications_message)) },
+        confirmButton = {
+            TextButton(onClick = {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    launcher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                }
+            }) { Text(stringResource(R.string.terminal_notifications_allow)) }
+        },
+        dismissButton = {
+            TextButton(onClick = onAnswer) { Text(stringResource(R.string.terminal_notifications_not_now)) }
+        },
+    )
+}

@@ -20,6 +20,8 @@ sealed interface TerminalPhase {
     data class Exited(
         val exitCode: Int?,
         val signal: Int?,
+        /** The core's reason, e.g. `killed` (a kill may still report exit code 1). */
+        val reason: String? = null,
     ) : TerminalPhase
 
     /** A kept terminal lost its program; re-attaches automatically when the core restarts the shell. */
@@ -60,6 +62,11 @@ data class TerminalUiState(
     /** A program asked to set the clipboard (OSC 52): ask before copying. */
     val clipboardRequest: String? = null,
     val confirmKill: Boolean = false,
+    /**
+     * Attached and the notification permission was never asked: the route may ask once (ADR-0006, the
+     * keep-alive notification). The route still checks the platform state before showing anything.
+     */
+    val offerNotificationPermission: Boolean = false,
 ) {
     val isOnline: Boolean get() = connection is ConnectionState.Online
 

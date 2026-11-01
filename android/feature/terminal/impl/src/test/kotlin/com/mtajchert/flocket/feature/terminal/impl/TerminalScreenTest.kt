@@ -111,6 +111,18 @@ class TerminalScreenTest {
     }
 
     @Test
+    fun `a killed terminal says killed`() {
+        show(live.copy(phase = TerminalPhase.Exited(1, null, "killed")))
+        compose.onNodeWithText("Killed").assertExists()
+    }
+
+    @Test
+    fun `a signal end names the signal`() {
+        show(live.copy(phase = TerminalPhase.Exited(null, 9, "signal")))
+        compose.onNodeWithText("Ended by signal 9").assertExists()
+    }
+
+    @Test
     fun `stream end offers reattach and waiting shows progress text`() {
         show(live.copy(phase = TerminalPhase.StreamEnded))
         compose.onNodeWithText("Stream ended").assertExists()

@@ -18,7 +18,12 @@
     <string name="terminal_attaching">Opening terminal…</string>
     <string name="terminal_reconnecting">Reconnecting…</string>
     <string name="terminal_exited_code">Exited (code %1$d)</string>
-    <string name="terminal_exited_signal">Killed (signal %1$d)</string>
+    <string name="terminal_exited_signal">Ended by signal %1$d</string>
+    <string name="terminal_killed">Killed</string>
+    <string name="terminal_notifications_title">Allow notifications?</string>
+    <string name="terminal_notifications_message">Flocket uses a notification to show while it keeps your terminal connected in the background for a few minutes. Without it, the terminal still stays connected; you just won\'t see the notice.</string>
+    <string name="terminal_notifications_allow">Continue</string>
+    <string name="terminal_notifications_not_now">Not now</string>
     <string name="terminal_exited">Exited</string>
     <string name="terminal_waiting_shell">Waiting for a new shell…</string>
     <string name="terminal_fresh_shell">This is a fresh shell: the previous program is gone.</string>
