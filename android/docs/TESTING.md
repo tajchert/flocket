@@ -52,6 +52,8 @@ Other tasks:
 
 End-to-end against a real `hc` over SSH on an emulator (manual): [journeys/E2E_SMOKE.md](journeys/E2E_SMOKE.md), using `scripts/dev-sshd.sh`.
 
+CI (`.github/workflows/android.yml`): the `instrumented` job runs `connectedDebugAndroidTest` for the modules with `androidTest` sources (`:core:terminal-ghostty`, `:core:terminal`, `:feature:terminal:impl`) on an API 35 `google_apis` x86_64 emulator with KVM and a cached AVD, after `build` passes. Add new device-test modules to its task list. Reports upload as `instrumented-reports` on failure.
+
 Reports: tests in `<module>/build/reports/tests/`, screenshots in `<module>/build/reports/screenshotTest/preview/debug/index.html`.
 
 ## Compose behaviour tests run on the JVM

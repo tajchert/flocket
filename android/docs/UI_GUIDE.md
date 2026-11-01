@@ -42,4 +42,4 @@ Terminal settings come in two layers. App-only: theme, dynamic color, keep conne
 - UI: one shared `TerminalSettingsForm` (`core:ui`) serves both screens. Host mode adds a "Use app default (value)" switch per setting; turning it off starts from the current app default. The hosts list shows a "Custom" badge.
 - Pinch-zoom writes the host's font override when it has one, else the app default.
 - `autoConnect` off: the host stays Idle until `ConnectionManager.connect(hostId)` (opening the host or one of its terminals, pull to refresh, Connect).
-- New terminal folder: last folder used on the host wins, else the effective default.
+- New terminal folder: the configured default (host override, else app default) wins; only when none is set, the last folder used on the host, else `~`.
