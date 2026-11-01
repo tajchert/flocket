@@ -15,3 +15,18 @@
 -keepattributes SourceFile,LineNumberTable
 # - Hide the original source file name:
 #-renamesourcefileattribute SourceFile
+
+# --- SSH (core:ssh): SSHJ + BouncyCastle -------------------------------------------------------
+# BouncyCastle algorithms are looked up reflectively by name through the "BC" provider.
+-keep class org.bouncycastle.** { *; }
+-keep class net.schmizz.sshj.** { *; }
+-keep class com.hierynomus.** { *; }
+-dontwarn org.bouncycastle.**
+-dontwarn net.schmizz.**
+-dontwarn com.hierynomus.**
+-dontwarn javax.naming.**
+-dontwarn org.ietf.jgss.**
+-dontwarn sun.security.x509.**
+-dontwarn com.sun.jna.**
+-dontwarn org.slf4j.**
+-dontwarn net.i2p.crypto.eddsa.**

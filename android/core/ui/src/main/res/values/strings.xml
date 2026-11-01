@@ -1,0 +1,130 @@
+<resources>
+    <!-- Generic actions -->
+    <string name="action_retry">Try again</string>
+    <string name="action_trust_host_key">Review host key</string>
+    <string name="action_edit_host">Edit host</string>
+    <string name="action_install_help">Installation help</string>
+    <string name="action_reenter_password">Re-enter password</string>
+    <string name="action_forget_pinned_key">Forget pinned key…</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="loading">Loading</string>
+
+    <!-- UiError mapping (AppError -> text). Keep in sync with UiError.kt -->
+    <string name="error_unreachable_title">Can’t reach the host</string>
+    <string name="error_unreachable_message">Flocket couldn’t open a connection to %1$s. Check that the machine is on, that you’re on the same network or Tailscale, and that the address and port are right.</string>
+    <string name="error_connection_lost_title">Connection lost</string>
+    <string name="error_connection_lost_message">The connection dropped. Flocket reconnects automatically, or you can try again now.</string>
+    <string name="error_timeout_title">Timed out</string>
+    <string name="error_timeout_message">The host took too long to respond (%1$s). Try again.</string>
+    <string name="error_host_key_unknown_title">Verify this host</string>
+    <string name="error_host_key_unknown_message">%1$s is showing a key Flocket hasn’t seen before. Compare the fingerprint with the one on the machine before you trust it.</string>
+    <string name="error_host_key_changed_title">Host key changed</string>
+    <string name="error_host_key_changed_message">%1$s presented a different key than the one you trusted. That can mean a reinstall, or someone intercepting the connection. Flocket will not connect.</string>
+    <string name="error_auth_key_title">Sign-in rejected</string>
+    <string name="error_auth_key_message">The host refused the key for user “%1$s”. Add this device’s public key to ~/.ssh/authorized_keys on that machine, or check the username.</string>
+    <string name="error_auth_password_title">Wrong password</string>
+    <string name="error_auth_password_message">The host refused the password for user “%1$s”. Enter it again.</string>
+    <string name="error_core_not_found_title">herdr-core not found</string>
+    <string name="error_core_not_found_message">Flocket couldn’t run hc on the host. Install herdr-core there, or set the path to hc in the host’s advanced settings.</string>
+    <string name="error_core_incompatible_title">herdr-core needs an update</string>
+    <string name="error_core_incompatible_message">This version of herdr-core doesn’t work with Flocket: %1$s. Update hc on the host.</string>
+    <string name="error_rpc_not_found_title">That no longer exists</string>
+    <string name="error_rpc_finished_title">That terminal has finished</string>
+    <string name="error_rpc_unavailable_title">Not available right now</string>
+    <string name="error_rpc_name_taken_title">That name is taken</string>
+    <string name="error_rpc_generic_title">The host refused the request</string>
+    <string name="error_protocol_title">Unexpected response</string>
+    <string name="error_protocol_message">The host sent data Flocket couldn’t understand. Make sure hc is up to date.</string>
+    <string name="error_outcome_unknown_title">Result unknown</string>
+    <string name="error_outcome_unknown_message">The connection dropped during “%1$s”. It may or may not have happened. Check the current state before trying again.</string>
+    <string name="error_unsupported_title">Not supported by this host</string>
+    <string name="error_unsupported_message">This version of herdr-core doesn’t offer “%1$s”. Update hc on the host.</string>
+    <string name="error_storage_title">Couldn’t save</string>
+    <string name="error_storage_message">Flocket couldn’t read or write its data on this device.</string>
+    <string name="error_secure_storage_title">Secure storage unavailable</string>
+    <string name="error_secure_storage_message">The Android Keystore isn’t available, or a stored key was invalidated (this can happen after changing the screen lock). Create a new device key.</string>
+    <string name="error_invalid_input_title">Check your input</string>
+    <string name="error_invalid_input_message">%1$s: %2$s</string>
+    <string name="error_unexpected_title">Something went wrong</string>
+    <string name="error_unexpected_message">Flocket hit an unexpected problem.</string>
+
+    <!-- Connection state badge -->
+    <string name="connection_idle">Not connected</string>
+    <string name="connection_connecting">Connecting…</string>
+    <string name="connection_connecting_attempt">Connecting (attempt %1$d)…</string>
+    <string name="connection_online">Online</string>
+    <string name="connection_reconnecting">Reconnecting</string>
+    <string name="connection_reconnecting_in">Reconnecting in %1$d s</string>
+    <string name="connection_needs_attention">Needs attention</string>
+
+    <!-- Agent status chip -->
+    <string name="status_unknown">No status</string>
+    <string name="status_idle">Idle</string>
+    <string name="status_working">Working</string>
+    <string name="status_working_progress">Working %1$d%%</string>
+    <string name="status_done">Done</string>
+    <string name="status_blocked">Blocked</string>
+    <string name="status_blocked_permission">Needs permission</string>
+    <string name="status_blocked_question">Has a question</string>
+    <string name="status_blocked_auth">Needs sign-in</string>
+    <string name="status_error">Error</string>
+
+    <!-- Stale data -->
+    <string name="stale_banner_never">Not connected yet. Nothing here is live.</string>
+    <string name="stale_banner">Saved data from %1$s. Read-only until the host is back online.</string>
+
+    <!-- Host key trust dialog -->
+    <string name="trust_title">Trust this host?</string>
+    <string name="trust_intro">You’re connecting to %1$s for the first time. Its key identifies the machine, so Flocket can tell if something else answers later.</string>
+    <string name="trust_key_type">Key type</string>
+    <string name="trust_fingerprint">Fingerprint (SHA-256)</string>
+    <string name="trust_explanation">Only continue if this matches the fingerprint on the machine (run ssh-keygen -lf on its host key). Trusting pins this key: Flocket warns you if it ever changes, and sends your credentials only to this key.</string>
+    <string name="trust_confirm">Trust and connect</string>
+    <string name="changed_title">Host key changed</string>
+    <string name="changed_intro">The key for %1$s is not the one you trusted. Flocket has blocked the connection and sent nothing.</string>
+    <string name="changed_expected">Pinned key</string>
+    <string name="changed_actual">Key now presented</string>
+    <string name="changed_warning">If you didn’t reinstall or reconfigure that machine, don’t continue: someone may be intercepting your connection.</string>
+    <string name="changed_keep_blocked">Keep blocked</string>
+    <string name="changed_forget_title">Forget the pinned key?</string>
+    <string name="changed_forget_message">Flocket will delete the key you trusted for %1$s. The next connection asks you to verify the new fingerprint, exactly like a first connection. Do this only if you know why the key changed.</string>
+    <string name="changed_forget_confirm">Forget key</string>
+
+    <!-- Public key card -->
+    <string name="pubkey_title">Your device key</string>
+    <string name="pubkey_summary">%1$s · %2$s</string>
+    <string name="pubkey_instruction">Add this public key to the machine so it accepts this device. Run this there:</string>
+    <string name="pubkey_copy_command">Copy command</string>
+    <string name="pubkey_copy_key">Copy key</string>
+    <string name="pubkey_share">Share</string>
+    <string name="pubkey_copied">Copied</string>
+    <string name="pubkey_share_chooser">Share public key</string>
+
+    <!-- Empty / error / loading -->
+    <string name="error_state_icon_description">Error</string>
+
+    <!-- Host form -->
+    <string name="form_label">Name</string>
+    <string name="form_label_hint">Studio Mac</string>
+    <string name="form_hostname">Hostname or IP address</string>
+    <string name="form_username">Username</string>
+    <string name="form_port">SSH port</string>
+    <string name="form_auth">Sign in with</string>
+    <string name="form_auth_key">Device key</string>
+    <string name="form_auth_password">Password</string>
+    <string name="form_password_note">Flocket asks for the password when it connects and keeps it in memory only.</string>
+    <string name="form_no_keys">No device key yet.</string>
+    <string name="form_create_key">Create a device key</string>
+    <string name="form_advanced">Advanced</string>
+    <string name="form_hc_path">Path to hc</string>
+    <string name="form_hc_path_hint">Found automatically if empty</string>
+    <string name="form_session">hc session name</string>
+    <string name="form_session_hint">Default session if empty</string>
+    <string name="form_key_option">%1$s, %2$s</string>
+    <string name="form_error_required">Required</string>
+    <string name="form_error_hostname">Enter a hostname or IP address without spaces</string>
+    <string name="form_error_port">Use a port between 1 and 65535</string>
+    <string name="form_error_session">1–32 characters: a–z, 0–9, - _ . and starting with a letter or digit</string>
+    <string name="form_error_hc_path">Use an absolute path starting with /</string>
+    <string name="form_error_key">Choose or create a device key</string>
+</resources>

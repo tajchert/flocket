@@ -49,7 +49,7 @@ The shim is built by AGP through CMake (`src/main/cpp/CMakeLists.txt`, `ndkVersi
 2. Update `GHOSTTY_COMMIT`. Try the build without patches; re-check whether `0001` is still needed and still applies.
 3. `--force`, then check `NEEDED` (only libc/libm), SONAME, `LOAD` alignment `0x4000`, `--verify`.
 4. Diff `third_party/ghostty-vt/include` against the old headers: the C API is not stable. Fix `flocket_ghostty.cpp`.
-5. Run the instrumented tests (below) and compare the perf line.
+5. Run the instrumented tests (below) and compare the `GHOSTTY_PERF` numbers with [Performance](#performance).
 6. Update `THIRD_PARTY_NOTICES.md` if the dependency set in `build.zig.zon` changed, and commit libs, headers, VERSION and SHA256SUMS together.
 
 ## Tests
@@ -63,6 +63,21 @@ adb emu kill
 ```
 
 JVM unit tests cannot load the `.so`; Kotlin stays thin on purpose.
+
+## Performance
+
+`GhosttyPerfTest` (`src/androidTest`) logs its numbers with tag `GHOSTTY_PERF` (`adb logcat -s GHOSTTY_PERF`). Each snapshot run feeds a full screen of colored text so that every row is dirty, then times `snapshot()` into a reused target (100 iterations, median). The flood test feeds about 1 MiB of `yes`-style lines with SGR colors in 16 KB reads (median of 5 runs).
+
+Recorded 2026-11-01 on the `pixel` AVD (arm64-v8a, Apple Silicon host, debug build; the shim is built with `-O2`):
+
+| Measurement | Just after boot | Warm (two later runs) |
+|---|---|---|
+| Fully dirty snapshot, 200x60 | 0.62 ms | 0.19 / 0.24 ms |
+| Fully dirty snapshot, 120x40 | 0.17 ms | 0.08 / 0.10 ms |
+| 1 MiB SGR flood, feed only | 6.0 ms (175 MB/s) | 1.7 / 2.0 ms |
+| 1 MiB SGR flood, snapshot after every 16 KB read | 26.9 ms | 7.0 / 8.2 ms |
+
+The per-cell walk (about 6-8 C calls per cell) stays well under the 2 ms frame budget at tablet size, so the bulk `GHOSTTY_RENDER_STATE_ROW_DATA_CELLS_RAW` path is not used. Revisit it if a real device measures over about 2 ms for a fully dirty 200x60 snapshot. Physical mid-range phones are expected to be several times slower than this emulator. When the target is reused, `snapshot()` allocates nothing on the Kotlin side except the Strings of multi-code-point cells. Natively it reuses the grapheme vector and does not allocate per cell, except for clusters longer than 16 code points.
 
 ## Known limitations
 
