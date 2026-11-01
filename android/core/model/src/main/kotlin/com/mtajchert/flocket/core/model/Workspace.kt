@@ -81,7 +81,7 @@ data class WorkspaceSpace(
 data class WorkspaceTab(
     /** Stable within its space. */
     val key: String,
-    /** Display name; never blank (falls back to "Tab N" or the single pane's name). */
+    /** Display name; never blank (falls back to "Tab N", N = its 1-based place in the space). */
     val name: String,
     /** Terminal addresses in layout order; only terminals that exist on the host. */
     val panes: List<TerminalAddress>,
