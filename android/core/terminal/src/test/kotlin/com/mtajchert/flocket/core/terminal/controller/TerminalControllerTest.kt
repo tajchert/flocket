@@ -417,6 +417,71 @@ class TerminalControllerTest {
         }
 
     @Test
+    fun `a configuration change does not take the size back from another viewer`() =
+        runTest {
+            val c = controller()
+            val s = FakeStream(TerminalSize(100, 70))
+            c.bind(s, AttachMode.Owner)
+            c.onViewportChanged(phone)
+            advanceUntilIdle()
+            s.size.value = TerminalSize(200, 50) // the desktop took it while the phone shows the terminal
+            advanceUntilIdle()
+            assertFalse(c.isOwner.value)
+            s.calls.clear()
+            c.setVisible(false, configurationChange = true) // rotation, fold: the activity is recreated
+            advanceUntilIdle()
+            c.setVisible(true)
+            advanceUntilIdle()
+            assertFalse(c.isOwner.value)
+            assertEquals(emptyList<String>(), s.calls.filter { it.startsWith("resize") })
+            c.close()
+        }
+
+    @Test
+    fun `a real return after a configuration change still takes the size back`() =
+        runTest {
+            val c = controller()
+            val s = FakeStream(TerminalSize(100, 70))
+            c.bind(s, AttachMode.Owner)
+            c.onViewportChanged(phone)
+            advanceUntilIdle()
+            s.size.value = TerminalSize(200, 50)
+            advanceUntilIdle()
+            c.setVisible(false, configurationChange = true)
+            c.setVisible(true)
+            c.setVisible(false) // then the app goes to the background
+            advanceUntilIdle()
+            s.calls.clear()
+            c.setVisible(true)
+            advanceUntilIdle()
+            assertTrue(c.isOwner.value)
+            assertEquals(listOf("resize 100x70", "display"), s.calls.toList())
+            c.close()
+        }
+
+    @Test
+    fun `frames resume after a configuration change`() =
+        runTest {
+            val c = controller()
+            val s = FakeStream()
+            c.bind(s)
+            c.setVisible(false, configurationChange = true)
+            advanceUntilIdle()
+            val before = c.publishedFrames
+            s.chunks.send("rotating".encodeToByteArray())
+            advanceUntilIdle()
+            clock.tick()
+            advanceUntilIdle()
+            assertEquals(before, c.publishedFrames)
+            c.setVisible(true)
+            advanceUntilIdle()
+            clock.tick()
+            advanceUntilIdle()
+            assertEquals("rotating", frame(c).line(0))
+            c.close()
+        }
+
+    @Test
     fun `focus follows visibility and view focus while owner`() =
         runTest {
             val c = controller()

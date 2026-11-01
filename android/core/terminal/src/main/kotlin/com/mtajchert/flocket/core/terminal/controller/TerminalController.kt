@@ -129,6 +129,9 @@ class TerminalController(
 
     @Volatile private var visible = true
 
+    // The screen is hidden only for a configuration change (activity recreated), not stopped.
+    @Volatile private var hiddenForConfigChange = false
+
     @Volatile private var focused = false
 
     @Volatile private var viewport: TerminalViewport? = null
@@ -415,9 +418,22 @@ class TerminalController(
         }
     }
 
-    /** Lifecycle: app in foreground (STARTED) and screen on. Frames are not published while invisible. */
-    fun setVisible(visible: Boolean) {
-        val cameBack = visible && !this.visible
+    /**
+     * Lifecycle: app in foreground (STARTED) and screen on. Frames are not published while invisible.
+     *
+     * Becoming visible after a real stop (app foregrounded, screen unlocked) takes the size back
+     * from another viewer (ADR-0007). Pass [configurationChange] = true when the screen hides only
+     * because the activity is being recreated (rotation, fold/unfold): the next `setVisible(true)`
+     * is then not a return, so a passive phone leaves the other viewer's size alone.
+     */
+    fun setVisible(
+        visible: Boolean,
+        configurationChange: Boolean = false,
+    ) {
+        val cameBack = visible && !this.visible && !hiddenForConfigChange
+        // Only the call that hides the screen says why; a later one never turns a real stop into a config change.
+        if (!visible && this.visible) hiddenForConfigChange = configurationChange
+        if (visible) hiddenForConfigChange = false
         this.visible = visible
         visibleFlow.value = visible
         scope.launch {

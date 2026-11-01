@@ -1,5 +1,8 @@
 package com.mtajchert.flocket.core.terminal.ui
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -28,6 +31,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -72,9 +76,17 @@ fun TerminalSurface(
     val fontChange by rememberUpdatedState(onFontSizeChange)
     val clipboardRequest by rememberUpdatedState(onClipboardWriteRequest)
     val bellEnabled by rememberUpdatedState(bellHaptics)
+    val activity = LocalContext.current.findActivity()
     LifecycleStartEffect(controller) {
         controller.setVisible(true)
-        onStopOrDispose { controller.setVisible(false) }
+        // A rotation or fold stops and recreates the activity; that is not leaving the screen, so
+        // the next start must not take the size back from another viewer (ADR-0007).
+        onStopOrDispose {
+            controller.setVisible(
+                false,
+                configurationChange = activity?.isChangingConfigurations == true,
+            )
+        }
     }
     LaunchedEffect(controller) {
         controller.events.collect { event ->
@@ -302,3 +314,10 @@ fun ExtraKeysRow(
         }
     }
 }
+
+private tailrec fun Context.findActivity(): Activity? =
+    when (this) {
+        is Activity -> this
+        is ContextWrapper -> baseContext.findActivity()
+        else -> null
+    }
