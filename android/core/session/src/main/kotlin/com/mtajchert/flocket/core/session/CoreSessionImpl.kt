@@ -87,13 +87,16 @@ class CoreSessionImpl(
     ) {
         val info: CoreInfo get() = conn.info
 
-        /** `herdr-app` read coalescing per machine ([refreshLayout]; key null = local); guarded by [layoutLock]. */
-        val layoutReads = HashMap<String?, LayoutRead>()
+        /** `herdr-app` reads per machine ([refreshLayout]; key null = local); guarded by [readLock]. */
+        val layoutReads = HashMap<String?, Coalesced>()
+
+        /** `machine.list` re-reads ([relistMachines]); guarded by [readLock]. */
+        val machineReads = Coalesced()
     }
 
-    /** One machine's `herdr-app` read state on one link. */
-    private class LayoutRead {
-        var fetching = false
+    /** One coalesced read on one link: at most one in flight, plus one more if triggered meanwhile. */
+    private class Coalesced {
+        var running = false
         var dirty = false
     }
 
@@ -118,8 +121,8 @@ class CoreSessionImpl(
     @Volatile
     private var parkOnExit = false
 
-    /** Guards [Link.layoutReads]; never held across suspension. */
-    private val layoutLock = Any()
+    /** Guards [Link.layoutReads] and [Link.machineReads]; never held across suspension. */
+    private val readLock = Any()
 
     private val connectionOptions = ConnectionOptions(clock = clock, logger = logger)
 
@@ -332,35 +335,57 @@ class CoreSessionImpl(
         l: Link,
         machine: String? = null,
     ) {
-        val read =
-            synchronized(layoutLock) {
-                val r = l.layoutReads.getOrPut(machine) { LayoutRead() }
-                if (r.fetching) {
-                    r.dirty = true
-                    return
-                }
-                r.fetching = true
-                r.dirty = false
-                r
+        val slot = synchronized(readLock) { l.layoutReads.getOrPut(machine) { Coalesced() } }
+        coalesced(l, slot) { fetchLayout(l, machine) }
+    }
+
+    /**
+     * Runs [read] on [l] unless [slot] is already running; a trigger during a run causes exactly one
+     * more run afterwards (while [l] is still the current link).
+     */
+    private fun coalesced(
+        l: Link,
+        slot: Coalesced,
+        read: suspend () -> Unit,
+    ) {
+        synchronized(readLock) {
+            if (slot.running) {
+                slot.dirty = true
+                return
             }
+            slot.running = true
+            slot.dirty = false
+        }
         scope.launch {
             var released = false
             try {
                 while (!released) {
-                    fetchLayout(l, machine)
+                    read()
                     // Check and release in one step, so a trigger arriving now is never lost.
-                    synchronized(layoutLock) {
-                        if (read.dirty && link.get() === l) {
-                            read.dirty = false
+                    synchronized(readLock) {
+                        if (slot.dirty && link.get() === l) {
+                            slot.dirty = false
                         } else {
-                            read.fetching = false
+                            slot.running = false
                             released = true
                         }
                     }
                 }
             } finally {
-                if (!released) synchronized(layoutLock) { read.fetching = false }
+                if (!released) synchronized(readLock) { slot.running = false }
             }
+        }
+    }
+
+    /**
+     * Re-read `machine.list` on [l], then every connected machine's layout (SPEC §10). Coalesced per
+     * link. If the list cannot be read, the last one is used for the layouts.
+     */
+    private fun relistMachines(l: Link) {
+        if (!l.info.supports(CoreInfo.MACHINE_LIST)) return
+        coalesced(l, l.machineReads) {
+            fetchMachines(l.conn)?.let { applyMachines(l, it) }
+            refreshMachineLayouts(l)
         }
     }
 
@@ -478,12 +503,14 @@ class CoreSessionImpl(
         n: CoreNotification,
     ): Boolean {
         val effect: ReduceEffect?
+        val relist: Boolean
         synchronized(reduceLock) {
             if (link.get() !== l) return false // stale epoch: drop
             val before = stateFlow.value
             val r = reducer.reduce(ReducerState(before.terminals, lastSeq), n, clock.nowMillis())
             lastSeq = r.state.lastSeq
             effect = r.effect
+            relist = effect == null && machinesMayHaveChanged(n, before, r.state.terminals)
             if (r.state.terminals !== before.terminals) {
                 stateFlow.update {
                     it.copy(
@@ -501,6 +528,7 @@ class CoreSessionImpl(
             }
         }
         publishSizes()
+        if (relist) relistMachines(l)
         when (effect) {
             is ReduceEffect.Resync -> {
                 logger.warn(TAG, { "desync: ${effect.reason}" })
@@ -511,18 +539,15 @@ class CoreSessionImpl(
                 // A snapshot carries no documents; a remote machine (re)connecting also sends `missed`, so
                 // re-list machines and re-read every connected machine's document (SPEC §8.5, §10).
                 refreshLayout(l)
-                if (l.info.supports(CoreInfo.MACHINE_LIST)) {
-                    scope.launch {
-                        fetchMachines(l.conn)?.let { applyMachines(l, it) }
-                        refreshMachineLayouts(l)
-                    }
-                }
+                relistMachines(l)
             }
 
             is ReduceEffect.DocChanged -> {
-                // A machine not (yet) listed is read after its first `missed` re-lists machines (SPEC §8.5).
-                val listed = effect.machine == null || state.value.machines.any { it.name == effect.machine }
-                if (effect.name == HerdrAppLayoutParser.DOCUMENT && listed) refreshLayout(l, effect.machine)
+                if (effect.name == HerdrAppLayoutParser.DOCUMENT) {
+                    val listed = effect.machine == null || state.value.machines.any { it.name == effect.machine }
+                    // An unlisted machine (added or renamed without a `missed`) is read once the re-list knows it.
+                    if (listed) refreshLayout(l, effect.machine) else relistMachines(l)
+                }
             }
 
             null -> {
@@ -530,6 +555,26 @@ class CoreSessionImpl(
             }
         }
         return false
+    }
+
+    /**
+     * hc sends no `missed` for `machine.rename` / `machine.rm` (SPEC §10), only `removed` / `created` under the
+     * machine prefix. A terminal of an unlisted machine appearing, or a listed machine's last terminal going,
+     * means `machine.list` may have changed.
+     */
+    private fun machinesMayHaveChanged(
+        n: CoreNotification,
+        before: SessionState,
+        after: List<TerminalRecord>,
+    ): Boolean {
+        if (n !is CoreNotification.Event || after === before.terminals) return false
+        val machine = n.terminal?.let { TerminalAddress(it).machine } ?: return false
+        val listed = before.machines.any { it.name == machine }
+        return when (n.type) {
+            "created" -> !listed
+            "removed" -> listed && after.none { it.address.machine == machine }
+            else -> false
+        }
     }
 
     private fun publishSizes() {

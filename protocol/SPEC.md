@@ -568,6 +568,12 @@ Further details from the Herdr.app 0.x bundle (field names and its built-in docs
 - `MachineView` (`machine.list`, `terminal.list.machines`): `{name, target, via:bool, temporary:bool, session:string|null, id, host, version, state, since_ms?, why?}`. `state`: `connecting`, `connected`, `needs_login`, `needs_update`, `unreachable` (`since_ms` = not connected since; `why` for unreachable). `temporary` = short-lived sandbox (show apart). `version` = remote hc version when last seen.
 - When a machine's line drops, its mirrored terminals stay in your state (stale) until it returns [I: mirrors are removed only on `machine.rm`]. Show them as stale using `machine.list` state; writes will fail with `unavailable`. On return: changed terminals arrive as `created` (upsert), vanished ones as `removed`, then a `missed` (refetch docs).
 - `machine.rm` → `removed` for all its terminals (they keep running there). `machine.rename` → `removed` + `created` under the new prefix: re-key UI state.
+- [W] hc 0.1.16, unfiltered subscriber, machine added with `--via "sh -c"` (events carry no machine-specific type or field besides the address prefix):
+  - `machine add`: `created` for each of its terminals (`rohan/t1`), then `missed` (snapshot already includes them).
+  - `machine.rename rohan edoras`: `removed rohan/t1` + `created edoras/t1` and **no `missed`**. A renamed machine with no terminals produces no event at all.
+  - `machine.rm`: `removed` for each of its terminals and **no `missed`**.
+  - Remote server stopped (`hc server stop` there): `finished` (`reason:"server_stop"`) for its terminals, then `missed` once the core re-dialled (immediately here; `machine.list` showed `connected` throughout).
+  - So clients re-read `machine.list` on `missed` and also when a terminal of an unlisted machine appears or a listed machine's last terminal is removed.
 - Do not add a separate per-machine SSH connection unless the user configured that host directly; a host may appear both directly and as a machine of another core (dedupe by `core.id` from `hello` vs `MachineView.id` [I]).
 
 ---

@@ -20,6 +20,7 @@ import kotlinx.serialization.json.put
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
 import java.util.concurrent.ConcurrentHashMap
@@ -325,6 +326,136 @@ class CoreSessionMachineLayoutTest {
             advanceTimeBy(5_000)
             runCurrent()
             assertEquals(listOf("new"), s.panesOn("rohan"))
+            s.stop()
+        }
+
+    // ---- machine.rename / machine.rm send no `missed` (SPEC §10): re-list from terminal events ----------
+
+    private fun CoreSession.machineNames() = state.value.machines.map { it.name }
+
+    private fun FakeCore.machineLists() = callsOf("machine.list").size
+
+    @Test
+    fun `a rename without missed re-lists machines and reads the new name`() =
+        runTest {
+            val r = Remote()
+            r.machines["rohan"] = "connected"
+            r.docs += mapOf("rohan" to doc("t7"), "edoras" to doc("t5"))
+            val host = host(r)
+            host.terminals += FakeCore.terminal("rohan/t1")
+            val s = host.session(this)
+            s.start()
+            s.awaitOnline()
+            eventually { s.panesOn("rohan") == listOf("t7") }
+            assertEquals(1, host.core.machineLists())
+            r.machines.remove("rohan")
+            r.machines["edoras"] = "connected"
+            // What hc 0.1.16 sends for `machine.rename rohan edoras`: removed + created, no missed.
+            host.core.pushEvent("removed", "rohan/t1")
+            host.core.pushEvent("created", "edoras/t1", FakeCore.terminal("edoras/t1"))
+            eventually { s.machineNames() == listOf("edoras") && s.panesOn("edoras") == listOf("t5") }
+            assertEquals(setOf("edoras"), s.state.value.machineLayouts.keys)
+            advanceTimeBy(1_000)
+            runCurrent()
+            assertTrue(host.core.machineLists() in 2..3) // coalesced: never one per event
+            s.stop()
+        }
+
+    @Test
+    fun `a machine rm without missed drops the machine and its layout`() =
+        runTest {
+            val r = Remote()
+            r.machines["rohan"] = "connected"
+            r.docs["rohan"] = doc("t7")
+            val host = host(r)
+            host.terminals += FakeCore.terminal("rohan/t1")
+            host.terminals += FakeCore.terminal("rohan/t2")
+            val s = host.session(this)
+            s.start()
+            s.awaitOnline()
+            eventually { s.panesOn("rohan") == listOf("t7") }
+            r.machines.remove("rohan")
+            host.core.pushEvent("removed", "rohan/t1") // rohan still has t2: no re-list yet
+            runCurrent()
+            assertEquals(1, host.core.machineLists())
+            host.core.pushEvent("removed", "rohan/t2")
+            eventually {
+                s.machineNames().isEmpty() &&
+                    s.state.value.machineLayouts
+                        .isEmpty()
+            }
+            assertEquals(2, host.core.machineLists())
+            s.stop()
+        }
+
+    @Test
+    fun `terminals of listed machines and local ones never re-list`() =
+        runTest {
+            val r = Remote()
+            r.machines["rohan"] = "connected"
+            val host = host(r)
+            host.terminals += FakeCore.terminal("rohan/t1")
+            val s = host.session(this)
+            s.start()
+            s.awaitOnline()
+            eventually { host.core.docGetsOn("rohan").size == 1 }
+            host.core.pushEvent("created", "rohan/t2", FakeCore.terminal("rohan/t2"))
+            host.core.pushEvent("created", "t2", FakeCore.terminal("t2"))
+            host.core.pushEvent("removed", "t1")
+            host.core.pushEvent("removed", "rohan/t2")
+            eventually {
+                s.state.value.terminals
+                    .map { it.address.value } == listOf("rohan/t1", "t2")
+            }
+            advanceTimeBy(1_000)
+            runCurrent()
+            assertEquals(1, host.core.machineLists())
+            s.stop()
+        }
+
+    @Test
+    fun `a doc event from an unlisted machine re-lists and then reads it`() =
+        runTest {
+            val r = Remote()
+            r.docs["edoras"] = doc("t5")
+            val host = host(r)
+            val s = host.session(this)
+            s.start()
+            s.awaitOnline()
+            eventually { host.core.docGetsOn(null).size == 1 }
+            r.machines["edoras"] = "connected"
+            host.core.docEvent("edoras")
+            eventually { s.panesOn("edoras") == listOf("t5") }
+            assertEquals(2, host.core.machineLists())
+            assertEquals(1, host.core.docGetsOn("edoras").size)
+            s.stop()
+        }
+
+    @Test
+    fun `re-lists coalesce per link`() =
+        runTest {
+            val r = Remote()
+            val host = host(r)
+            val s = host.session(this)
+            s.start()
+            s.awaitOnline()
+            eventually { host.core.docGetsOn(null).size == 1 }
+            val gate = CompletableDeferred<Unit>()
+            host.core.gates["machine.list"] = gate
+            r.machines["rohan"] = "connected"
+            r.machines["edoras"] = "connected"
+            host.core.pushEvent("created", "rohan/t1", FakeCore.terminal("rohan/t1"))
+            eventually { host.core.machineLists() == 2 }
+            host.core.pushEvent("created", "edoras/t1", FakeCore.terminal("edoras/t1"))
+            host.core.pushMissed()
+            host.core.docEvent("rohan")
+            runCurrent()
+            assertEquals(2, host.core.machineLists()) // the second read is still held
+            gate.complete(Unit)
+            eventually { s.machineNames() == listOf("edoras", "rohan") }
+            advanceTimeBy(1_000)
+            runCurrent()
+            assertEquals(3, host.core.machineLists()) // exactly one more for everything meanwhile
             s.stop()
         }
 }
