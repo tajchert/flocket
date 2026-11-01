@@ -69,4 +69,21 @@
     <string name="machine_unreachable">Unreachable</string>
     <string name="machine_other">Unknown state</string>
     <string name="install_help_url" translatable="false">https://github.com/herdrdev/herdr-core</string>
+    <string name="share_helper_title">Show files from agents</string>
+    <string name="share_helper_intro">Install the flocket-share helper so an agent in a terminal can show files on your phone.</string>
+    <string name="share_helper_connect_hint">Connect to this host to check where the helper is installed.</string>
+    <string name="share_helper_connect">Connect to check</string>
+    <string name="share_helper_this_host">This host</string>
+    <string name="share_helper_checking">Checking…</string>
+    <string name="share_helper_installed">Installed at %1$s</string>
+    <string name="share_helper_not_installed">Not installed</string>
+    <string name="share_helper_installing">Installing…</string>
+    <string name="share_helper_may_not_installed">May not have been installed. Check again.</string>
+    <string name="share_helper_install">Install</string>
+    <string name="share_helper_reinstall">Reinstall</string>
+    <string name="share_helper_recheck">Check again</string>
+    <string name="share_helper_path_warning">~/.local/bin isn\'t on PATH; agents can run %1$s instead</string>
+    <string name="share_helper_instruction_title">Instruction for your agent</string>
+    <string name="share_helper_copy">Copy instruction</string>
+    <string name="share_helper_copied">Copied</string>
 </resources>

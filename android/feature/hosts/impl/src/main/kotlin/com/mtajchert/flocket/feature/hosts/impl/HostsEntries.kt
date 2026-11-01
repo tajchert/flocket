@@ -35,6 +35,8 @@ import com.mtajchert.flocket.feature.hosts.impl.list.HostsViewModel
 import com.mtajchert.flocket.feature.hosts.impl.settings.HostSettingsCallbacks
 import com.mtajchert.flocket.feature.hosts.impl.settings.HostSettingsScreen
 import com.mtajchert.flocket.feature.hosts.impl.settings.HostSettingsViewModel
+import com.mtajchert.flocket.feature.hosts.impl.settings.ShareHelperCallbacks
+import com.mtajchert.flocket.feature.hosts.impl.settings.ShareHelperViewModel
 import com.mtajchert.flocket.feature.onboarding.api.OnboardingRoute
 import dagger.Module
 import dagger.Provides
@@ -158,12 +160,22 @@ private fun HostSettingsRoute(
             key = "settings/$hostId",
         ) { it.create(hostId) }
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val helper =
+        hiltViewModel<ShareHelperViewModel, ShareHelperViewModel.Factory>(key = "share/$hostId") { it.create(hostId) }
+    val helperState by helper.uiState.collectAsStateWithLifecycle()
     HostSettingsScreen(
         state = state,
+        shareHelper = helperState,
         callbacks =
             HostSettingsCallbacks(
                 onBack = navigator::back,
                 onResetAll = viewModel::resetAll,
+                shareHelper =
+                    ShareHelperCallbacks(
+                        onConnect = helper::connect,
+                        onInstall = helper::install,
+                        onRecheck = helper::recheck,
+                    ),
                 terminal =
                     TerminalSettingsCallbacks(
                         onFontSize = viewModel::setFontSize,
