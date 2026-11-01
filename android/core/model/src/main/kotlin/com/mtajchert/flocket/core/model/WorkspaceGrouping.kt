@@ -20,6 +20,8 @@ package com.mtajchert.flocket.core.model
 fun buildWorkspace(
     terminals: List<TerminalRecord>,
     layout: DesktopLayout?,
+    /** Federated machines' layouts by machine name; their panes are machine-local (`t7` = `rohan/t7`). */
+    @Suppress("UNUSED_PARAMETER") machineLayouts: Map<String, DesktopLayout> = emptyMap(),
 ): Workspace {
     val records = LinkedHashMap<TerminalAddress, TerminalRecord>()
     for (t in terminals) records.putIfAbsent(t.address, t)

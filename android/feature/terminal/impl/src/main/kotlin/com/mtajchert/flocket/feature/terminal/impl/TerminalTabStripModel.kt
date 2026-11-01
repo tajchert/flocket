@@ -52,7 +52,8 @@ fun buildTabStrip(
     terminals: List<TerminalRecord>,
     layout: DesktopLayout?,
     current: TerminalAddress,
-): TabStripUi? = buildTabStrip(buildWorkspace(terminals, layout), terminals, current)
+    machineLayouts: Map<String, DesktopLayout> = emptyMap(),
+): TabStripUi? = buildTabStrip(buildWorkspace(terminals, layout, machineLayouts), terminals, current)
 
 fun buildTabStrip(
     workspace: Workspace,

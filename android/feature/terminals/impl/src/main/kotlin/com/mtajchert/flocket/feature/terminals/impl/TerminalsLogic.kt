@@ -127,7 +127,7 @@ internal fun buildUiState(
     controls: ListControls,
     refreshing: Boolean,
     /** How a host's terminals are grouped; tests and previews inject fixed workspaces. */
-    workspaceOf: (SessionState) -> Workspace = { buildWorkspace(it.terminals, it.desktopLayout) },
+    workspaceOf: (SessionState) -> Workspace = { buildWorkspace(it.terminals, it.desktopLayout, it.machineLayouts) },
 ): TerminalsUiState {
     var totalTerminals = 0
     var hiddenFinished = 0

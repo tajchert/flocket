@@ -105,6 +105,12 @@ data class SessionState(
     val confirmedAtMs: Long? = null,
     /** The desktop app's layout (`herdr-app` document, local machine), kept while disconnected; null = none. */
     val desktopLayout: DesktopLayout? = null,
+    /**
+     * Federated machines' desktop layouts (each machine's own `herdr-app` document, read with `on`), keyed by
+     * machine name. Pane addresses inside are that machine's local ones (`t7`, not `rohan/t7`). Kept while
+     * disconnected; a machine with no document has no entry.
+     */
+    val machineLayouts: Map<String, DesktopLayout> = emptyMap(),
 ) {
     /** Data is cached, not live: show it as stale and disable writes. */
     val isStale: Boolean get() = connection !is ConnectionState.Online

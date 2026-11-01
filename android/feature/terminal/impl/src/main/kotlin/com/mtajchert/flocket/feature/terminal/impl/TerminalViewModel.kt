@@ -162,7 +162,7 @@ class TerminalViewModel
          */
         val tabStrip: StateFlow<TabStripUi?> =
             sessionState
-                .map { st -> st?.let { buildTabStrip(it.terminals, it.desktopLayout, address) } }
+                .map { st -> st?.let { buildTabStrip(it.terminals, it.desktopLayout, address, it.machineLayouts) } }
                 .distinctUntilChanged()
                 .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
