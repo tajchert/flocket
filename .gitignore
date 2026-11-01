@@ -1,0 +1,13 @@
+# OS / editors
+.DS_Store
+.idea/
+*.iml
+.vscode/
+
+# Agent working files (plans, ledgers, notes) - never linked from committed docs
+.work/
+.worktrees/
+.claude/settings.local.json
+
+# Python caches
+__pycache__/
