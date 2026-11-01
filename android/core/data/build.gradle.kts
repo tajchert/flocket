@@ -7,10 +7,11 @@ plugins {
 }
 
 dependencies {
-    implementation(projects.core.model)
-    implementation(projects.core.common)
+    // Public contracts expose model, common and session types to features.
+    api(projects.core.model)
+    api(projects.core.common)
+    api(projects.core.session)
     implementation(projects.core.protocol)
-    implementation(projects.core.session)
     implementation(projects.core.ssh)
     implementation(projects.core.database)
     implementation(projects.core.datastore)
