@@ -1,0 +1,350 @@
+package com.mtajchert.flocket.core.model
+
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class WorkspaceGroupingTest {
+    private val endpoint = CoreEndpoint(HostId("h1"))
+
+    private fun term(
+        address: String,
+        cwd: String = "/tmp",
+        space: String? = null,
+        tab: String? = null,
+        state: AgentState? = null,
+        finished: Boolean = false,
+    ) = TerminalRecord(
+        ref = TerminalRef(endpoint, TerminalAddress(address)),
+        labels =
+            buildMap {
+                space?.let { put(HerdrLabels.SPACE, it) }
+                tab?.let { put(HerdrLabels.TAB, it) }
+            },
+        argv = listOf("sh"),
+        cwd = cwd,
+        liveness = if (finished) Liveness.Finished("exited", 0, null, 1L) else Liveness.Running,
+        status = state?.let { AgentStatus.Reported(it, it.name.lowercase()) } ?: AgentStatus.Unknown,
+        cols = 80,
+        rows = 24,
+        createdAtMs = 0,
+    )
+
+    private fun a(vararg v: String) = v.map { TerminalAddress(it) }
+
+    private fun layout(vararg spaces: DesktopSpace) = DesktopLayout(spaces.toList())
+
+    private fun space(
+        id: String,
+        vararg tabs: DesktopTab,
+        name: String = "",
+        folder: String? = null,
+    ) = DesktopSpace(id, name, folder, tabs.toList())
+
+    private fun tab(
+        id: String,
+        vararg panes: String,
+        name: String = "",
+        active: String? = null,
+    ) = DesktopTab(id, name, a(*panes), active?.let { TerminalAddress(it) })
+
+    /** Every terminal appears in exactly one tab. */
+    private fun assertPartition(
+        terminals: List<TerminalRecord>,
+        w: Workspace,
+    ) {
+        val all = w.spaces.flatMap { s -> s.tabs.flatMap { it.panes } }
+        assertEquals(terminals.map { it.address }.toSet(), all.toSet())
+        assertEquals(all.size, all.toSet().size)
+    }
+
+    private fun Workspace.shape() = spaces.map { s -> s.key to s.tabs.map { t -> t.key to t.panes.map { it.value } } }
+
+    @Test
+    fun `desktop layout orders spaces, tabs and panes like the document`() {
+        val terms = listOf(term("t1"), term("t2"), term("t3"), term("t4"))
+        val l =
+            layout(
+                space("sp2", tab("tbA", "t3"), name = "web", folder = "/src/web"),
+                space("sp1", tab("tbB", "t4", "t1", name = "fix login", active = "t1"), tab("tbC", "t2")),
+            )
+        val w = buildWorkspace(terms, l)
+        assertEquals(
+            listOf(
+                "desktop:sp2" to listOf("tbA" to listOf("t3")),
+                "desktop:sp1" to listOf("tbB" to listOf("t4", "t1"), "tbC" to listOf("t2")),
+            ),
+            w.shape(),
+        )
+        val sp1 = w.spaces[1]
+        assertEquals(SpaceSource.Desktop, sp1.source)
+        assertEquals("web", w.spaces[0].name)
+        assertEquals("/src/web", w.spaces[0].folder)
+        assertEquals("fix login", sp1.tabs[0].name)
+        assertEquals(TerminalAddress("t1"), sp1.tabs[0].activePane)
+        assertEquals("Tab 2", sp1.tabs[1].name)
+        assertNull(sp1.machine)
+        assertPartition(terms, w)
+    }
+
+    @Test
+    fun `unnamed desktop spaces fall back to the folder, then Space N`() {
+        val terms = listOf(term("t1"), term("t2"), term("t3"))
+        val l =
+            layout(
+                space("a", tab("x", "t1"), folder = "/Users/me/code/flocket/"),
+                space("b", tab("x", "t2"), name = "  "),
+                space("c", tab("x", "t3"), folder = "~"),
+            )
+        assertEquals(listOf("flocket", "Space 2", "~"), buildWorkspace(terms, l).spaces.map { it.name })
+    }
+
+    @Test
+    fun `layout panes for terminals that no longer exist are dropped with empty tabs and spaces`() {
+        val terms = listOf(term("t1"), term("t2"))
+        val l =
+            layout(
+                space("gone", tab("x", "t9")),
+                space("sp", tab("empty"), tab("dead", "t8"), tab("live", "t8", "t2", "t1", active = "t8")),
+            )
+        val w = buildWorkspace(terms, l)
+        assertEquals(listOf("desktop:sp" to listOf("live" to listOf("t2", "t1"))), w.shape())
+        // Unnamed tabs keep their place number from the document, like the desktop app.
+        assertEquals("Tab 3", w.spaces[0].tabs[0].name)
+        assertEquals("Space 1", w.spaces[0].name)
+        // The active pane pointed at a vanished terminal: unknown.
+        assertNull(w.spaces[0].tabs[0].activePane)
+    }
+
+    @Test
+    fun `a terminal listed twice in the layout stays in its first pane`() {
+        val terms = listOf(term("t1"), term("t2"))
+        val l = layout(space("a", tab("x", "t1"), tab("y", "t1", "t2")))
+        assertEquals(
+            listOf("desktop:a" to listOf("x" to listOf("t1"), "y" to listOf("t2"))),
+            buildWorkspace(terms, l).shape(),
+        )
+    }
+
+    @Test
+    fun `terminals the layout does not place fall back to labels, then folders`() {
+        val terms =
+            listOf(
+                term("t1"),
+                term("t2", cwd = "/src/api"),
+                term("t3", space = "sp9", tab = "tbZ", cwd = "/src/other"),
+                term("t4", cwd = "/src/api"),
+            )
+        val w = buildWorkspace(terms, layout(space("sp1", tab("tb", "t1"))))
+        assertEquals(
+            listOf(
+                "desktop:sp1" to listOf("tb" to listOf("t1")),
+                "label:sp9" to listOf("tbZ" to listOf("t3")),
+                "folder::/src/api" to listOf("all" to listOf("t2", "t4")),
+            ),
+            w.shape(),
+        )
+        assertEquals(listOf(SpaceSource.Desktop, SpaceSource.Labels, SpaceSource.Folder), w.spaces.map { it.source })
+        assertEquals("api", w.spaces[2].name)
+        assertPartition(terms, w)
+    }
+
+    @Test
+    fun `a labelled terminal missing from the layout joins its desktop space`() {
+        val terms =
+            listOf(
+                term("t1"),
+                term("t2", space = "sp1", tab = "tb"),
+                term("t3", space = "sp1", tab = "new"),
+            )
+        val w = buildWorkspace(terms, layout(space("sp1", tab("tb", "t1"), name = "api")))
+        assertEquals(
+            listOf("desktop:sp1" to listOf("tb" to listOf("t1", "t2"), "new" to listOf("t3"))),
+            w.shape(),
+        )
+        assertEquals("Tab 2", w.spaces[0].tabs[1].name)
+    }
+
+    @Test
+    fun `labels only group by first appearance in core order`() {
+        val terms =
+            listOf(
+                term("t1", space = "B", tab = "b1", cwd = "/src/beta"),
+                term("t2", space = "A", tab = "a1", cwd = "/src/alpha"),
+                term("t3", space = "B", tab = "b2"),
+                term("t4", space = "B", tab = "b1"),
+                term("t5", space = "A"),
+                term("t6", space = "C", cwd = ""),
+            )
+        val w = buildWorkspace(terms, null)
+        assertEquals(
+            listOf(
+                "label:B" to listOf("b1" to listOf("t1", "t4"), "b2" to listOf("t3")),
+                "label:A" to listOf("a1" to listOf("t2"), "-" to listOf("t5")),
+                "label:C" to listOf("-" to listOf("t6")),
+            ),
+            w.shape(),
+        )
+        // Label spaces have no name: the first terminal's start folder, else Space N.
+        assertEquals(listOf("beta", "alpha", "Space 3"), w.spaces.map { it.name })
+        assertEquals("/src/beta", w.spaces[0].folder)
+        assertEquals(listOf("Tab 1", "Tab 2"), w.spaces[0].tabs.map { it.name })
+        assertTrue(w.spaces.all { it.source == SpaceSource.Labels })
+        assertPartition(terms, w)
+    }
+
+    @Test
+    fun `folder only groups by start folder, not the foreground folder`() {
+        val moved =
+            term(
+                "t2",
+                cwd = "/src/app",
+            ).copy(foreground = ForegroundProcess(1, "vim", listOf("vim"), "/elsewhere"))
+        val terms =
+            listOf(
+                term("t1", cwd = "~"),
+                moved,
+                term("t3", cwd = "~/"),
+                term("t4", cwd = "/src/app/"),
+                term("t5", cwd = "/"),
+            )
+        val w = buildWorkspace(terms, null)
+        assertEquals(
+            listOf(
+                "folder::~" to listOf("all" to listOf("t1")),
+                "folder::/src/app" to listOf("all" to listOf("t2")),
+                "folder::~/" to listOf("all" to listOf("t3")),
+                "folder::/src/app/" to listOf("all" to listOf("t4")),
+                "folder::/" to listOf("all" to listOf("t5")),
+            ),
+            w.shape(),
+        )
+        assertEquals(listOf("~", "app", "~", "app", "/"), w.spaces.map { it.name })
+        assertTrue(
+            w.spaces.all {
+                it.source == SpaceSource.Folder &&
+                    it.tabs
+                        .single()
+                        .name
+                        .isNotBlank()
+            },
+        )
+    }
+
+    @Test
+    fun `an empty start folder still gets a name`() {
+        val w = buildWorkspace(listOf(term("t1", cwd = "")), null)
+        assertEquals("Space 1", w.spaces.single().name)
+        assertNull(w.spaces.single().folder)
+    }
+
+    @Test
+    fun `federated terminals are folder-grouped per machine after local spaces, never via the layout or labels`() {
+        val terms =
+            listOf(
+                term("t1", cwd = "/a"),
+                term("t2", space = "sp1"),
+                term("rohan/t7", cwd = "/a", space = "sp1", tab = "tb"),
+                term("mordor/t1", cwd = "/a"),
+                term("rohan/t8", cwd = "/a"),
+            )
+        // A (malformed) local layout that names a remote terminal must not claim it.
+        val w = buildWorkspace(terms, layout(space("sp1", tab("tb", "rohan/t7"))))
+        assertEquals(
+            listOf(
+                "desktop:sp1" to listOf("-" to listOf("t2")),
+                "folder::/a" to listOf("all" to listOf("t1")),
+                "folder:rohan:/a" to listOf("all" to listOf("rohan/t7", "rohan/t8")),
+                "folder:mordor:/a" to listOf("all" to listOf("mordor/t1")),
+            ),
+            w.shape(),
+        )
+        assertEquals(listOf(null, null, "rohan", "mordor"), w.spaces.map { it.machine })
+        // `t1` and `mordor/t1` stay distinct.
+        assertEquals("mordor", w.locate(TerminalAddress("mordor/t1"))!!.first.machine)
+        assertNull(w.locate(TerminalAddress("t1"))!!.first.machine)
+        assertPartition(terms, w)
+    }
+
+    @Test
+    fun `remote terminals listed before local ones still come after the local spaces`() {
+        val terms = listOf(term("rohan/t1", cwd = "/r"), term("t1", cwd = "/l"))
+        assertEquals(listOf(null, "rohan"), buildWorkspace(terms, null).spaces.map { it.machine })
+    }
+
+    @Test
+    fun `status is the most urgent non-finished terminal, per tab and per space`() {
+        val terms =
+            listOf(
+                term("t1", state = AgentState.Idle),
+                term("t2", state = AgentState.Blocked, finished = true),
+                term("t3", state = AgentState.Working),
+                term("t4"),
+                term("t5", state = AgentState.Error),
+            )
+        val l = layout(space("a", tab("x", "t1", "t2"), tab("y", "t3", "t4")), space("b", tab("z", "t4", "t5")))
+        val w = buildWorkspace(terms, l)
+        assertEquals(AgentState.Idle, w.spaces[0].tabs[0].topState)
+        assertEquals(AgentState.Working, w.spaces[0].tabs[1].topState)
+        assertEquals(AgentState.Working, w.spaces[0].topState)
+        assertEquals(AgentState.Error, w.spaces[1].topState)
+    }
+
+    @Test
+    fun `no reported status gives a null topState`() {
+        val w = buildWorkspace(listOf(term("t1"), term("t2", state = AgentState.Done, finished = true)), null)
+        assertNull(w.spaces.single().topState)
+        assertNull(
+            w.spaces
+                .single()
+                .tabs
+                .single()
+                .topState,
+        )
+    }
+
+    @Test
+    fun `keys stay unique when a damaged document repeats or omits ids`() {
+        val terms = listOf(term("t1"), term("t2"), term("t3"), term("t4"))
+        val l = layout(space("x", tab("", "t1"), tab("", "t2")), space("x", tab("t", "t3")), space("", tab("t", "t4")))
+        val w = buildWorkspace(terms, l)
+        val keys = w.spaces.map { it.key }
+        assertEquals(keys.size, keys.toSet().size)
+        assertEquals(listOf("desktop:x", "desktop:x~2", "desktop:#2"), keys)
+        assertEquals(listOf("#0", "#1"), w.spaces[0].tabs.map { it.key })
+        assertPartition(terms, w)
+    }
+
+    @Test
+    fun `the same input always gives the same workspace`() {
+        val terms =
+            listOf(
+                term("t3", space = "s", tab = "a"),
+                term("t1", cwd = "/x"),
+                term("rohan/t2", cwd = "/y"),
+                term("t2", space = "s", tab = "b"),
+            )
+        val l = layout(space("d", tab("q", "t1")))
+        assertEquals(buildWorkspace(terms, l), buildWorkspace(terms.toList(), l.copy()))
+    }
+
+    @Test
+    fun `an empty host gives an empty workspace and the layout alone adds nothing`() {
+        assertEquals(Workspace.Empty, buildWorkspace(emptyList(), null))
+        assertEquals(Workspace.Empty, buildWorkspace(emptyList(), layout(space("a", tab("b", "t1")))))
+        assertEquals(Workspace.Empty, buildWorkspace(emptyList(), DesktopLayout(emptyList())))
+    }
+
+    @Test
+    fun `folder names`() {
+        assertEquals("app", folderName("/src/app"))
+        assertEquals("app", folderName("/src/app//"))
+        assertEquals("~", folderName("~"))
+        assertEquals("~", folderName("~/"))
+        assertEquals("/", folderName("/"))
+        assertEquals("proj", folderName("C:\\work\\proj"))
+        assertNull(folderName(""))
+        assertNull(folderName(null))
+    }
+}

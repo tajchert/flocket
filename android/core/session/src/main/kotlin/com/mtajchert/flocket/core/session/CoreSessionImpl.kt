@@ -19,6 +19,7 @@ import com.mtajchert.flocket.core.protocol.CoreConnection
 import com.mtajchert.flocket.core.protocol.CoreNotification
 import com.mtajchert.flocket.core.protocol.EventSubscription
 import com.mtajchert.flocket.core.protocol.RunParams
+import com.mtajchert.flocket.core.protocol.docGet
 import com.mtajchert.flocket.core.protocol.dto.toModel
 import com.mtajchert.flocket.core.protocol.dto.toRecord
 import com.mtajchert.flocket.core.protocol.machineExec
@@ -82,6 +83,10 @@ class CoreSessionImpl(
         val conn: CoreConnection,
     ) {
         val info: CoreInfo get() = conn.info
+
+        /** `herdr-app` read coalescing ([refreshLayout]); guarded by [layoutLock]. */
+        var layoutFetching = false
+        var layoutDirty = false
     }
 
     private val stateFlow = MutableStateFlow(SessionState(endpoint))
@@ -104,6 +109,9 @@ class CoreSessionImpl(
 
     @Volatile
     private var parkOnExit = false
+
+    /** Guards [Link.layoutFetching] / [Link.layoutDirty]; never held across suspension. */
+    private val layoutLock = Any()
 
     private val connectionOptions = ConnectionOptions(clock = clock, logger = logger)
 
@@ -231,6 +239,7 @@ class CoreSessionImpl(
             }
             online = l
             publishSizes()
+            refreshLayout(l)
             logger.info(
                 TAG,
             ) { "${endpoint.hostId.value}: online (core ${c.info.version}, ${sub.terminals.size} terminals)" }
@@ -301,6 +310,59 @@ class CoreSessionImpl(
             null
         }
 
+    /**
+     * Re-read the local `herdr-app` document on [l] (SPEC §9: after subscribing, `missed` and its
+     * `doc` events). At most one read per link is in flight; triggers during it cause exactly one
+     * more read afterwards. A failed read keeps the last layout; so does a disconnect (the state is
+     * then stale). A reply is applied only while [l] is still the current link.
+     */
+    private fun refreshLayout(l: Link) {
+        synchronized(layoutLock) {
+            if (l.layoutFetching) {
+                l.layoutDirty = true
+                return
+            }
+            l.layoutFetching = true
+            l.layoutDirty = false
+        }
+        scope.launch {
+            var released = false
+            try {
+                while (!released) {
+                    fetchLayout(l)
+                    // Check and release in one step, so a trigger arriving now is never lost.
+                    synchronized(layoutLock) {
+                        if (l.layoutDirty && link.get() === l) {
+                            l.layoutDirty = false
+                        } else {
+                            l.layoutFetching = false
+                            released = true
+                        }
+                    }
+                }
+            } finally {
+                if (!released) synchronized(layoutLock) { l.layoutFetching = false }
+            }
+        }
+    }
+
+    private suspend fun fetchLayout(l: Link) {
+        val reply =
+            try {
+                l.conn.docGet(HerdrAppLayoutParser.DOCUMENT, timeout = config.readTimeout)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                logger.debug(TAG) { "doc.get ${HerdrAppLayoutParser.DOCUMENT} failed: ${e.javaClass.simpleName}" }
+                return
+            }
+        // Absent or deleted (`value: null`) means no layout. A version going backwards is trusted (SPEC §9).
+        val layout = HerdrAppLayoutParser.parse(reply.value)
+        synchronized(reduceLock) {
+            if (link.get() === l) stateFlow.update { it.copy(desktopLayout = layout) }
+        }
+    }
+
     private suspend fun watchdog(c: CoreConnection) {
         while (true) {
             delay(config.watchdogInterval)
@@ -353,6 +415,7 @@ class CoreSessionImpl(
                 stateFlow.update { it.copy(terminals = snap.terminals, confirmedAtMs = clock.nowMillis()) }
             }
             publishSizes()
+            refreshLayout(l)
         }
     }
 
@@ -392,6 +455,7 @@ class CoreSessionImpl(
             }
 
             ReduceEffect.SnapshotReplaced -> {
+                refreshLayout(l) // a snapshot carries no documents (SPEC §8.5)
                 if (l.info.supports(CoreInfo.MACHINE_LIST)) {
                     scope.launch {
                         val m = fetchMachines(l.conn) ?: return@launch
@@ -401,7 +465,8 @@ class CoreSessionImpl(
             }
 
             is ReduceEffect.DocChanged -> {
-                logger.debug(TAG) { "doc ${effect.name} changed (documents not tracked yet)" }
+                // Remote machines' layouts are not shown yet: only the local herdr-app document.
+                if (effect.name == HerdrAppLayoutParser.DOCUMENT && effect.machine == null) refreshLayout(l)
             }
 
             null -> {

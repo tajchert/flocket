@@ -1,17 +1,25 @@
 package com.mtajchert.flocket.feature.terminal.impl
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.mtajchert.flocket.core.designsystem.theme.FlocketTheme
+import com.mtajchert.flocket.core.model.AgentState
 import com.mtajchert.flocket.core.model.ConnectionState
 import com.mtajchert.flocket.core.testing.SampleData
+import com.mtajchert.flocket.core.ui.nav.LocalPaneLayout
+import com.mtajchert.flocket.core.ui.nav.LocalSidebarToggle
+import com.mtajchert.flocket.core.ui.nav.PaneLayout
+import com.mtajchert.flocket.core.ui.nav.SidebarToggle
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -35,6 +43,8 @@ class TerminalScreenTest {
     private val clicks = mutableListOf<String>()
     private val actions =
         TerminalActions(
+            onOpenTerminal = { clicks += "open:$it" },
+            onBack = { clicks += "close" },
             onFit = { clicks += "fit" },
             onPaste = { clicks += "paste" },
             onCopy = { clicks += "copy" },
@@ -128,6 +138,65 @@ class TerminalScreenTest {
         compose.onNodeWithText("Stream ended").assertExists()
         compose.onNodeWithText("Reattach").performClick()
         assertEquals(listOf("reattach"), clicks)
+    }
+
+    private val strip =
+        TabStripUi(
+            tabs =
+                listOf(
+                    StripTab("a", "server", null, selected = true, target = "t1"),
+                    StripTab("b", "tests", AgentState.Working, selected = false, target = "t2"),
+                ),
+            panes = emptyList(),
+        )
+
+    private fun showMulti(
+        sidebarVisible: Boolean,
+        tabStrip: TabStripUi? = null,
+    ) = compose.setContent {
+        CompositionLocalProvider(
+            LocalPaneLayout provides PaneLayout(multiPane = true, sidebarVisible = sidebarVisible),
+            LocalSidebarToggle provides SidebarToggle { clicks += "sidebar:$it" },
+        ) {
+            FlocketTheme(dynamicColor = false) { TerminalScreen(live, actions, tabStrip = tabStrip) { Box(it) } }
+        }
+    }
+
+    @Test
+    fun `multi-pane top bar toggles the sidebar instead of going back`() {
+        showMulti(sidebarVisible = true)
+        compose.onAllNodesWithContentDescription("Back").assertCountEquals(0)
+        compose.onNodeWithContentDescription("Hide sidebar").performClick()
+        assertEquals(listOf("sidebar:false"), clicks)
+    }
+
+    @Test
+    fun `focus mode offers to show the sidebar again`() {
+        showMulti(sidebarVisible = false)
+        compose.onNodeWithContentDescription("Show sidebar").performClick()
+        assertEquals(listOf("sidebar:true"), clicks)
+    }
+
+    @Test
+    fun `single-pane keeps the back arrow`() {
+        show(live)
+        compose.onNodeWithContentDescription("Back").performClick()
+        compose.onAllNodesWithContentDescription("Hide sidebar").assertCountEquals(0)
+        assertEquals(listOf("close"), clicks)
+    }
+
+    @Test
+    fun `tab strip opens the tapped tab and is absent without data`() {
+        showMulti(sidebarVisible = true, tabStrip = strip)
+        compose.onNodeWithText("server").assertExists()
+        compose.onNodeWithText("tests").performClick()
+        assertEquals(listOf("open:t2"), clicks)
+    }
+
+    @Test
+    fun `no strip when there is nothing to switch between`() {
+        showMulti(sidebarVisible = true, tabStrip = null)
+        compose.onAllNodes(hasTestTag("terminal_tab_strip")).assertCountEquals(0)
     }
 
     private fun androidx.compose.ui.test.junit4.ComposeContentTestRule.onAllNodesWithContentDescriptionCount(

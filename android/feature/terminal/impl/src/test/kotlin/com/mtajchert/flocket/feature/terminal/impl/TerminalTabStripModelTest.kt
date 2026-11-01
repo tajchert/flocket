@@ -1,0 +1,115 @@
+package com.mtajchert.flocket.feature.terminal.impl
+
+import com.mtajchert.flocket.core.model.AgentState
+import com.mtajchert.flocket.core.model.AgentStatus
+import com.mtajchert.flocket.core.model.Liveness
+import com.mtajchert.flocket.core.model.SpaceSource
+import com.mtajchert.flocket.core.model.TerminalAddress
+import com.mtajchert.flocket.core.model.Workspace
+import com.mtajchert.flocket.core.model.WorkspaceSpace
+import com.mtajchert.flocket.core.model.WorkspaceTab
+import com.mtajchert.flocket.core.testing.SampleData
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class TerminalTabStripModelTest {
+    private fun addr(value: String) = TerminalAddress(value)
+
+    private fun record(
+        address: String,
+        status: AgentStatus = AgentStatus.Unknown,
+        liveness: Liveness = Liveness.Running,
+        name: String? = null,
+        argv: String = "zsh",
+    ) = SampleData.terminal(address = address, name = name, argv = listOf(argv), status = status, liveness = liveness)
+
+    private fun reported(state: AgentState) = AgentStatus.Reported(state, state.name.lowercase(), app = "claude")
+
+    private fun tab(
+        key: String,
+        vararg panes: String,
+        active: String? = null,
+        state: AgentState? = null,
+    ) = WorkspaceTab(key, key.uppercase(), panes.map(::addr), active?.let(::addr), state)
+
+    private fun workspace(vararg tabs: WorkspaceTab) =
+        Workspace(
+            listOf(WorkspaceSpace("desktop:s1", "api", "/code/api", SpaceSource.Desktop, null, tabs.toList(), null)),
+        )
+
+    @Test
+    fun `a single tab with a single pane has no strip`() {
+        val ws = workspace(tab("a", "t1"))
+        assertNull(buildTabStrip(ws, listOf(record("t1")), addr("t1")))
+    }
+
+    @Test
+    fun `an unknown terminal has no strip`() {
+        val ws = workspace(tab("a", "t1"), tab("b", "t2"))
+        assertNull(buildTabStrip(ws, listOf(record("t1")), addr("t9")))
+    }
+
+    @Test
+    fun `two tabs mark the current one and target the active pane, else the first`() {
+        val ws = workspace(tab("a", "t1"), tab("b", "t2", "t3", active = "t3"), tab("c", "t4", "t5"))
+        val strip = buildTabStrip(ws, listOf(record("t1")), addr("t1"))!!
+
+        assertEquals(listOf("A", "B", "C"), strip.tabs.map { it.name })
+        assertEquals(listOf(true, false, false), strip.tabs.map { it.selected })
+        assertEquals(listOf("t1", "t3", "t4"), strip.tabs.map { it.target })
+        assertTrue("one pane in the current tab: no switcher", strip.panes.isEmpty())
+    }
+
+    @Test
+    fun `the open terminal is the target of its own tab even when another pane is active`() {
+        val ws = workspace(tab("a", "t1", "t2", active = "t1"), tab("b", "t3"))
+        val strip = buildTabStrip(ws, listOf(record("t2")), addr("t2"))!!
+        assertEquals("t2", strip.tabs.first { it.selected }.target)
+    }
+
+    @Test
+    fun `one tab with several panes shows only the pane switcher`() {
+        val ws = workspace(tab("a", "t1", "t2", "t3"))
+        val records =
+            listOf(
+                record("t1", reported(AgentState.Working), argv = "claude"),
+                record("t2", name = "build"),
+                record("t3", reported(AgentState.Blocked)),
+            )
+        val strip = buildTabStrip(ws, records, addr("t2"))!!
+
+        assertEquals(1, strip.tabs.size)
+        assertEquals(listOf("t1", "t2", "t3"), strip.panes.map { it.address })
+        assertEquals(listOf(false, true, false), strip.panes.map { it.selected })
+        assertEquals(listOf("claude", "build", "claude"), strip.panes.map { it.label })
+        assertEquals(listOf(AgentState.Working, null, AgentState.Blocked), strip.panes.map { it.state })
+    }
+
+    @Test
+    fun `a finished terminal shows no state and an unknown record falls back to its address`() {
+        val ws = workspace(tab("a", "t1", "t2"))
+        val records = listOf(record("t1", reported(AgentState.Done), liveness = Liveness.Finished(null, 0, null, null)))
+        val strip = buildTabStrip(ws, records, addr("t1"))!!
+        assertNull(strip.panes[0].state)
+        assertEquals("t2", strip.panes[1].label)
+    }
+
+    @Test
+    fun `terminals sharing a folder get a pane switcher when no layout is known`() {
+        val records = listOf(record("t1"), record("t2"), record("t3", argv = "zsh"))
+        val strip = buildTabStrip(records, null, addr("t2"))!!
+        assertEquals(listOf("t1", "t2", "t3"), strip.panes.map { it.address })
+        assertEquals("t2", strip.panes.single { it.selected }.address)
+    }
+
+    @Test
+    fun `equal inputs build equal values so the flow can deduplicate`() {
+        val ws = workspace(tab("a", "t1"), tab("b", "t2"))
+        val records = listOf(record("t1"), record("t2"))
+        assertEquals(buildTabStrip(ws, records, addr("t1")), buildTabStrip(ws, records, addr("t1")))
+        assertFalse(buildTabStrip(ws, records, addr("t1")) == buildTabStrip(ws, records, addr("t2")))
+    }
+}

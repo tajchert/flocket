@@ -4,6 +4,7 @@ import com.mtajchert.flocket.core.common.result.AppResult
 import com.mtajchert.flocket.core.model.ConnectionState
 import com.mtajchert.flocket.core.model.CoreEndpoint
 import com.mtajchert.flocket.core.model.CoreInfo
+import com.mtajchert.flocket.core.model.DesktopLayout
 import com.mtajchert.flocket.core.model.MachineInfo
 import com.mtajchert.flocket.core.model.TerminalAddress
 import com.mtajchert.flocket.core.model.TerminalRecord
@@ -102,6 +103,8 @@ data class SessionState(
     val machines: List<MachineInfo> = emptyList(),
     /** When [terminals] were last confirmed by a live connection; null = never. */
     val confirmedAtMs: Long? = null,
+    /** The desktop app's layout (`herdr-app` document, local machine), kept while disconnected; null = none. */
+    val desktopLayout: DesktopLayout? = null,
 ) {
     /** Data is cached, not live: show it as stale and disable writes. */
     val isStale: Boolean get() = connection !is ConnectionState.Online

@@ -9,6 +9,22 @@ Compact width shows the terminal list, then the terminal on its own full screen.
 - `calculatePaneScaffoldDirective(...)` is copied with `horizontalPartitionSpacerSize = 0.dp` to remove the gap between panes (b/418201867); drop the override once fixed upstream.
 - When two panes are visible a detail screen must not draw a back arrow. Entries receive a `showDetailBackButton` flag (false on multi-pane layouts).
 
+## Sidebar, focus mode and chrome
+
+- `FlocketNavHost` provides `LocalPaneLayout` (`multiPane`, `sidebarVisible`, `compactHeight`, from `:core:ui`) and `LocalSidebarToggle`. `multiPane` is measured from the directive before focus mode narrows it. Compact height is a window height below 480dp (landscape phone).
+- The list pane (sidebar) is 300dp on expanded widths and 280dp on other multi-pane windows (`defaultPanePreferredWidth` of the directive); the terminal gets the rest.
+- On multi-pane windows the terminal top bar's navigation icon toggles the sidebar ("Hide sidebar" / "Show sidebar"); single-pane keeps the back arrow.
+- Focus mode (hidden sidebar) swaps the directive for `maxHorizontalPartitions = 1`. It is `rememberSaveable` (survives rotation and fold, not process death), resets when the window becomes single-pane or the top route is not a terminal, and Back leaves it before popping the stack.
+- The navigation rail/bar is hidden while a terminal is on top when the window is single-pane, in focus mode, or compact height (`isFullScreen`).
+- A wide but short window (a landscape phone) gets the rail, not the default bottom bar, so the list keeps its height (`navigationSuiteType`).
+- A pane beside the visible sidebar pads only its top, bottom and end insets: the start cutout and nav bar belong to the sidebar.
+- Rotation, fold and unfold keep the terminal's `TerminalViewModel` (attach, engine state); only the surface is re-created.
+- Manual check (no Robolectric nav-host test: `:app` has no Compose test setup): on a tablet or unfolded emulator open a terminal, hide the sidebar, press Back (sidebar returns, terminal stays), rotate and fold in focus mode.
+
+## Terminal tab strip
+
+Below the terminal top bar, a 40dp strip shows the tabs of the open terminal's space (scrollable, status dot, open tab selected) and, when the tab has 2+ panes, a pane switcher (agent label or name). It appears when the space has 2+ tabs or the tab has 2+ panes. Tapping navigates to the tab's active pane (else first) with a passive `TerminalRoute`. Data comes from `TerminalViewModel.tabStrip` (`buildWorkspace` on the host's `SessionState`, deduplicated, separate from `uiState`). On compact height the strip hides while the IME is visible.
+
 ## Testing
 
 Screen-level composables are covered by screenshot tests at phone (360x816), foldable (673x841) and tablet (1280x800) sizes; use `@PreviewFormFactors` from `:core:designsystem`. See [Screenshot testing](SCREENSHOT_TESTING.md).

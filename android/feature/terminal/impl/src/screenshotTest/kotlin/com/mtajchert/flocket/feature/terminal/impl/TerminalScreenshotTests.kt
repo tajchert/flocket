@@ -15,11 +15,15 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.android.tools.screenshot.PreviewTest
+import com.mtajchert.flocket.core.designsystem.preview.PreviewFormFactors
 import com.mtajchert.flocket.core.designsystem.theme.FlocketTheme
+import com.mtajchert.flocket.core.model.AgentState
 import com.mtajchert.flocket.core.model.ConnectionState
 import com.mtajchert.flocket.core.terminal.fake.FakeTerminalEngine
 import com.mtajchert.flocket.core.terminal.ui.ExtraKeysRow
@@ -27,6 +31,8 @@ import com.mtajchert.flocket.core.terminal.ui.TerminalSnapshot
 import com.mtajchert.flocket.core.terminal.ui.TerminalThemes
 import com.mtajchert.flocket.core.testing.SampleData
 import com.mtajchert.flocket.core.ui.component.AgentStatusChip
+import com.mtajchert.flocket.core.ui.nav.LocalPaneLayout
+import com.mtajchert.flocket.core.ui.nav.PaneLayout
 
 private const val E = "\u001b"
 
@@ -106,11 +112,13 @@ private fun Shot(
     rows: Int = 40,
     extraKeys: Boolean = true,
     exited: Boolean = false,
+    tabStrip: TabStripUi? = null,
 ) {
     val dark = isSystemInDarkTheme()
     FlocketTheme(darkTheme = dark, dynamicColor = false) {
         TerminalScreen(
             state = state,
+            tabStrip = tabStrip,
             actions = TerminalActions(),
             extraKeys = { if (extraKeys) ExtraKeysRow(ctrlActive = false, altActive = false, onKey = {}) },
         ) { modifier ->
@@ -207,3 +215,77 @@ private fun TerminalTwoPaneScreenshot() {
         }
     }
 }
+
+private fun tabsOf(
+    vararg names: String,
+    selected: Int = 0,
+) = names.mapIndexed { i, name ->
+    StripTab(
+        key = "tab$i",
+        name = name,
+        state =
+            listOf(AgentState.Working, AgentState.Blocked, null, AgentState.Done, AgentState.Idle, AgentState.Error)[
+                i %
+                    6,
+            ],
+        selected = i == selected,
+        target = "t$i",
+    )
+}
+
+private fun panesOf(
+    vararg labels: String,
+    selected: Int = 0,
+) = labels.mapIndexed { i, label ->
+    StripPane("t$i", label, listOf(AgentState.Working, null, AgentState.Blocked)[i % 3], i == selected)
+}
+
+/** A terminal screen shaped like the app at this window: multi-pane (sidebar toggle) from 600dp wide. */
+@Composable
+private fun StripShot(tabStrip: TabStripUi) {
+    val config = LocalConfiguration.current
+    val width = config.screenWidthDp
+    CompositionLocalProvider(
+        LocalPaneLayout provides PaneLayout(multiPane = width >= 600, compactHeight = config.screenHeightDp < 480),
+    ) {
+        Shot(live, cols = (width / 8).coerceIn(40, 200), rows = 40, extraKeys = width < 600, tabStrip = tabStrip)
+    }
+}
+
+@PreviewTest
+@PreviewFormFactors
+@Composable
+private fun TerminalTabStripTwoTabsScreenshot() =
+    StripShot(TabStripUi(tabsOf("server", "tests", selected = 0), emptyList()))
+
+@PreviewTest
+@PreviewFormFactors
+@Composable
+private fun TerminalTabStripManyTabsScreenshot() =
+    StripShot(
+        TabStripUi(
+            tabsOf(
+                "server",
+                "tests",
+                "docs",
+                "release notes",
+                "database",
+                "frontend",
+                "infra",
+                "scratch",
+                selected = 6,
+            ),
+            emptyList(),
+        ),
+    )
+
+@PreviewTest
+@PreviewFormFactors
+@Composable
+private fun TerminalPaneSwitcherScreenshot() =
+    StripShot(
+        TabStripUi(
+            tabsOf("agents", "logs", selected = 0),
+            panesOf("claude", "codex", "zsh", selected = 0),
+        ),
+    )

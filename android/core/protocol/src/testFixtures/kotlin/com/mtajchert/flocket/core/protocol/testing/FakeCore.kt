@@ -1,6 +1,7 @@
 package com.mtajchert.flocket.core.protocol.testing
 
 import com.mtajchert.flocket.core.protocol.rpc.ProtocolJson
+import com.mtajchert.flocket.core.protocol.transport.TransportException
 import com.mtajchert.flocket.core.protocol.wire.Frame
 import com.mtajchert.flocket.core.protocol.wire.FrameCodec
 import com.mtajchert.flocket.core.protocol.wire.FrameDecoder
@@ -339,7 +340,13 @@ class FakeCore(
         if (f.channel == 0) {
             if (f.kind == FrameKind.DATA) {
                 val req = ProtocolJson.parseToJsonElement(f.payload.decodeToString()).jsonObject
-                scope.launch { handleRequest(req) }
+                scope.launch {
+                    try {
+                        handleRequest(req)
+                    } catch (e: TransportException) {
+                        // The client hung up before the reply: like the real core, drop it.
+                    }
+                }
             }
             return
         }

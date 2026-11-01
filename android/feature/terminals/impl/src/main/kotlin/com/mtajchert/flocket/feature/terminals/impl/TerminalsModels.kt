@@ -48,6 +48,36 @@ data class MachineSection(
     val machine: String?,
     val machineState: MachineState?,
     val machineStateRaw: String?,
+    /** Spaces of this machine, in display order; empty spaces and tabs are already dropped. */
+    val spaces: List<SpaceSection>,
+) {
+    /** Every row of the section in display order (spaces, then tabs, then rows). */
+    val items: List<TerminalItem> by lazy(LazyThreadSafetyMode.NONE) { spaces.flatMap { it.items } }
+}
+
+/** One space (desktop session, label group or shared folder) with its tabs. */
+@Immutable
+data class SpaceSection(
+    /** Stable within a host; from the workspace model. */
+    val key: String,
+    val name: String,
+    /** Display folder, only when it adds something beyond [name]. */
+    val folderSubtitle: String?,
+    /** Highest urgency among non-finished terminals; null = no reported status. */
+    val topState: AgentState?,
+    val tabs: List<TabSection>,
+) {
+    val count: Int get() = tabs.sumOf { it.items.size }
+    val items: List<TerminalItem> get() = tabs.flatMap { it.items }
+
+    /** Tab label rows only make sense when there is more than one tab. */
+    val showTabLabels: Boolean get() = tabs.size > 1
+}
+
+@Immutable
+data class TabSection(
+    val key: String,
+    val name: String,
     val items: List<TerminalItem>,
 )
 

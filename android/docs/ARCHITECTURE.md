@@ -38,6 +38,10 @@ Layers, top to bottom: `:app` (navigation, DI graph, lifecycle); feature modules
 5. **Status is not liveness.** Process state and agent status (possibly unknown) are separate fields.
 6. **Mutations are at most once.** Reads may retry; writes are never replayed automatically. After a drop, `ActionOutcome.Unknown` is shown and state is reconciled by re-reading.
 
+## Desktop layout and workspace grouping
+
+`SessionState.desktopLayout` is the desktop app's `herdr-app` document for the endpoint's own machine (protocol/SPEC.md §9.1), parsed by `HerdrAppLayoutParser` in `core:session`. Flocket only reads it. The session re-reads it after every subscribe and resubscribe, after `missed`, and on its `doc` events. A failed read or a disconnect keeps the last value, so cached data is shown as stale like the rest of the state. `buildWorkspace(terminals, layout)` in `core:model` turns one host's state into spaces, then tabs, then panes. Each terminal is placed by the first source that knows it: the desktop layout (document order), then the `herdr.space`/`herdr.tab` labels (first appearance in core order), then the terminal's start folder. Federated terminals are always grouped by folder per machine, after the local spaces. A space's or tab's status is the most urgent status among its terminals that have not finished.
+
 ## Error handling
 
 Public APIs of `core:session`, `core:data` and repositories return `AppResult<T>` (`Success` or `Failure(AppError)`) and do not throw; `CancellationException` is always rethrown. `AppError` is a small sealed taxonomy in `core:common` (`Unreachable`, `AuthFailed`, `HostKeyUnknown`, `HostKeyChanged`, `CoreNotFound`, `CoreIncompatible`, `Rpc(code)`, `Timeout`, `OutcomeUnknown`, `Protocol`, `Storage`); a new case needs review. `core:ui` maps each error to a string resource and a suggested action. Low-level modules convert their typed exceptions to `AppError` at their public boundary only.
