@@ -8,20 +8,30 @@ import com.mtajchert.flocket.core.protocol.rpc.RpcException
 import com.mtajchert.flocket.core.protocol.testing.FakeCore
 import com.mtajchert.flocket.core.protocol.testing.FakeCoreConfig
 import com.mtajchert.flocket.core.protocol.testing.FakeRpcError
+import com.mtajchert.flocket.core.protocol.wire.FrameCodec
 import com.mtajchert.flocket.core.protocol.wire.FrameKind
 import com.mtajchert.flocket.core.protocol.wire.ProtocolException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import org.junit.Assert.assertArrayEquals
@@ -32,6 +42,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -599,5 +610,112 @@ class CoreConnectionTest {
             assertEquals(2, list.terminals.size)
             assertNull(list.machines)
             assertEquals("t2", conn.terminalGet("t2").address)
+        }
+
+    // ---- review fixes: stream ownership ---------------------------------------------------------
+
+    @Test
+    fun `an attach reply the client cannot decode closes the channel again`() =
+        runTest {
+            val core = fake(backgroundScope)
+            core.handlers["terminal.attach"] = {
+                buildJsonObject {
+                    put("channel", 7)
+                    put("terminal", 5)
+                }
+            }
+            val conn = open(core)
+            val ex = runCatching { conn.attach(AttachParams("t1", 80, 24)) }.exceptionOrNull()
+            assertNotNull(ex)
+            runCurrent()
+            assertTrue(core.streamFrames.any { it.channel == 7 && it.kind == FrameKind.CLOSE })
+            assertFalse(conn.isClosed)
+        }
+
+    @Test
+    fun `a subscribe reply with a malformed snapshot closes the channel again`() =
+        runTest {
+            val core = fake(backgroundScope)
+            core.handlers["events.subscribe"] = {
+                buildJsonObject {
+                    put("seq", 1)
+                    put("channel", 9)
+                    put("terminals", kotlinx.serialization.json.buildJsonArray { add(JsonPrimitive("nope")) })
+                }
+            }
+            val conn = open(core)
+            assertNotNull(runCatching { conn.subscribeEvents() }.exceptionOrNull())
+            runCurrent()
+            assertTrue(core.streamFrames.any { it.channel == 9 && it.kind == FrameKind.CLOSE })
+        }
+
+    @Test
+    fun `cancelling the only output collector detaches the viewer`() =
+        runTest {
+            val core = fake(backgroundScope)
+            val conn = open(core)
+            val att = conn.attach(AttachParams("t1", 80, 24))
+            val job = launch { att.output.collect {} }
+            runCurrent()
+            job.cancel()
+            runCurrent()
+            assertEquals(ChannelEnd.LocalDetach, att.closeReason.value)
+            assertTrue(core.streamFrames.any { it.channel == att.channel && it.kind == FrameKind.CLOSE })
+        }
+
+    @Test
+    fun `cancelling the only notification collector unsubscribes`() =
+        runTest {
+            val core = fake(backgroundScope)
+            val conn = open(core)
+            val sub = conn.subscribeEvents()
+            val job = launch { sub.notifications.collect {} }
+            runCurrent()
+            job.cancel()
+            runCurrent()
+            assertEquals(ChannelEnd.LocalDetach, sub.end.value)
+            assertTrue(core.streamFrames.any { it.channel == sub.channel && it.kind == FrameKind.CLOSE })
+        }
+
+    @Test
+    fun `stray frames on a finished channel do not use up the early frame buffer`() =
+        runTest {
+            val core = fake(backgroundScope, FakeCoreConfig(paintBeforeReply = true))
+            val conn = open(core, ConnectionOptions(maxEarlyChannels = 1))
+            val first = conn.attach(AttachParams("t1", 80, 24))
+            core.closeStream(first.channel)
+            runCurrent()
+            assertEquals(ChannelEnd.ClosedByCore, first.closeReason.value)
+            core.writeRaw(FrameCodec.data(first.channel, "late".toByteArray()))
+            runCurrent()
+            val second = conn.attach(AttachParams("t2", 80, 24))
+            val paint = withTimeout(5.seconds) { second.output.first() }
+            assertEquals("\u001b[!pfirst-paint\r\n$ ", paint.decodeToString())
+        }
+
+    @Test
+    fun `attach replies racing their timeout never leave a channel open`() =
+        runBlocking(Dispatchers.Default) {
+            val scope = CoroutineScope(coroutineContext + SupervisorJob())
+            val core = fake(scope)
+            val conn = CoreConnection.open(core.client, scope)
+            repeat(200) { i ->
+                val att = runCatching { conn.attach(AttachParams("t1", 80, 24, timeout = (1 + i % 3).milliseconds)) }
+                att.getOrNull()?.close()
+            }
+            val allocated = { core.calls.count { it.method == "terminal.attach" } }
+            val closed = {
+                core.streamFrames
+                    .filter { it.kind == FrameKind.CLOSE }
+                    .map { it.channel }
+                    .toSet()
+            }
+            val settled =
+                withTimeoutOrNull(10.seconds) {
+                    while ((1..allocated()).any { it !in closed() }) delay(10)
+                    true
+                }
+            assertEquals("channels left open: ${(1..allocated()).filter { it !in closed() }}", true, settled)
+            scope.cancel()
         }
 }

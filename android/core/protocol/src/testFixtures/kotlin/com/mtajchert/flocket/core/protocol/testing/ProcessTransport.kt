@@ -13,6 +13,9 @@ import java.util.concurrent.TimeUnit
  * `ProcessTransport("hc", "connect", "--session", "flocket-test-ab12")`. stderr is captured,
  * bounded to the last [STDERR_TAIL] bytes. Reads are served from a pump thread so they are
  * cancellable.
+ *
+ * For a local `hc` on macOS pass `environment = mapOf("TMPDIR" to "/tmp", ...)`: the default
+ * per-user TMPDIR makes the core's socket path exceed the 103-byte Unix socket limit.
  */
 class ProcessTransport(
     vararg command: String,

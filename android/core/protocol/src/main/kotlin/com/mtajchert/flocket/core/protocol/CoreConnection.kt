@@ -24,6 +24,7 @@ import com.mtajchert.flocket.core.protocol.wire.ProtocolException
 import com.mtajchert.flocket.core.protocol.wire.WireLimits
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
@@ -114,11 +115,25 @@ class CoreConnection private constructor(
     private val streamLock = Any()
     private val streams = HashMap<Int, StreamChannel>()
     private val early = HashMap<Int, EarlyBuffer>()
+
+    /** Channels whose stream ended (core CLOSE seen); their ids are never reused (SPEC §3.4). */
+    private val retired = HashSet<Int>()
     private var earlyBytes = 0
 
+    /** A reply plus the stream the reader registered for it (attach/subscribe), owned by the caller. */
+    private class Reply(
+        val result: JsonElement,
+        val stream: StreamChannel?,
+    )
+
+    /**
+     * [deferred] is the single arbiter between the reader (complete) and a caller that gives up
+     * (timeout/cancel: completeExceptionally). Whoever loses cleans up a registered stream, so a
+     * reply racing a timeout can never leave a viewer/subscription behind (SPEC §3.4).
+     */
     private class Pending(
-        val deferred: CompletableDeferred<JsonElement>,
-        val onReply: ((JsonElement) -> Unit)?,
+        val deferred: CompletableDeferred<Reply>,
+        val onReply: ((JsonElement) -> StreamChannel)?,
     ) {
         @Volatile var written = false
     }
@@ -139,14 +154,15 @@ class CoreConnection private constructor(
         method: String,
         params: JsonObject = JsonObject(emptyMap()),
         timeout: Duration,
-    ): JsonElement = callInternal(method, params, timeout, null)
+    ): JsonElement = callInternal(method, params, timeout, null).result
 
+    @OptIn(ExperimentalCoroutinesApi::class)
     private suspend fun callInternal(
         method: String,
         params: JsonObject,
         timeout: Duration,
-        onReply: ((JsonElement) -> Unit)?,
-    ): JsonElement {
+        onReply: ((JsonElement) -> StreamChannel)?,
+    ): Reply {
         if (closed.get()) throw closedException(written = false)
         if (pending.size >= options.maxPendingCalls) throw TooManyPendingCallsException(options.maxPendingCalls)
         val id = nextId.getAndIncrement()
@@ -169,6 +185,14 @@ class CoreConnection private constructor(
                     p.deferred.await()
                 }
             return reply ?: throw RpcTimeoutException(method, timeout, p.written)
+        } catch (e: Throwable) {
+            // Lost the race against the reader: it already registered a stream nobody will own.
+            if (!p.deferred.completeExceptionally(CancellationException("call abandoned")) &&
+                !p.deferred.isCancelled
+            ) {
+                runCatching { p.deferred.getCompleted() }.getOrNull()?.stream?.let { closeStreamAsync(it) }
+            }
+            throw e
         } finally {
             pending.remove(id)
         }
@@ -178,52 +202,56 @@ class CoreConnection private constructor(
 
     /** Unfiltered `events.subscribe {}` (SPEC §8.1) plus the initial 1 MiB credit boost. */
     suspend fun subscribeEvents(timeout: Duration = 15.seconds): EventSubscription {
-        val holder =
-            java.util.concurrent.atomic
-                .AtomicReference<StreamChannel>()
-        val raw =
-            try {
-                callInternal("events.subscribe", JsonObject(emptyMap()), timeout) { res ->
-                    val ch =
-                        res.jsonObject["channel"]?.jsonPrimitive?.intOrNull
-                            ?: throw ProtocolException("events.subscribe reply without channel")
-                    holder.set(
-                        registerStream(
-                            StreamChannel(
-                                ch,
-                                WireLimits.WINDOW + WireLimits.EVENTS_CREDIT_BOOST + SLACK,
-                            ),
-                        ),
-                    )
-                }
-            } catch (e: Throwable) {
-                holder.get()?.let { abandon(it) }
-                throw e
+        val reply =
+            callInternal("events.subscribe", JsonObject(emptyMap()), timeout) { res ->
+                val ch =
+                    res.jsonObject["channel"]?.jsonPrimitive?.intOrNull
+                        ?: throw ProtocolException("events.subscribe reply without channel")
+                registerStream(StreamChannel(ch, WireLimits.WINDOW + WireLimits.EVENTS_CREDIT_BOOST + SLACK))
             }
-        val st = holder.get()
-        val result = ProtocolJson.decodeFromJsonElement(SubscribeResult.serializer(), raw)
-        sendCredit(st.id, WireLimits.EVENTS_CREDIT_BOOST)
-        val snapshot = result.terminals.map(TerminalDto::parse)
-        return EventSubscription(
-            seq = result.seq,
-            terminals = snapshot,
-            channel = st.id,
-            notifications = notifications(st),
-            end = st.end.asStateFlow(),
-            closer = { closeStream(st) },
-        )
+        val st = checkNotNull(reply.stream)
+        return ownedBy(st) {
+            val result = ProtocolJson.decodeFromJsonElement(SubscribeResult.serializer(), reply.result)
+            val snapshot = result.terminals.map(TerminalDto::parse)
+            sendCredit(st.id, WireLimits.EVENTS_CREDIT_BOOST)
+            EventSubscription(
+                seq = result.seq,
+                terminals = snapshot,
+                channel = st.id,
+                notifications = notifications(st),
+                end = st.end.asStateFlow(),
+                closer = { closeStream(st) },
+            )
+        }
     }
+
+    /** Runs the post-reply decoding; on any failure (bad reply, cancellation) the stream is closed again. */
+    private inline fun <T> ownedBy(
+        st: StreamChannel,
+        block: () -> T,
+    ): T =
+        try {
+            block()
+        } catch (e: Throwable) {
+            closeStreamAsync(st)
+            throw e
+        }
 
     private fun notifications(st: StreamChannel): Flow<CoreNotification> =
         flow {
             check(st.collected.compareAndSet(false, true)) { "events can be collected only once" }
             val splitter = LineSplitter()
-            while (true) {
-                val chunk = st.rx.receiveCatching().getOrNull() ?: break
-                for (line in splitter.feed(chunk)) {
-                    parseNotification(line)?.let { emit(it) }
+            try {
+                while (true) {
+                    val chunk = st.rx.receiveCatching().getOrNull() ?: break
+                    for (line in splitter.feed(chunk)) {
+                        parseNotification(line)?.let { emit(it) }
+                    }
+                    consumed(st, chunk.size)
                 }
-                consumed(st, chunk.size)
+            } finally {
+                // The only collector left: nobody can consume or credit any more, so unsubscribe.
+                if (st.end.value == null) closeStreamAsync(st)
             }
         }
 
@@ -274,9 +302,6 @@ class CoreConnection private constructor(
 
     /** `terminal.attach` (SPEC §4.5, §7). If the reply arrives after a timeout/cancel the channel is closed again (§3.4). */
     suspend fun attach(params: AttachParams): AttachChannel {
-        val holder =
-            java.util.concurrent.atomic
-                .AtomicReference<StreamChannel>()
         val body =
             buildJsonObject {
                 put("terminal", params.terminal)
@@ -296,21 +321,18 @@ class CoreConnection private constructor(
                     )
                 }
             }
-        val raw =
-            try {
-                callInternal("terminal.attach", body, params.timeout) { res ->
-                    val ch =
-                        res.jsonObject["channel"]?.jsonPrimitive?.intOrNull
-                            ?: throw ProtocolException("terminal.attach reply without channel")
-                    holder.set(registerStream(StreamChannel(ch, WireLimits.WINDOW + SLACK)))
-                }
-            } catch (e: Throwable) {
-                holder.get()?.let { abandon(it) }
-                throw e
+        val reply =
+            callInternal("terminal.attach", body, params.timeout) { res ->
+                val ch =
+                    res.jsonObject["channel"]?.jsonPrimitive?.intOrNull
+                        ?: throw ProtocolException("terminal.attach reply without channel")
+                registerStream(StreamChannel(ch, WireLimits.WINDOW + SLACK))
             }
-        val st = holder.get()
-        val result = ProtocolJson.decodeFromJsonElement(AttachResult.serializer(), raw)
-        return AttachChannelImpl(st, TerminalDto.parse(result.terminal))
+        val st = checkNotNull(reply.stream)
+        return ownedBy(st) {
+            val result = ProtocolJson.decodeFromJsonElement(AttachResult.serializer(), reply.result)
+            AttachChannelImpl(st, TerminalDto.parse(result.terminal))
+        }
     }
 
     private inner class AttachChannelImpl(
@@ -323,10 +345,15 @@ class CoreConnection private constructor(
         override val output: Flow<ByteArray> =
             flow {
                 check(st.collected.compareAndSet(false, true)) { "attach output can be collected only once" }
-                while (true) {
-                    val chunk = st.rx.receiveCatching().getOrNull() ?: break
-                    emit(chunk)
-                    consumed(st, chunk.size)
+                try {
+                    while (true) {
+                        val chunk = st.rx.receiveCatching().getOrNull() ?: break
+                        emit(chunk)
+                        consumed(st, chunk.size)
+                    }
+                } finally {
+                    // The only collector left: detach rather than keep an uncredited viewer (size owner!).
+                    if (st.end.value == null) closeStreamAsync(st)
                 }
             }
 
@@ -495,27 +522,30 @@ class CoreConnection private constructor(
         return st
     }
 
-    /** Called on a timed-out/cancelled/failed call whose channel we already registered. */
-    private suspend fun abandon(st: StreamChannel) {
-        runCatching { closeStream(st) }
-    }
-
-    private suspend fun closeStream(st: StreamChannel) {
-        val send: Boolean
+    /** Marks [st] as locally closed; true when a CLOSE frame must still be sent. */
+    private fun markClosing(st: StreamChannel): Boolean {
         synchronized(streamLock) {
-            if (st.closingLocally) return
-            send = st.end.value == null
+            if (st.closingLocally) return false
+            val send = st.end.value == null
             st.closingLocally = true
             finish(st, ChannelEnd.LocalDetach)
             st.rx.cancel()
+            return send && !closed.get()
         }
-        if (send && !closed.get()) {
-            try {
-                sendBytes(FrameCodec.close(st.id))
-            } catch (e: ConnectionClosedException) {
-                // connection is gone anyway
-            }
+    }
+
+    private suspend fun closeStream(st: StreamChannel) {
+        if (!markClosing(st)) return
+        try {
+            sendBytes(FrameCodec.close(st.id))
+        } catch (e: ConnectionClosedException) {
+            // connection is gone anyway
         }
+    }
+
+    /** Non-suspending [closeStream] for the reader, abandoned calls and finished collectors. */
+    private fun closeStreamAsync(st: StreamChannel) {
+        if (markClosing(st)) scope.launch { runCatching { sendBytes(FrameCodec.close(st.id)) } }
     }
 
     private fun finish(
@@ -587,6 +617,8 @@ class CoreConnection private constructor(
                 deliver(st, f)
                 return
             }
+            // Channels are never reused: stray frames of a finished stream must not occupy the early buffer.
+            if (f.channel in retired) return
             val buf =
                 early[f.channel]
                     ?: if (early.size >=
@@ -626,6 +658,7 @@ class CoreConnection private constructor(
             FrameKind.CLOSE -> {
                 finish(st, parseClose(f.payload))
                 streams.remove(st.id)
+                retired += st.id
             }
         }
     }
@@ -682,12 +715,15 @@ class CoreConnection private constructor(
             return
         }
         val result = msg.result ?: kotlinx.serialization.json.JsonNull
-        try {
-            p.onReply?.invoke(result)
-            p.deferred.complete(result)
-        } catch (e: Exception) {
-            p.deferred.completeExceptionally(e)
-        }
+        val st =
+            try {
+                p.onReply?.invoke(result)
+            } catch (e: Exception) {
+                p.deferred.completeExceptionally(e)
+                return
+            }
+        // The caller may have given up since the isActive check: then the stream is ours to close.
+        if (!p.deferred.complete(Reply(result, st))) st?.let { closeStreamAsync(it) }
     }
 
     private class StreamChannel(

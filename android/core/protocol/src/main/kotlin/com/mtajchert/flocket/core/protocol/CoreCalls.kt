@@ -14,6 +14,7 @@ import com.mtajchert.flocket.core.protocol.dto.TerminalDto
 import com.mtajchert.flocket.core.protocol.dto.TerminalListResult
 import com.mtajchert.flocket.core.protocol.rpc.ProtocolJson
 import kotlinx.serialization.KSerializer
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -63,7 +64,7 @@ suspend fun CoreConnection.terminalList(
     return TerminalListResult(
         terminals = r["terminals"]?.jsonArray.orEmpty().map(TerminalDto::parse),
         hiddenFinished = (r["hidden_finished"] as? JsonPrimitive)?.content?.toIntOrNull() ?: 0,
-        machines = r["machines"]?.let { m -> m.jsonArray.map { it.decode(MachineViewDto.serializer()) } },
+        machines = (r["machines"] as? JsonArray)?.map { it.decode(MachineViewDto.serializer()) },
     )
 }
 

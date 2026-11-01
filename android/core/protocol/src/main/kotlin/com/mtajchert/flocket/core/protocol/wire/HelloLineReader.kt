@@ -18,7 +18,7 @@ class HelloLineReader(
 
     private var buf = ByteArray(1024)
     private var len = 0
-    private var checked = false
+    private var lineStart = -1
 
     fun feed(
         bytes: ByteArray,
@@ -28,26 +28,30 @@ class HelloLineReader(
         if (len + length > buf.size) buf = buf.copyOf(maxOf(buf.size * 2, len + length))
         System.arraycopy(bytes, offset, buf, len, length)
         len += length
-        if (!checked) {
+        if (lineStart < 0) {
             val first = (0 until len).firstOrNull { !buf[it].isBlankByte() }
             if (first != null) {
                 if (buf[first] != '{'.code.toByte()) throw garbage()
-                checked = true
+                lineStart = first
             }
         }
-        val nl = (0 until len).firstOrNull { buf[it] == '\n'.code.toByte() }
+        // Blank lines before the reply (an empty `echo` in a login script) are skipped, not parsed.
+        if (lineStart < 0) return null.also { checkMax() }
+        val nl = (lineStart until len).firstOrNull { buf[it] == '\n'.code.toByte() }
         if (nl == null) {
-            if (len >
-                maxLine
-            ) {
-                throw ProtocolException(
-                    "hello reply exceeds $maxLine bytes",
-                    ProtocolException.Reason.GARBAGE_BEFORE_HELLO,
-                )
-            }
+            checkMax()
             return null
         }
-        return Result(buf.copyOfRange(0, nl), buf.copyOfRange(nl + 1, len))
+        return Result(buf.copyOfRange(lineStart, nl), buf.copyOfRange(nl + 1, len))
+    }
+
+    private fun checkMax() {
+        if (len > maxLine) {
+            throw ProtocolException(
+                "hello reply exceeds $maxLine bytes",
+                ProtocolException.Reason.GARBAGE_BEFORE_HELLO,
+            )
+        }
     }
 
     private fun Byte.isBlankByte() =

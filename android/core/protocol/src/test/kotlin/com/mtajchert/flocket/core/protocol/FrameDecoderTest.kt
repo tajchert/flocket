@@ -129,4 +129,12 @@ class FrameDecoderTest {
         assertEquals(ProtocolException.Reason.GARBAGE_BEFORE_HELLO, ex.reason)
         assertTrue(ex.message!!.contains("Welcome to Ubuntu"))
     }
+
+    @Test
+    fun `hello reader skips blank lines printed before the reply`() {
+        val bytes = "\n\r\n{\"id\":0}\n".toByteArray() + FrameCodec.close(1)
+        val res = HelloLineReader().feed(bytes, 0, bytes.size)!!
+        assertEquals("{\"id\":0}", res.line.decodeToString())
+        assertArrayEquals(FrameCodec.close(1), res.remainder)
+    }
 }
