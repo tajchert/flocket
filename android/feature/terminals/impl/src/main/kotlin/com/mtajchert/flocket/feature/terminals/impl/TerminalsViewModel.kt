@@ -7,12 +7,14 @@ import com.mtajchert.flocket.core.common.result.AppResult
 import com.mtajchert.flocket.core.data.ConnectionManager
 import com.mtajchert.flocket.core.data.HostOverview
 import com.mtajchert.flocket.core.data.HostSettingsRepository
+import com.mtajchert.flocket.core.data.PreferencesRepository
 import com.mtajchert.flocket.core.model.ConnectionState
 import com.mtajchert.flocket.core.model.CoreInfo
 import com.mtajchert.flocket.core.model.HostId
 import com.mtajchert.flocket.core.model.MachineState
 import com.mtajchert.flocket.core.model.TerminalAddress
 import com.mtajchert.flocket.core.model.TerminalPreferences
+import com.mtajchert.flocket.core.model.TerminalSort
 import com.mtajchert.flocket.core.session.CoreSession
 import com.mtajchert.flocket.core.session.InterruptOutcome
 import com.mtajchert.flocket.core.session.RunRequest
@@ -28,7 +30,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -67,6 +71,7 @@ class TerminalsViewModel
         private val connectionManager: ConnectionManager,
         private val lastCwd: LastCwdStore,
         private val hostSettings: HostSettingsRepository,
+        private val preferences: PreferencesRepository,
     ) : ViewModel() {
         private val controls = MutableStateFlow(ListControls())
         private val refreshing = MutableStateFlow(false)
@@ -77,14 +82,22 @@ class TerminalsViewModel
         val dialog: StateFlow<TerminalDialog?> = dialogState
 
         val uiState: StateFlow<TerminalsUiState> =
-            combine(connectionManager.overview, controls, refreshing, ::buildUiState)
+            combine(
+                connectionManager.overview,
+                controls,
+                preferences.preferences.map { it.terminalSort }.distinctUntilChanged(),
+                refreshing,
+            ) { overview, controls, sort, refreshing -> buildUiState(overview, controls.copy(sort = sort), refreshing) }
                 .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), TerminalsUiState())
 
         // ---- list controls ----------------------------------------------------------------------
 
         fun setFilter(filter: TerminalFilter) = controls.update { it.copy(filter = filter) }
 
-        fun setAttentionFirst(value: Boolean) = controls.update { it.copy(attentionFirst = value) }
+        /** The sort is a stored preference: it survives restarts and applies to every list. */
+        fun setSort(sort: TerminalSort) {
+            viewModelScope.launch { preferences.update { it.copy(terminalSort = sort) } }
+        }
 
         fun setShowFinished(value: Boolean) = controls.update { it.copy(showFinished = value) }
 

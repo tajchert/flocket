@@ -26,6 +26,8 @@ data class StoredPreferences(
     val bell: String = "Haptic",
     val autoConnect: Boolean = true,
     val defaultWorkingDirectory: String = "~",
+    /** Terminal list order (enum entry name); unknown or missing values mean Priority in the mapper. */
+    val terminalListSort: String = "Priority",
 )
 
 /** Reads and writes [StoredPreferences] on a Preferences DataStore. Unreadable files reset to defaults. */
@@ -51,6 +53,7 @@ class PreferencesDataSource(
             p[BELL] = n.bell
             p[AUTO_CONNECT] = n.autoConnect
             p[DEFAULT_CWD] = n.defaultWorkingDirectory
+            p[LIST_SORT] = n.terminalListSort
         }
     }
 
@@ -70,6 +73,7 @@ class PreferencesDataSource(
             bell = this[BELL] ?: d.bell,
             autoConnect = this[AUTO_CONNECT] ?: d.autoConnect,
             defaultWorkingDirectory = this[DEFAULT_CWD] ?: d.defaultWorkingDirectory,
+            terminalListSort = this[LIST_SORT] ?: d.terminalListSort,
         )
     }
 
@@ -87,5 +91,6 @@ class PreferencesDataSource(
         val BELL = stringPreferencesKey("terminal_bell")
         val AUTO_CONNECT = booleanPreferencesKey("auto_connect")
         val DEFAULT_CWD = stringPreferencesKey("default_working_directory")
+        val LIST_SORT = stringPreferencesKey("terminal_list_sort")
     }
 }

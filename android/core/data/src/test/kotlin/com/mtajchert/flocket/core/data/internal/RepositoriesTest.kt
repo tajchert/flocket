@@ -20,6 +20,7 @@ import com.mtajchert.flocket.core.model.HostAuth
 import com.mtajchert.flocket.core.model.PinnedHostKey
 import com.mtajchert.flocket.core.model.TerminalColorScheme
 import com.mtajchert.flocket.core.model.TerminalPreferences
+import com.mtajchert.flocket.core.model.TerminalSort
 import com.mtajchert.flocket.core.security.KeyVault
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -192,9 +193,19 @@ class RepositoriesTest {
                             autoConnect = false,
                             defaultWorkingDirectory = "~/code",
                         ),
+                    terminalSort = TerminalSort.Grouped,
                 )
             assertTrue(repo.update { changed } is AppResult.Success)
             assertEquals(changed, repo.preferences.first())
+        }
+
+    @Test
+    fun `unknown stored list sort falls back to priority`() =
+        runBlocking {
+            val repo = prefs(File(tmp.root, "s.preferences_pb"))
+            repo.update { it.copy(terminalSort = TerminalSort.Grouped) }
+            assertEquals(TerminalSort.Grouped, repo.preferences.first().terminalSort)
+            assertEquals(TerminalSort.Priority, enumOrDefault("Sideways", TerminalSort.Priority))
         }
 
     @Test

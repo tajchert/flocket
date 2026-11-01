@@ -15,6 +15,7 @@ import com.mtajchert.flocket.core.model.AgentState
 import com.mtajchert.flocket.core.model.HostId
 import com.mtajchert.flocket.core.model.SpaceSource
 import com.mtajchert.flocket.core.model.TerminalAddress
+import com.mtajchert.flocket.core.model.TerminalSort
 import com.mtajchert.flocket.core.model.TerminalTemplate
 import com.mtajchert.flocket.core.model.Workspace
 import com.mtajchert.flocket.core.model.WorkspaceSpace
@@ -49,7 +50,9 @@ private fun Shot(
     content: @Composable () -> Unit,
 ) = FlocketTheme(dynamicColor = false) { Surface { content() } }
 
-private val mixed = buildUiState(SampleData.overview, ListControls(), refreshing = false)
+private val grouped = ListControls(sort = TerminalSort.Grouped)
+
+private val mixed = buildUiState(SampleData.overview, grouped, refreshing = false)
 
 @PreviewTest
 @PreviewFormFactors
@@ -151,7 +154,7 @@ private val folderWorkspace =
 
 private fun stateFor(
     workspace: Workspace,
-    controls: ListControls = ListControls(),
+    controls: ListControls = grouped,
 ) = buildUiState(listOf(SampleData.overview.first()), controls, refreshing = false) { workspace }
 
 @Composable
@@ -203,13 +206,27 @@ private fun TerminalsDenseDesktopLayoutScreenshot() =
     }
 
 @PreviewTest
+@PreviewPhone
+@PreviewPhoneDark
+@Composable
+private fun TerminalsPriorityScreenshot() =
+    Shot {
+        TerminalsScreen(
+            stateFor(desktopWorkspace, ListControls(showFinished = true)),
+            TerminalsActions(),
+            selected = TerminalRoute("studio", "t1"),
+            nowMs = NOW,
+        )
+    }
+
+@PreviewTest
 @PreviewSidebar
 @Composable
 private fun TerminalsDenseFilteredScreenshot() =
     Shot {
         Dense {
             TerminalsScreen(
-                stateFor(desktopWorkspace, ListControls(filter = TerminalFilter.Working)),
+                stateFor(desktopWorkspace, ListControls(filter = TerminalFilter.Working, sort = TerminalSort.Grouped)),
                 TerminalsActions(),
                 selected = TerminalRoute("studio", "t2"),
                 nowMs = NOW,
@@ -231,7 +248,7 @@ private fun TerminalsListFilteredFinishedScreenshot() =
         TerminalsScreen(
             buildUiState(
                 SampleData.overview,
-                ListControls(filter = TerminalFilter.All, showFinished = true, attentionFirst = false),
+                ListControls(filter = TerminalFilter.All, showFinished = true, sort = TerminalSort.Grouped),
                 false,
             ),
             TerminalsActions(),

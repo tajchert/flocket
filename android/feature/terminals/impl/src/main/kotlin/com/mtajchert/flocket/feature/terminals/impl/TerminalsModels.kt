@@ -7,6 +7,7 @@ import com.mtajchert.flocket.core.model.ConnectionState
 import com.mtajchert.flocket.core.model.HostId
 import com.mtajchert.flocket.core.model.MachineState
 import com.mtajchert.flocket.core.model.TerminalRef
+import com.mtajchert.flocket.core.model.TerminalSort
 import com.mtajchert.flocket.core.model.TerminalTemplate
 import com.mtajchert.flocket.core.ui.error.UiError
 
@@ -48,12 +49,51 @@ data class MachineSection(
     val machine: String?,
     val machineState: MachineState?,
     val machineStateRaw: String?,
-    /** Spaces of this machine, in display order; empty spaces and tabs are already dropped. */
+    /** Grouped mode: spaces of this machine in display order; empty spaces and tabs are dropped. Empty in Priority mode. */
     val spaces: List<SpaceSection>,
+    /** Priority mode: the non-empty status sections in desktop order. Empty in Grouped mode. */
+    val priority: List<PrioritySection> = emptyList(),
 ) {
-    /** Every row of the section in display order (spaces, then tabs, then rows). */
-    val items: List<TerminalItem> by lazy(LazyThreadSafetyMode.NONE) { spaces.flatMap { it.items } }
+    /** Every row of the section in display order (priority sections, or spaces then tabs then rows). */
+    val items: List<TerminalItem> by lazy(LazyThreadSafetyMode.NONE) {
+        if (priority.isNotEmpty()) priority.flatMap { s -> s.rows.map { it.item } } else spaces.flatMap { it.items }
+    }
 }
+
+/** The desktop Agents panel's sections, in display order. */
+enum class PriorityBucket { NeedsYou, Done, Working, Idle, NoStatus, Finished }
+
+/** Where a row lives, shown under it in Priority mode. */
+@Immutable
+data class RowPlace(
+    val spaceKey: String,
+    /** Blank when unnamed; the UI then shows "Space [spaceNumber]". */
+    val spaceName: String,
+    val spaceNumber: Int,
+    val tabKey: String,
+    /** Blank when unnamed; the UI then shows the tab number. */
+    val tabName: String,
+    val tabNumber: Int,
+    /** False when the space has a single tab: the place is then just the space. */
+    val showTab: Boolean,
+) {
+    companion object {
+        /** A terminal the workspace does not place (should not happen): no place line is shown. */
+        val None = RowPlace("", "", 0, "", "", 0, false)
+    }
+}
+
+@Immutable
+data class PriorityRow(
+    val item: TerminalItem,
+    val place: RowPlace,
+)
+
+@Immutable
+data class PrioritySection(
+    val bucket: PriorityBucket,
+    val rows: List<PriorityRow>,
+)
 
 /** One space (desktop session, label group or shared folder) with its tabs. */
 @Immutable
@@ -64,7 +104,7 @@ data class SpaceSection(
     val name: String,
     /** Display folder, only when it adds something beyond [name]. */
     val folderSubtitle: String?,
-    /** Highest urgency among non-finished terminals; null = no reported status. */
+    /** Highest priority rank among non-finished terminals; null = no reported status. */
     val topState: AgentState?,
     val tabs: List<TabSection>,
     /** 1-based place in the workspace; names the space "Space N" when [name] is blank. */
@@ -109,7 +149,7 @@ data class TerminalsUiState(
     val loaded: Boolean = false,
     val groups: List<HostGroup> = emptyList(),
     val filter: TerminalFilter = TerminalFilter.All,
-    val attentionFirst: Boolean = true,
+    val sort: TerminalSort = TerminalSort.Priority,
     val showFinished: Boolean = false,
     val refreshing: Boolean = false,
     val emptyKind: EmptyKind? = null,
@@ -216,14 +256,14 @@ data class NewTerminalForm(
     }
 }
 
-/** Ordering for "needs attention first": blocked/error, working, done/idle, no status, finished. */
+/** Desktop rank of a row: [AgentState.priorityRank], no status -1, finished -2. */
 internal fun urgencyOf(
     status: AgentStatus,
     finished: Boolean,
 ): Int =
     when {
         finished -> -2
-        status is AgentStatus.Reported -> status.state.urgency
+        status is AgentStatus.Reported -> status.state.priorityRank
         else -> -1
     }
 

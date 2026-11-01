@@ -122,7 +122,7 @@ private fun TerminalsRoute(
         remember(viewModel, navigator) {
             TerminalsActions(
                 onFilter = viewModel::setFilter,
-                onAttentionFirst = viewModel::setAttentionFirst,
+                onSort = viewModel::setSort,
                 onShowFinished = viewModel::setShowFinished,
                 onClearFilters = viewModel::clearFilters,
                 onRefresh = viewModel::refresh,

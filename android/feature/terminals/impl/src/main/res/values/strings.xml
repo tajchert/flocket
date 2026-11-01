@@ -10,7 +10,16 @@
     <string name="filter_finished">Finished</string>
     <string name="filters_description">Filter terminals</string>
     <string name="menu_options">List options</string>
-    <string name="menu_sort_attention">Needs attention first</string>
+    <string name="menu_sort_title">Sort</string>
+    <string name="menu_sort_priority">Priority</string>
+    <string name="menu_sort_grouped">Grouped by space</string>
+    <string name="priority_needs_you">Needs you</string>
+    <string name="priority_done">Done</string>
+    <string name="priority_working">Working</string>
+    <string name="priority_idle">Idle</string>
+    <string name="priority_no_status">No status</string>
+    <string name="priority_finished">Finished</string>
+    <string name="row_place">%1$s · %2$s</string>
     <string name="menu_show_finished">Show finished</string>
     <plurals name="finished_hidden">
         <item quantity="one">%d finished terminal hidden</item>
@@ -127,5 +136,5 @@
     <string name="new_terminal_keep_hint">If its program is lost, replace it with a fresh shell instead of finishing.</string>
     <string name="new_terminal_cancel">Cancel</string>
     <string name="workspace_space_fallback">Space %1$d</string>
-    <string name="workspace_tab_fallback">Tab %1$d</string>
+    <string name="workspace_tab_fallback">%1$d</string>
 </resources>

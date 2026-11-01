@@ -117,6 +117,17 @@ enum class AgentState {
                 Other -> 0
             }
 
+    /** The desktop Agents panel's rank: blocked = error 4, done 3, working 2, idle 1, other 0. */
+    val priorityRank: Int
+        get() =
+            when (this) {
+                Blocked, Error -> 4
+                Done -> 3
+                Working -> 2
+                Idle -> 1
+                Other -> 0
+            }
+
     companion object {
         fun fromWire(word: String): AgentState =
             when (word) {

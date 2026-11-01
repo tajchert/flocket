@@ -5,17 +5,25 @@ package com.mtajchert.flocket.feature.terminals.impl
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.unit.dp
 import com.mtajchert.flocket.core.designsystem.theme.FlocketTheme
 import com.mtajchert.flocket.core.model.HostId
+import com.mtajchert.flocket.core.model.SpaceSource
+import com.mtajchert.flocket.core.model.TerminalAddress
+import com.mtajchert.flocket.core.model.TerminalSort
+import com.mtajchert.flocket.core.model.Workspace
+import com.mtajchert.flocket.core.model.WorkspaceSpace
+import com.mtajchert.flocket.core.model.WorkspaceTab
 import com.mtajchert.flocket.core.testing.SampleData
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -44,7 +52,8 @@ class TerminalsComposeTest {
     fun `filter chips report the chosen filter`() {
         var chosen: TerminalFilter? = null
         show(actions = TerminalsActions(onFilter = { chosen = it }))
-        rule.onNodeWithText("Working").performClick()
+        // The priority section "Working" shares the chip label; the chip comes first in the tree.
+        rule.onAllNodesWithText("Working")[0].performClick()
         assertEquals(TerminalFilter.Working, chosen)
         rule.onNodeWithText("Finished").performClick()
         assertEquals(TerminalFilter.Finished, chosen)
@@ -57,6 +66,45 @@ class TerminalsComposeTest {
         rule.onNodeWithText("Machine rohan").assertExists()
         rule.onAllNodesWithText("Needs permission")[0].assertExists()
         rule.onNodeWithText("Review host key").assertExists()
+    }
+
+    @Test
+    fun `sort menu switches between Priority and Grouped by space`() {
+        var chosen: TerminalSort? = null
+        show(actions = TerminalsActions(onSort = { chosen = it }))
+        rule.onNodeWithContentDescription("List options").performClick()
+        rule.onNodeWithText("Priority").assertExists()
+        rule.onNodeWithText("Grouped by space").performClick()
+        assertEquals(TerminalSort.Grouped, chosen)
+        rule.onNodeWithContentDescription("List options").performClick()
+        rule.onNodeWithText("Priority").performClick()
+        assertEquals(TerminalSort.Priority, chosen)
+    }
+
+    @Test
+    fun `unnamed tab shows its number`() {
+        val ws =
+            Workspace(
+                listOf(
+                    WorkspaceSpace(
+                        "desktop:a",
+                        "Flocket",
+                        null,
+                        SpaceSource.Desktop,
+                        null,
+                        listOf(
+                            WorkspaceTab("1", "agents", listOf(TerminalAddress("t1")), null, null, 1),
+                            WorkspaceTab("2", "", listOf(TerminalAddress("t2")), null, null, 2),
+                        ),
+                        null,
+                        1,
+                    ),
+                ),
+            )
+        show(buildUiState(SampleData.overview.take(1), ListControls(), refreshing = false) { ws })
+        rule.onNodeWithText("Flocket · 2").assertExists()
+        rule.onNodeWithText("Flocket · agents").assertExists()
+        rule.onAllNodesWithText("Flocket · Tab 2").assertCountEquals(0)
     }
 
     @Test

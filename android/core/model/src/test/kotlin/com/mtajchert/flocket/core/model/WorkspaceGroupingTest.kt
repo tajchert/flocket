@@ -417,6 +417,31 @@ class WorkspaceGroupingTest {
     }
 
     @Test
+    fun `priority rank matches the desktop`() {
+        assertEquals(4, AgentState.Blocked.priorityRank)
+        assertEquals(4, AgentState.Error.priorityRank)
+        assertEquals(3, AgentState.Done.priorityRank)
+        assertEquals(2, AgentState.Working.priorityRank)
+        assertEquals(1, AgentState.Idle.priorityRank)
+        assertEquals(0, AgentState.Other.priorityRank)
+    }
+
+    @Test
+    fun `space topState prefers done over working`() {
+        val terms = listOf(term("t1", state = AgentState.Working), term("t2", state = AgentState.Done))
+        val w = buildWorkspace(terms, layout(space("a", tab("x", "t1", "t2"))))
+        assertEquals(AgentState.Done, w.spaces.single().topState)
+        assertEquals(
+            AgentState.Done,
+            w.spaces
+                .single()
+                .tabs
+                .single()
+                .topState,
+        )
+    }
+
+    @Test
     fun `no reported status gives a null topState`() {
         val w = buildWorkspace(listOf(term("t1"), term("t2", state = AgentState.Done, finished = true)), null)
         assertNull(w.spaces.single().topState)

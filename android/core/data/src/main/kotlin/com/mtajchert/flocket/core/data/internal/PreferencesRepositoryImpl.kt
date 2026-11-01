@@ -11,6 +11,7 @@ import com.mtajchert.flocket.core.model.BellMode
 import com.mtajchert.flocket.core.model.ClipboardWritePolicy
 import com.mtajchert.flocket.core.model.TerminalColorScheme
 import com.mtajchert.flocket.core.model.TerminalPreferences
+import com.mtajchert.flocket.core.model.TerminalSort
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
@@ -42,6 +43,7 @@ internal class PreferencesRepositoryImpl(
                 ),
             notificationPermissionAsked = notificationPermissionAsked,
             keepConnectedInBackground = keepConnectedInBackground,
+            terminalSort = enumOrDefault(terminalListSort, TerminalSort.Priority),
         )
 
     private fun UserPreferences.toStored() =
@@ -59,6 +61,7 @@ internal class PreferencesRepositoryImpl(
             bell = terminal.bell.name,
             autoConnect = terminal.autoConnect,
             defaultWorkingDirectory = terminal.defaultWorkingDirectory,
+            terminalListSort = terminalSort.name,
         )
 }
 

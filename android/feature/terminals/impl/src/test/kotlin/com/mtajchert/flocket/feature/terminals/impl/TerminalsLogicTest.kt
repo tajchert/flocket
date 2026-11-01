@@ -1,8 +1,10 @@
 package com.mtajchert.flocket.feature.terminals.impl
 
 import com.mtajchert.flocket.core.model.AgentState
+import com.mtajchert.flocket.core.model.AgentStatus
 import com.mtajchert.flocket.core.model.SpaceSource
 import com.mtajchert.flocket.core.model.TerminalAddress
+import com.mtajchert.flocket.core.model.TerminalSort
 import com.mtajchert.flocket.core.model.Workspace
 import com.mtajchert.flocket.core.model.WorkspaceSpace
 import com.mtajchert.flocket.core.model.WorkspaceTab
@@ -56,7 +58,9 @@ class TerminalsLogicTest {
             ),
         )
 
-    private fun state(controls: ListControls = ListControls()) =
+    private val grouped = ListControls(sort = TerminalSort.Grouped)
+
+    private fun state(controls: ListControls = grouped) =
         buildUiState(listOf(SampleData.overview.first()), controls, refreshing = false) { workspace }
 
     private val SampleHost get() = SampleData.studio.id
@@ -65,7 +69,7 @@ class TerminalsLogicTest {
         groups.first { it.hostId == SampleHost }.sections.first { it.machine == null }
 
     @Test
-    fun `rows are grouped space then tab and attention first sorts spaces and rows`() {
+    fun `grouped mode groups rows space then tab and sorts rows by rank`() {
         val local = state().local()
         assertEquals(listOf("Flocket", "Docs"), local.spaces.map { it.name })
         assertEquals(listOf("agents", "scratch"), local.spaces[0].tabs.map { it.name })
@@ -87,47 +91,167 @@ class TerminalsLogicTest {
     }
 
     @Test
-    fun `without attention first the layout order is kept`() {
-        val local = state(ListControls(attentionFirst = false)).local()
+    fun `grouped mode orders spaces, tabs and rows by desktop rank, stable`() {
+        // A Working space listed before a Done one: Done ranks higher, so it comes first.
+        val working =
+            space("desktop:w", "Work", null, AgentState.Working, tab("1", "w", "t1", top = AgentState.Working))
+        val done = space("desktop:d", "Fin", null, AgentState.Done, tab("1", "d", "t3", top = AgentState.Done))
+        val idleA = space("desktop:i1", "IdleA", null, AgentState.Idle, tab("1", "", "t4", top = AgentState.Idle))
+        val idleB = space("desktop:i2", "IdleB", null, AgentState.Idle, tab("1", "", "t5", top = AgentState.Idle))
+        val multi =
+            space(
+                "desktop:m",
+                "Multi",
+                null,
+                AgentState.Blocked,
+                tab("1", "first", "t4", top = AgentState.Idle),
+                tab("2", "second", "t2", "t1", top = AgentState.Blocked),
+            )
+        val ws = Workspace(listOf(working, idleA, done, idleB, multi))
+        val local =
+            buildUiState(listOf(SampleData.overview.first()), grouped, false) { ws }.local()
+        assertEquals(listOf("Multi", "Fin", "Work", "IdleA", "IdleB"), local.spaces.map { it.name })
+        // inside Multi the blocked tab comes first; inside it blocked t2 before working t1
+        assertEquals(listOf("second", "first"), local.spaces[0].tabs.map { it.name })
         assertEquals(
-            listOf("t1", "t2"),
+            listOf("t2", "t1"),
             local.spaces[0]
                 .tabs[0]
                 .items
                 .map { it.address },
         )
-        assertEquals(listOf("Flocket", "Docs"), local.spaces.map { it.name })
+        assertTrue(local.priority.isEmpty())
+    }
+
+    private fun TerminalsUiState.priority(machine: String? = null) =
+        groups
+            .first { it.hostId == SampleHost }
+            .sections
+            .first { it.machine == machine }
+            .priority
+
+    @Test
+    fun `priority mode puts rows into desktop sections in order`() {
+        val sections = state(ListControls(showFinished = true)).local().priority
+        assertEquals(
+            listOf(
+                PriorityBucket.NeedsYou,
+                PriorityBucket.Done,
+                PriorityBucket.Working,
+                PriorityBucket.Idle,
+                PriorityBucket.NoStatus,
+                PriorityBucket.Finished,
+            ),
+            sections.map { it.bucket },
+        )
+        assertEquals(
+            listOf("t2", "t3", "t1", "t4", "t5", "t6"),
+            sections.map {
+                it.rows
+                    .single()
+                    .item.address
+            },
+        )
+        assertTrue(state(ListControls()).local().spaces.isEmpty())
+    }
+
+    private fun terminal(
+        address: String,
+        state: AgentState?,
+    ) = SampleData.terminal(
+        address = address,
+        name = null,
+        argv = listOf("sh"),
+        status = state?.let { AgentStatus.Reported(it, it.name.lowercase()) } ?: AgentStatus.Unknown,
+    )
+
+    @Test
+    fun `priority rows keep core order inside a section`() {
+        val session =
+            SampleData.overview.first().session.copy(
+                terminals =
+                    listOf(
+                        terminal("t9", AgentState.Working),
+                        terminal("t3", AgentState.Idle),
+                        terminal("t1", AgentState.Working),
+                        terminal("t2", AgentState.Error),
+                        terminal("t5", AgentState.Blocked),
+                    ),
+            )
+        val ov = listOf(SampleData.overview.first().copy(session = session))
+        val ws = Workspace(listOf(space("desktop:a", "A", null, null, tab("1", "", "t9", "t3", "t1", "t2", "t5"))))
+        val sections = buildUiState(ov, ListControls(), false) { ws }.local().priority
+        assertEquals(
+            listOf(PriorityBucket.NeedsYou, PriorityBucket.Working, PriorityBucket.Idle),
+            sections.map { it.bucket },
+        )
+        assertEquals(listOf("t2", "t5"), sections[0].rows.map { it.item.address })
+        assertEquals(listOf("t9", "t1"), sections[1].rows.map { it.item.address })
     }
 
     @Test
-    fun `spaces sort by urgency when attention first is on`() {
-        val swapped = Workspace(workspace.spaces.take(2).reversed())
-        val s = buildUiState(listOf(SampleData.overview.first()), ListControls(), false) { swapped }
+    fun `priority row place names space and tab, tab only when the space has several`() {
+        val rows =
+            state(
+                ListControls(showFinished = true),
+            ).local().priority.flatMap { it.rows }.associateBy { it.item.address }
+        val t1 = rows.getValue("t1").place // Flocket has two tabs
+        assertEquals("Flocket", t1.spaceName)
+        assertEquals(1, t1.spaceNumber)
+        assertEquals("agents", t1.tabName)
+        assertEquals("1", t1.tabKey)
+        assertTrue(t1.showTab)
+        assertEquals("scratch", rows.getValue("t4").place.tabName)
+        val t3 = rows.getValue("t3").place // Docs has a single tab
+        assertEquals("Docs", t3.spaceName)
+        assertFalse(t3.showTab)
+    }
+
+    @Test
+    fun `empty priority sections are hidden`() {
+        val sections = state(ListControls()).local().priority
+        assertFalse(PriorityBucket.Finished in sections.map { it.bucket })
+        val session =
+            SampleData.overview
+                .first()
+                .session
+                .copy(terminals = listOf(terminal("t1", AgentState.Idle)))
+        val ov = listOf(SampleData.overview.first().copy(session = session))
+        val only =
+            buildUiState(
+                ov,
+                ListControls(),
+                false,
+            ) { Workspace(listOf(space("d:a", "A", null, null, tab("1", "", "t1")))) }
+        assertEquals(listOf(PriorityBucket.Idle), only.local().priority.map { it.bucket })
+    }
+
+    @Test
+    fun `priority mode with Working filter and finished hidden`() {
+        val s = state(ListControls(filter = TerminalFilter.Working))
+        assertEquals(listOf(PriorityBucket.Working), s.local().priority.map { it.bucket })
+        assertEquals(listOf("t1"), s.local().items.map { it.address })
+        val host = s.groups.first { it.hostId == SampleHost }
+        // the host total is the unfiltered terminal count, not what the filter shows
         assertEquals(
-            listOf("Flocket", "Docs"),
-            s.groups
+            SampleData.overview
                 .first()
-                .sections
-                .first()
-                .spaces
-                .map { it.name },
+                .session.terminals.size,
+            host.total,
         )
-        val plain =
-            buildUiState(listOf(SampleData.overview.first()), ListControls(attentionFirst = false), false) { swapped }
-        assertEquals(
-            listOf("Docs", "Flocket"),
-            plain.groups
-                .first()
-                .sections
-                .first()
-                .spaces
-                .map { it.name },
-        )
+        assertEquals(1, host.visibleCount)
+    }
+
+    @Test
+    fun `federated terminals get their own machine section in priority mode`() {
+        val sections = state(ListControls()).groups.first().sections
+        assertEquals(listOf(null, "rohan"), sections.map { it.machine })
+        assertEquals(listOf(PriorityBucket.NeedsYou), sections[1].priority.map { it.bucket })
     }
 
     @Test
     fun `filters drop empty tabs and spaces`() {
-        val local = state(ListControls(filter = TerminalFilter.Working)).local()
+        val local = state(ListControls(filter = TerminalFilter.Working, sort = TerminalSort.Grouped)).local()
         assertEquals(listOf("Flocket"), local.spaces.map { it.name })
         assertEquals(1, local.spaces[0].tabs.size)
         assertEquals(listOf("t1"), local.items.map { it.address })
@@ -143,7 +267,7 @@ class TerminalsLogicTest {
 
     @Test
     fun `finished rows appear when asked for and count stays honest`() {
-        val local = state(ListControls(showFinished = true)).local()
+        val local = state(ListControls(showFinished = true, sort = TerminalSort.Grouped)).local()
         assertTrue(
             "t6" in
                 local.spaces[0]
@@ -159,7 +283,7 @@ class TerminalsLogicTest {
         val local = state().local()
         assertEquals("~/code/flocket", local.spaces[0].folderSubtitle)
         val folderOnly =
-            buildUiState(listOf(SampleData.overview.first()), ListControls(), false) {
+            buildUiState(listOf(SampleData.overview.first()), grouped, false) {
                 Workspace(
                     listOf(
                         space(
@@ -188,7 +312,7 @@ class TerminalsLogicTest {
         val rows = state().local().spaces[0].items
         assertTrue(rows.all { it.cwd.isEmpty() })
         val other = Workspace(listOf(space("desktop:x", "Other", "/elsewhere", null, tab("1", "", "t1"))))
-        val s = buildUiState(listOf(SampleData.overview.first()), ListControls(), false) { other }
+        val s = buildUiState(listOf(SampleData.overview.first()), grouped, false) { other }
         assertEquals(
             "~/code/flocket",
             s
