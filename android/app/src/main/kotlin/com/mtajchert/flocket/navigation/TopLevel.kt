@@ -31,11 +31,20 @@ val TopLevelDestinations =
         TopLevelDestination(SettingsRoute, R.string.nav_settings, Icons.Outlined.Settings),
     )
 
-/** Routes that cover the whole window; the navigation bar/rail is hidden while one is on top. */
-fun NavKey?.isFullScreen(singlePane: Boolean): Boolean =
+/**
+ * Routes that cover the whole window; the navigation bar/rail is hidden while one is on top.
+ *
+ * The terminal covers it when it is the only pane ([singlePane]), in focus mode ([focusMode]) and on
+ * compact-height windows ([compactHeight], e.g. a landscape phone) where the rail would eat width and
+ * the terminal needs every row.
+ */
+fun NavKey?.isFullScreen(
+    singlePane: Boolean,
+    focusMode: Boolean = false,
+    compactHeight: Boolean = false,
+): Boolean =
     this is OnboardingRoute ||
         this is HostEditRoute ||
         this is LicensesRoute ||
-        // Compact width: the terminal gets the whole screen (docs/ADAPTIVE_LAYOUTS.md); a bottom bar
-        // would also sit under the IME and leave a gap above it. Two-pane keeps the rail.
-        (singlePane && this is TerminalRoute)
+        // A bottom bar would also sit under the IME and leave a gap above it.
+        (this is TerminalRoute && (singlePane || focusMode || compactHeight))

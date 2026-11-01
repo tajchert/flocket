@@ -11,7 +11,13 @@ import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffo
 import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffoldDefaults
 import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteType
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -22,9 +28,14 @@ import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import androidx.navigation3.ui.NavDisplay
+import androidx.window.core.layout.WindowSizeClass
 import com.mtajchert.flocket.R
 import com.mtajchert.flocket.core.ui.nav.EntryProviderInstaller
+import com.mtajchert.flocket.core.ui.nav.LocalPaneLayout
+import com.mtajchert.flocket.core.ui.nav.LocalSidebarToggle
 import com.mtajchert.flocket.core.ui.nav.Navigator
+import com.mtajchert.flocket.core.ui.nav.PaneLayout
+import com.mtajchert.flocket.core.ui.nav.SidebarToggle
 import com.mtajchert.flocket.feature.onboarding.api.OnboardingRoute
 import com.mtajchert.flocket.feature.terminal.api.TerminalRoute
 import com.mtajchert.flocket.feature.terminals.api.TerminalsRoute
@@ -48,53 +59,87 @@ fun FlocketNavHost(
     val navigator = remember(backStack) { BackStackNavigator(backStack) }
 
     // The spacer override removes the gap between panes (b/418201867); drop it once fixed upstream.
+    // Sidebar width (Ruling 8): 300dp on expanded windows, 280dp on other multi-pane ones; the detail gets the rest.
     val adaptiveInfo = currentWindowAdaptiveInfoV2()
-    val directive =
+    val windowSizeClass = adaptiveInfo.windowSizeClass
+    val expandedWidth = windowSizeClass.isWidthAtLeastBreakpoint(WindowSizeClass.WIDTH_DP_EXPANDED_LOWER_BOUND)
+    val compactHeight = !windowSizeClass.isHeightAtLeastBreakpoint(WindowSizeClass.HEIGHT_DP_MEDIUM_LOWER_BOUND)
+    val baseDirective =
         remember(adaptiveInfo) {
-            calculatePaneScaffoldDirective(adaptiveInfo).copy(horizontalPartitionSpacerSize = 0.dp)
+            calculatePaneScaffoldDirective(adaptiveInfo).copy(
+                horizontalPartitionSpacerSize = 0.dp,
+                defaultPanePreferredWidth = if (expandedWidth) SidebarWidthExpanded else SidebarWidth,
+            )
         }
-    val listDetailStrategy = rememberListDetailSceneStrategy<NavKey>(directive = directive)
+    // Measured BEFORE focus mode narrows the directive: it says what the window can do, not what is shown.
+    val multiPane = baseDirective.maxHorizontalPartitions > 1
 
     val current = backStack.lastOrNull()
     val selectedRoot = backStack.firstOrNull()
+
+    // Focus mode (Ruling 7): the terminal takes the full width. Process death resets it (saveable survives
+    // config changes and fold/unfold only). It means nothing on single-pane windows or off a terminal.
+    var focusRequested by rememberSaveable { mutableStateOf(false) }
+    val focusMode = focusRequested && multiPane && current is TerminalRoute
+    LaunchedEffect(multiPane, current is TerminalRoute) {
+        if (!multiPane || current !is TerminalRoute) focusRequested = false
+    }
+    val directive = if (focusMode) baseDirective.copy(maxHorizontalPartitions = 1) else baseDirective
+    val listDetailStrategy = rememberListDetailSceneStrategy<NavKey>(directive = directive)
+
+    val paneLayout =
+        remember(multiPane, focusMode, compactHeight) {
+            PaneLayout(multiPane = multiPane, sidebarVisible = !focusMode, compactHeight = compactHeight)
+        }
+    val sidebarToggle = remember { SidebarToggle { visible -> focusRequested = !visible } }
+
     val layoutType =
-        if (current.isFullScreen(singlePane = directive.maxHorizontalPartitions == 1)) {
+        if (current.isFullScreen(singlePane = !multiPane, focusMode = focusMode, compactHeight = compactHeight)) {
             NavigationSuiteType.None
         } else {
             NavigationSuiteScaffoldDefaults.calculateFromAdaptiveInfo(adaptiveInfo)
         }
 
-    NavigationSuiteScaffold(
-        modifier = modifier,
-        layoutType = layoutType,
-        navigationSuiteItems = {
-            TopLevelDestinations.forEach { destination ->
-                item(
-                    selected = destination.key == selectedRoot,
-                    onClick = { navigator.selectTopLevel(destination.key) },
-                    icon = { Icon(destination.icon, contentDescription = null) },
-                    label = { Text(stringResource(destination.label)) },
-                )
-            }
-        },
+    CompositionLocalProvider(
+        LocalPaneLayout provides paneLayout,
+        LocalSidebarToggle provides sidebarToggle,
     ) {
-        NavDisplay(
-            backStack = backStack,
-            onBack = { navigator.back() },
-            sceneStrategies = listOf(listDetailStrategy),
-            // Overriding the decorators replaces the defaults, so the saveable-state one is listed too.
-            entryDecorators =
-                listOf(
-                    rememberSaveableStateHolderNavEntryDecorator(),
-                    rememberViewModelStoreNavEntryDecorator(),
-                ),
-            entryProvider =
-                entryProvider {
-                    installers.forEach { it.install(this, navigator) }
-                },
-        )
+        NavigationSuiteScaffold(
+            modifier = modifier,
+            layoutType = layoutType,
+            navigationSuiteItems = {
+                TopLevelDestinations.forEach { destination ->
+                    item(
+                        selected = destination.key == selectedRoot,
+                        onClick = { navigator.selectTopLevel(destination.key) },
+                        icon = { Icon(destination.icon, contentDescription = null) },
+                        label = { Text(stringResource(destination.label)) },
+                    )
+                }
+            },
+        ) {
+            NavDisplay(
+                backStack = backStack,
+                // Back leaves focus mode (restores the sidebar) before it pops anything.
+                onBack = { if (focusRequested) focusRequested = false else navigator.back() },
+                sceneStrategies = listOf(listDetailStrategy),
+                // Overriding the decorators replaces the defaults, so the saveable-state one is listed too.
+                entryDecorators =
+                    listOf(
+                        rememberSaveableStateHolderNavEntryDecorator(),
+                        rememberViewModelStoreNavEntryDecorator(),
+                    ),
+                entryProvider =
+                    entryProvider {
+                        installers.forEach { it.install(this, navigator) }
+                    },
+            )
+        }
     }
 }
+
+private val SidebarWidth = 280.dp
+private val SidebarWidthExpanded = 300.dp
 
 private class BackStackNavigator(
     private val backStack: NavBackStack<NavKey>,
