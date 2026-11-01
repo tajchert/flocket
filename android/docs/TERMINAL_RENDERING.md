@@ -110,8 +110,9 @@ one `TerminalController` (Ghostty engine via `TerminalControllerFactory`) and th
 
 ## Input
 
-- IME: `TerminalInputConnection` with `TYPE_CLASS_TEXT | VISIBLE_PASSWORD | NO_SUGGESTIONS`, no extract UI, no
-  personalized learning. `commitText` is sent as typed (`\n` → Enter). Composing text (CJK, swipe, Gboard words) stays
+- IME: `TerminalInputConnection` with plain `TYPE_CLASS_TEXT`: a normal keyboard (suggestions, swipe, voice, learning)
+  with no autocorrect or auto-capitals, because no `AUTO_CORRECT`, `MULTI_LINE` or `CAP_*` flag is set. No extract UI.
+  `commitText` is sent as typed (`\n` → Enter). Composing text (CJK, swipe, Gboard words) stays
   local and is drawn as an overlay until committed or finished. `deleteSurroundingText` with nothing composed becomes
   Backspace/Delete keys. Key events from the IME go through `KeyEventMapper`.
 - Hardware keyboard: `KeyEventMapper` maps Ctrl/Alt/Shift/Meta, arrows, Home/End/PgUp/PgDn, Insert/Delete, F1-F12,
