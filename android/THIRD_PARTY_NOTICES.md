@@ -15,6 +15,7 @@ Flocket is Apache-2.0 ([ADR-0002](../docs/decisions/0002-license.md)). Runtime d
 | zlib (statically linked into libghostty-vt) | zlib license | Kitty graphics decompression |
 | wuffs (statically linked into libghostty-vt) | Apache-2.0 OR MIT | Image decoding for Kitty graphics |
 | zigimg (in libghostty-vt build graph) | MIT | Image helpers |
+| JetBrains Mono 2.304 (fonts bundled in `core/terminal/src/main/res/font`) | SIL OFL-1.1 (Copyright 2020 The JetBrains Mono Project Authors; text in `core/terminal/third_party/jetbrains-mono/OFL.txt`) | Terminal font (`core:terminal`) |
 | herdr-mobile `t3-terminal` Android patch (`scripts/ghostty/patches/0001-*.patch`, adapted) | MIT | Link libghostty-vt with libc on Android; build-time only |
 
 Build only (not shipped): Zig 0.17.0 toolchain (MIT) and Ghostty's `translate_c`/Aro (MIT) used by `scripts/build-ghostty.sh`; Android NDK (Apache-2.0) and CMake (BSD-3-Clause) for the JNI shim.
