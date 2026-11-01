@@ -1,0 +1,320 @@
+package com.mtajchert.flocket.core.terminal.ghostty
+
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
+import com.mtajchert.flocket.core.terminal.engine.CellFlags
+import com.mtajchert.flocket.core.terminal.engine.CursorStyle
+import com.mtajchert.flocket.core.terminal.engine.Key
+import com.mtajchert.flocket.core.terminal.engine.KeyInput
+import com.mtajchert.flocket.core.terminal.engine.ScreenSnapshot
+import com.mtajchert.flocket.core.terminal.engine.TerminalEvent
+import com.mtajchert.flocket.core.terminal.engine.TerminalTheme
+import org.junit.After
+import org.junit.Assert.assertArrayEquals
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Before
+import org.junit.Test
+import org.junit.runner.RunWith
+
+@RunWith(AndroidJUnit4::class)
+class GhosttyTerminalEngineTest {
+    private lateinit var engine: GhosttyTerminalEngine
+
+    private val theme =
+        TerminalTheme(
+            foreground = 0xFFE0E0E0.toInt(),
+            background = 0xFF101010.toInt(),
+            cursor = 0xFFFFFFFF.toInt(),
+            palette = IntArray(16) { 0xFF000000.toInt() or (it * 0x101010) or 0x000001 * it },
+        )
+
+    @Before
+    fun setUp() {
+        engine = GhosttyTerminalEngine(cols = 20, rows = 5)
+        engine.setTheme(theme)
+    }
+
+    @After
+    fun tearDown() = engine.close()
+
+    private fun feed(s: String) = engine.feed(s.toByteArray(Charsets.UTF_8))
+
+    private fun feedBytes(vararg b: Int) = engine.feed(ByteArray(b.size) { b[it].toByte() })
+
+    private fun ScreenSnapshot.row(r: Int): String =
+        (0 until cols)
+            .joinToString("") { c ->
+                val i = index(c, r)
+                if (flags[i] and CellFlags.WIDE_SPACER != 0) "" else textAt(i)
+            }.trimEnd()
+
+    private fun key(
+        k: Key,
+        text: String? = null,
+        ctrl: Boolean = false,
+        alt: Boolean = false,
+        shift: Boolean = false,
+    ) = engine.encodeKey(KeyInput(k, text, ctrl = ctrl, alt = alt, shift = shift)).toString(Charsets.ISO_8859_1)
+
+    @Test
+    fun plainTextAndCursor() {
+        feed("hello\r\nworld")
+        val s = engine.snapshot()
+        assertEquals("hello", s.row(0))
+        assertEquals("world", s.row(1))
+        assertEquals(5, s.cursorCol)
+        assertEquals(1, s.cursorRow)
+        assertTrue(s.cursorVisible)
+        assertEquals(theme.foreground, s.foreground[s.index(0, 0)])
+        assertEquals(theme.background, s.background[s.index(0, 0)])
+        assertTrue(s.dirtyRows[0] && s.dirtyRows[1])
+    }
+
+    @Test
+    fun incrementalSnapshotMarksOnlyChangedRowsDirty() {
+        feed("a\r\nb\r\nc")
+        val s = engine.snapshot()
+        feed("\u001b[1;1HX")
+        engine.snapshot(s)
+        assertEquals("X", s.row(0))
+        assertEquals("b", s.row(1))
+        assertTrue(s.dirtyRows[0])
+        assertFalse("dirty=${s.dirtyRows.toList()}", s.dirtyRows[1])
+        // Row 2 is dirty too: the cursor left it (ghostty dirties the previous cursor row).
+        assertFalse("dirty=${s.dirtyRows.toList()}", s.dirtyRows[3] || s.dirtyRows[4])
+    }
+
+    @Test
+    fun sgrColors16_256_truecolor_andAttributes() {
+        feed(
+            "\u001b[31mR\u001b[0m\u001b[38;5;196mP\u001b[0m\u001b[38;2;1;2;3mT\u001b[0m\u001b[1;4;3mB\u001b[0m\u001b[48;2;9;8;7mG\u001b[0m",
+        )
+        val s = engine.snapshot()
+        assertEquals(theme.palette[1], s.foreground[s.index(0, 0)])
+        assertEquals(0xFFFF0000.toInt(), s.foreground[s.index(1, 0)]) // palette 196 = #ff0000
+        assertEquals(0xFF010203.toInt(), s.foreground[s.index(2, 0)])
+        val f = s.flags[s.index(3, 0)]
+        assertTrue(f and CellFlags.BOLD != 0 && f and CellFlags.UNDERLINE != 0 && f and CellFlags.ITALIC != 0)
+        assertEquals(0xFF090807.toInt(), s.background[s.index(4, 0)])
+        assertEquals(theme.foreground, s.foreground[s.index(5, 0)]) // empty cell uses defaults
+    }
+
+    @Test
+    fun inverseSwapsColors() {
+        feed("\u001b[7mI")
+        val s = engine.snapshot()
+        assertEquals(theme.background, s.foreground[0])
+        assertEquals(theme.foreground, s.background[0])
+    }
+
+    @Test
+    fun wideCharsAndEmojiGraphemes() {
+        feed("\u001b[?2027h") // grapheme clustering is off by default in libghostty-vt
+        feed("中A👍🏽!") // CJK, A, thumbs-up + skin tone modifier, !
+        val s = engine.snapshot()
+        assertEquals(0x4e2d, s.codepoints[0])
+        assertTrue(s.flags[0] and CellFlags.WIDE != 0)
+        assertTrue(s.flags[1] and CellFlags.WIDE_SPACER != 0)
+        assertEquals('A'.code, s.codepoints[2])
+        val emojiIdx = 3
+        assertTrue(s.flags[emojiIdx] and CellFlags.WIDE != 0)
+        assertEquals(
+            "cps=${(0 until 8).map { s.codepoints[it].toString(16) }} g=${s.graphemes}",
+            "👍🏽",
+            s.textAt(emojiIdx),
+        )
+        assertEquals('!'.code, s.codepoints[5])
+    }
+
+    @Test
+    fun combiningMarkIsOneGrapheme() {
+        feed("e\u0301x")
+        val s = engine.snapshot()
+        assertEquals("e\u0301", s.textAt(0))
+        assertEquals('x'.code, s.codepoints[1])
+    }
+
+    @Test
+    fun cursorMovementAndErase() {
+        feed("abcdef\u001b[3D\u001b[Kxy\u001b[2;5HZ")
+        val s = engine.snapshot()
+        assertEquals("abcxy", s.row(0))
+        assertEquals("    Z", s.row(1))
+        assertEquals(5, s.cursorCol)
+        assertEquals(1, s.cursorRow)
+    }
+
+    @Test
+    fun cursorStyleAndVisibility() {
+        feed("\u001b[?25l\u001b[6 q")
+        val s = engine.snapshot()
+        assertFalse(s.cursorVisible)
+        assertEquals(CursorStyle.Bar, s.cursorStyle)
+    }
+
+    @Test
+    fun alternateScreen1049RestoresPrimary() {
+        feed("primary")
+        feed("\u001b[?1049h\u001b[2J\u001b[HALT")
+        var s = engine.snapshot()
+        assertEquals("ALT", s.row(0))
+        feed("\u001b[?1049l")
+        s = engine.snapshot(s)
+        assertEquals("primary", s.row(0))
+    }
+
+    @Test
+    fun scrollbackAndViewportScrolling() {
+        for (i in 1..12) feed("line$i\r\n")
+        var s = engine.snapshot()
+        assertTrue(s.scrollbackRows >= 8)
+        assertEquals(0, s.viewportOffset)
+        engine.scrollViewport(-3)
+        s = engine.snapshot(s)
+        assertEquals(3, s.viewportOffset)
+        assertTrue(s.dirtyRows.all { it })
+        engine.scrollToBottom()
+        s = engine.snapshot(s)
+        assertEquals(0, s.viewportOffset)
+        val text = engine.text(historyLines = 100)
+        assertTrue(text.startsWith("line1\n"))
+        assertTrue(text.contains("line12"))
+    }
+
+    @Test
+    fun resizeKeepsContent() {
+        feed("hello")
+        engine.resize(30, 8)
+        val s = engine.snapshot()
+        assertEquals(30, s.cols)
+        assertEquals(8, s.rows)
+        assertEquals("hello", s.row(0))
+    }
+
+    @Test
+    fun eventsTitleBellClipboardPwdNotification() {
+        feed("\u001b]2;my title\u0007\u0007")
+        feed("\u001b]52;c;aGVsbG8=\u0007")
+        feed("\u001b]7;file://host/tmp/x\u0007")
+        feed("\u001b]777;notify;Build;done\u0007")
+        val ev = engine.drainEvents()
+        assertTrue(ev.contains(TerminalEvent.TitleChanged("my title")))
+        assertTrue(ev.contains(TerminalEvent.Bell))
+        assertTrue(ev.contains(TerminalEvent.ClipboardWrite("hello")))
+        assertTrue(ev.contains(TerminalEvent.WorkingDirectoryChanged("file://host/tmp/x")))
+        assertTrue(ev.contains(TerminalEvent.Notification("Build", "done")))
+        assertTrue(engine.drainEvents().isEmpty())
+        assertEquals("my title", engine.snapshot().title)
+    }
+
+    @Test
+    fun splitUtf8AndEscapeSequencesAcrossFeeds() {
+        val bytes = "\u001b[31mé".toByteArray()
+        for (b in bytes) engine.feed(byteArrayOf(b))
+        val s = engine.snapshot()
+        assertEquals(0xE9, s.codepoints[0])
+        assertEquals(theme.palette[1], s.foreground[0])
+    }
+
+    @Test
+    fun queriesProduceNoCrashAndNoOutput() {
+        feed("\u001b[c\u001b[6n\u001b]11;?\u0007\u001b[>q")
+        feed("ok")
+        assertEquals("ok", engine.snapshot().row(0))
+    }
+
+    @Test
+    fun attachFirstPaintFixture() {
+        val ctx = InstrumentationRegistry.getInstrumentation().context
+        val hex =
+            ctx.assets
+                .open("attach-first-paint.hex")
+                .bufferedReader()
+                .readText()
+                .trim()
+        val bytes = ByteArray(hex.length / 2) { hex.substring(it * 2, it * 2 + 2).toInt(16).toByte() }
+        // Dirty state first, then the repaint (starts with DECSTR ESC[!p).
+        feed("garbage\r\nmore")
+        engine.feed(bytes)
+        val s = engine.snapshot()
+        assertEquals("sh-3.2$", s.row(0))
+        assertEquals("", s.row(1))
+        assertEquals(8, s.cursorCol)
+        assertEquals(0, s.cursorRow)
+        // Mid-stream repaint beginning with CAN and a mode 9001 toggle must be tolerated.
+        feedBytes(0x18)
+        feed("\u001b[?9001h\u001b[Hagain")
+        assertEquals("again2$", engine.snapshot(s).row(0))
+        // OSC 7501 (program status) must not break parsing.
+        feed("\u001b]7501;state=idle\u0007!")
+        assertEquals("again!$", engine.snapshot(s).row(0))
+    }
+
+    @Test
+    fun keyArrowsHonorApplicationCursorMode() {
+        assertEquals("\u001b[A", key(Key.Up))
+        assertEquals("\u001b[D", key(Key.Left))
+        feed("\u001b[?1h")
+        assertEquals("\u001bOA", key(Key.Up))
+        assertEquals("\u001bOD", key(Key.Left))
+        feed("\u001b[?1l")
+        assertEquals("\u001b[A", key(Key.Up))
+    }
+
+    @Test
+    fun keyBasics() {
+        assertEquals("\u0003", key(Key.Character, "c", ctrl = true))
+        assertEquals("\r", key(Key.Enter))
+        assertEquals("\u001bx", key(Key.Character, "x", alt = true))
+        assertEquals("a", key(Key.Character, "a"))
+        assertEquals("A", key(Key.Character, "A", shift = true))
+        assertEquals("\u007f", key(Key.Backspace))
+        assertEquals("\t", key(Key.Tab))
+        assertEquals("\u001b", key(Key.Escape))
+        assertEquals("\u001b[3~", key(Key.Delete))
+        assertEquals("\u001bOP", key(Key.F1))
+        assertEquals("é".toByteArray().toString(Charsets.ISO_8859_1), key(Key.Character, "é"))
+    }
+
+    @Test
+    fun mode9001DoesNotAlterKeyEncoding() {
+        feed("\u001b[?9001h")
+        assertEquals("\u0003", key(Key.Character, "c", ctrl = true))
+        assertEquals("\u001b[A", key(Key.Up))
+        assertEquals("\r", key(Key.Enter))
+    }
+
+    @Test
+    fun pasteBracketedOnlyWhenEnabled() {
+        assertArrayEquals("a\rb".toByteArray(), engine.encodePaste("a\nb"))
+        feed("\u001b[?2004h")
+        assertArrayEquals("\u001b[200~a\nb\u001b[201~".toByteArray(), engine.encodePaste("a\nb"))
+        feed("\u001b[?2004l")
+        assertArrayEquals("x".toByteArray(), engine.encodePaste("x"))
+    }
+
+    @Test
+    fun useAfterCloseThrowsAndCloseIsIdempotent() {
+        val e = GhosttyTerminalEngine(5, 2)
+        e.close()
+        e.close()
+        val failed = runCatching { e.feed(byteArrayOf(1)) }.exceptionOrNull()
+        assertTrue(failed is IllegalStateException)
+    }
+
+    @Test
+    fun throughputSmoke() {
+        val line = ("\u001b[32mHello world 0123456789 abcdefghij\u001b[0m\r\n").repeat(200).toByteArray()
+        val s = ScreenSnapshot(20, 5)
+        val t0 = System.nanoTime()
+        repeat(200) {
+            engine.feed(line)
+            engine.snapshot(s)
+        }
+        val ms = (System.nanoTime() - t0) / 1e6
+        println("GHOSTTY_PERF 200x(${line.size}B feed + snapshot) = $ms ms")
+        assertTrue("too slow: $ms ms", ms < 5000)
+    }
+}
