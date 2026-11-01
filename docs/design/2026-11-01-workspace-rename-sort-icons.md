@@ -1,6 +1,6 @@
 # Workspace: rename, priority sort, desktop tab names, agent icons
 
-Status: draft for review, 2026-11-01. Platform: Android.
+Status: Implemented (merge commits 801b6e1, fb2b27a, a4d4dab, 1d2e675, 8f1c93d, b78f9a7), 2026-11-01. Platform: Android.
 
 ## Why
 

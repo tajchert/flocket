@@ -8,7 +8,8 @@ This is a self-contained Gradle project. Protocol docs and wire fixtures live in
 
 - Onboarding: device key generation (Ed25519, Keystore-wrapped), copyable `authorized_keys` command, host setup, explicit host-key trust.
 - Hosts over SSH with key or password auth; pinned host keys, changed keys are a hard stop; automatic `hc` discovery.
-- Terminals across all hosts and federated machines (`rohan/t7`), grouped, "needs attention first", filters, stale-data banners.
+- Terminals across all hosts and federated machines (`rohan/t7`), grouped by host and space, a Priority sort (needs you, done, working, idle) or Grouped sort with desktop tab numbers, agent icons, filters, stale-data banners.
+- Rename spaces and tabs from the list and the tab strip; names are written to the desktop's `herdr-app` layout ([ADR-0008](../docs/decisions/0008-rename-in-desktop-layout.md)).
 - New terminal from a template or command; send text, interrupt, kill and remove with at-most-once semantics.
 - Interactive terminal powered by libghostty: IME, hardware keyboard, extra-keys row, pinch zoom, scrollback, copy/paste; passive attach that never resizes another viewer's terminal until you interact.
 - Survives rotation, fold/unfold, process death and network changes; a short foreground service keeps an open terminal connected for ~3 minutes in the background (opt-out, [ADR-0006](../docs/decisions/0006-background-short-service.md)).

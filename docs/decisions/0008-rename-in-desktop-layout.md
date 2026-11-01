@@ -11,7 +11,7 @@ could only be set on the desktop.
 Users want to rename tabs and spaces from the phone and see the new name on the desktop too.
 The desktop expects other writers: it follows `doc` events, and "on simultaneous edits the
 newest accepted document wins (no merging)" (its built-in docs). Its own `tab.rename` and
-`space.rename` set the `name` field, and renaming to `""` goes back to the automatic name.
+`space.rename` rename by id, and renaming to `""` goes back to the automatic name [I].
 `doc.set` is compare-and-set on the document version, locally and with `on` for a federated
 machine (verified with hc 0.1.16).
 
