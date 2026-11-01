@@ -4,6 +4,8 @@ import com.mtajchert.flocket.core.common.result.AppResult
 import com.mtajchert.flocket.core.common.result.getOrThrow
 import com.mtajchert.flocket.core.model.CoreEndpoint
 import com.mtajchert.flocket.core.model.HostId
+import com.mtajchert.flocket.core.protocol.CoreConnection
+import com.mtajchert.flocket.core.protocol.docSet
 import com.mtajchert.flocket.core.protocol.testing.ProcessTransport
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -11,9 +13,12 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -148,6 +153,51 @@ class SessionRealCoreIntegrationTest {
                 s.stop()
                 collector.cancel()
                 assertNull("stop parks the stream; the program keeps running", stream.end.value)
+            }
+        }
+
+    @Test
+    fun `a herdr-app document written by another client shows up as the desktop layout`() =
+        runBlocking {
+            withTimeout(60.seconds) {
+                val s =
+                    CoreSessionImpl(
+                        CoreEndpoint(HostId("it"), session),
+                        {
+                            AppResult.Success(
+                                ProcessTransport("hc", "connect", "--session", session, environment = env),
+                            )
+                        },
+                        scope,
+                        config = SessionConfig(backoffBase = 0.2.seconds),
+                    )
+                s.start()
+                s.awaitOnline()
+                assertNull("isolated session has no herdr-app document", s.state.value.desktopLayout)
+                // Play the desktop app: a raw doc.set on a second connection to the isolated session.
+                val writer =
+                    CoreConnection.open(
+                        ProcessTransport("hc", "connect", "--session", session, environment = env),
+                        scope,
+                    )
+                val doc =
+                    Json
+                        .parseToJsonElement(
+                            File(System.getProperty("flocket.fixtures.dir"), "herdr-app-layout.json")
+                                .readText(),
+                        ).jsonObject["value"]!!
+                writer.docSet(HerdrAppLayoutParser.DOCUMENT, doc, version = 0)
+                val layout = s.state.mapNotNull { it.desktopLayout }.first()
+                assertEquals(listOf("sp1a2b", "sp3c4d"), layout.spaces.map { it.id })
+                assertEquals(
+                    listOf("t7", "t9"),
+                    layout.spaces[0]
+                        .tabs[0]
+                        .panes
+                        .map { it.value },
+                )
+                writer.close()
+                s.stop()
             }
         }
 

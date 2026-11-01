@@ -1,0 +1,68 @@
+{
+  "value": {
+    "spaces": [
+      {
+        "id": "sp1a2b",
+        "name": "",
+        "folder": "/Users/me/code/flocket",
+        "look": { "color": "#4f9dff" },
+        "tabs": [
+          {
+            "id": "tb01",
+            "name": "fix login",
+            "root": {
+              "id": "n1",
+              "type": "row",
+              "active": "n3",
+              "children": [
+                { "id": "n2", "type": "block", "size": { "weight": 0.5 }, "content": { "terminal": "t7" } },
+                {
+                  "id": "n3",
+                  "type": "stack",
+                  "size": { "weight": 0.5 },
+                  "active": "n5",
+                  "children": [
+                    { "id": "n4", "type": "block", "title": "notes", "content": { "mod": "files", "props": { "path": "/Users/me/code/flocket/README.md" } } },
+                    { "id": "n5", "type": "block", "content": { "terminal": "t9" } }
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "id": "tb02",
+            "name": "",
+            "root": {
+              "id": "n6",
+              "type": "column",
+              "children": [
+                { "id": "n7", "type": "block", "size": { "px": 240 }, "content": { "terminal": "t12" } },
+                { "id": "n8", "type": "block", "content": { "terminal": "t13" }, "future_field": [1, 2, 3] },
+                { "id": "n9", "type": "block" }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "id": "sp3c4d",
+        "name": "infra",
+        "folder": "~",
+        "tabs": [
+          {
+            "id": "tb03",
+            "name": "",
+            "root": { "id": "n10", "type": "block", "content": { "terminal": "t2" } }
+          },
+          {
+            "id": "tb04",
+            "name": "board",
+            "root": { "id": "n11", "type": "block", "content": { "mod": "board", "props": {} } }
+          }
+        ]
+      }
+    ],
+    "future_top_level": { "ignored": true }
+  },
+  "version": 7
+}

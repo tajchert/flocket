@@ -16,5 +16,6 @@ dependencies {
 }
 
 tasks.withType<Test>().configureEach {
+    systemProperty("flocket.fixtures.dir", rootProject.projectDir.resolve("../protocol/fixtures").canonicalPath)
     testLogging { events("skipped", "failed") }
 }
