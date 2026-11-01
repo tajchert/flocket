@@ -42,6 +42,10 @@ struct Engine {
 // notifications, so an owner that drains rarely must not let it grow native memory without limit.
 // Events that would exceed the cap are dropped.
 constexpr size_t kMaxEventBytes = 8u << 20;
+// Scrollback byte cap per terminal. libghostty applies a small default that cut history to ~1400 rows at
+// 52 columns. 16 MB already holds the 10,000-line default of plain text; 32 MB leaves room for styled
+// output while bounding memory when several terminals are open.
+constexpr size_t kScrollbackMaxBytes = size_t{32} << 20;
 
 void put_u32(std::vector<uint8_t>& out, uint32_t v) {
   for (int i = 0; i < 4; i++) out.push_back(static_cast<uint8_t>(v >> (8 * i)));
@@ -169,6 +173,9 @@ jlong nCreate(JNIEnv*, jclass, jint cols, jint rows, jint scrollbackLines) {
   ghostty_terminal_set(e->terminal, GHOSTTY_TERMINAL_OPT_MODE_DEFAULT, &grapheme_mode);
   size_t lines = static_cast<size_t>(scrollbackLines);
   ghostty_terminal_set(e->terminal, GHOSTTY_TERMINAL_OPT_SCROLLBACK_MAX_LINES, &lines);
+  // libghostty also applies its own default byte cap, which stops history long before the line cap.
+  size_t bytes = kScrollbackMaxBytes;
+  ghostty_terminal_set(e->terminal, GHOSTTY_TERMINAL_OPT_SCROLLBACK_MAX_BYTES, &bytes);
   ghostty_terminal_set(e->terminal, GHOSTTY_TERMINAL_OPT_USERDATA, e);
   ghostty_terminal_set(e->terminal, GHOSTTY_TERMINAL_OPT_BELL, reinterpret_cast<const void*>(&on_bell));
   ghostty_terminal_set(e->terminal, GHOSTTY_TERMINAL_OPT_TITLE_CHANGED, reinterpret_cast<const void*>(&on_title));
