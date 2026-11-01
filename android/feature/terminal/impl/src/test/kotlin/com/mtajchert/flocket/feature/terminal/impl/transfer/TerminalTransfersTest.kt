@@ -12,6 +12,7 @@ import com.mtajchert.flocket.core.session.ExecOutcome
 import com.mtajchert.flocket.core.testing.FakeCoreSession
 import com.mtajchert.flocket.core.testing.SampleData
 import com.mtajchert.flocket.core.ui.error.UiText
+import com.mtajchert.flocket.feature.terminal.impl.escapeForShell
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestScope
@@ -317,10 +318,10 @@ class TerminalTransfersTest {
 
     @Test
     fun `plain path pastes unchanged`() {
-        assertEquals("/a/b-c_d.9/e.png", TerminalTransfers.escapeForShell("/a/b-c_d.9/e.png"))
-        assertEquals("a\\\$b\\`c\\;d", TerminalTransfers.escapeForShell("a\$b`c;d"))
-        assertEquals("a~b#c", TerminalTransfers.escapeForShell("a~b#c"))
-        assertEquals("x\\{a\\,b\\}.png", TerminalTransfers.escapeForShell("x{a,b}.png"))
+        assertEquals("/a/b-c_d.9/e.png", escapeForShell("/a/b-c_d.9/e.png"))
+        assertEquals("a\\\$b\\`c\\;d", escapeForShell("a\$b`c;d"))
+        assertEquals("a~b#c", escapeForShell("a~b#c"))
+        assertEquals("x\\{a\\,b\\}.png", escapeForShell("x{a,b}.png"))
     }
 
     @Test

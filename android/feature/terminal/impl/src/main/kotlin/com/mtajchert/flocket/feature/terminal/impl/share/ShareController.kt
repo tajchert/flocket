@@ -9,13 +9,16 @@ import com.mtajchert.flocket.core.model.HostId
 import com.mtajchert.flocket.core.model.TerminalAddress
 import com.mtajchert.flocket.core.session.CoreSession
 import com.mtajchert.flocket.core.ui.error.toUiError
+import com.mtajchert.flocket.feature.terminal.impl.escapeForShell
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -25,13 +28,15 @@ import kotlinx.coroutines.launch
  *
  * [shares] is every share of the host's session; this keeps those whose address is [address] (so `t3` and
  * `rohan/t3` stay apart). The first non-empty list of a source (host, machine) goes through
- * [ShareSeenRepository.firstRead], which hides old entries. A file is downloaded only when the user opens it.
+ * [ShareSeenRepository.firstRead] (also for an empty one), which hides old entries. A file is downloaded only when the user opens it.
  */
 class ShareController(
     private val scope: CoroutineScope,
     private val hostId: HostId,
     private val address: TerminalAddress,
-    shares: kotlinx.coroutines.flow.Flow<List<AgentShare>>,
+    shares: Flow<List<AgentShare>>,
+    /** Per machine (null = local): when the session first read that machine's share document (even if empty). */
+    firstReadAt: Flow<Map<String?, Long>> = flowOf(emptyMap()),
     private val session: () -> CoreSession?,
     private val seen: ShareSeenRepository,
     private val pasteText: (String) -> Unit,
@@ -61,10 +66,12 @@ class ShareController(
     init {
         scope.launch { seen.seen.collect { seenIds.value = it } }
         scope.launch {
-            shares.collect { list ->
-                // Hide old entries on the first read of each source before anything can show.
-                list.map { it.machine }.distinct().forEach { machine ->
-                    seen.firstRead(hostId, machine, list, nowSeconds())
+            combine(shares, firstReadAt) { list, at -> list to at }.collect { (list, at) ->
+                // Hide old entries on the first read of each source before anything can show. "Old" is judged at
+                // the session's first read of that machine, not now: a screen opened later must not hide a share
+                // that arrived after an empty first read.
+                (list.map { it.machine } + at.keys).distinct().forEach { machine ->
+                    seen.firstRead(hostId, machine, list, at[machine] ?: nowSeconds())
                 }
                 // Publish the fresh seen set first, so a hidden old entry never flashes as a card.
                 seenIds.value = seen.seen.first()
@@ -135,7 +142,7 @@ class ShareController(
                 is FileLoad.Failed -> f.path
                 else -> return
             }
-        pasteText("$path ")
+        pasteText("${escapeForShell(path)} ")
         closeViewer()
     }
 }

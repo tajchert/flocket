@@ -184,6 +184,12 @@ data class SessionState(
      * order). Kept while disconnected; an unreadable document keeps its last good value.
      */
     val shares: List<AgentShare> = emptyList(),
+    /**
+     * Per machine (key null = local): epoch seconds of the first successful `doc.get` of `flocket-share` in this
+     * session, empty documents included. Never reset by later reads. Lets the app judge "old" shares against
+     * the first read instead of the moment a screen happens to open.
+     */
+    val sharesFirstReadAt: Map<String?, Long> = emptyMap(),
 ) {
     /** The core has `terminal.label` (herdr.seen / herdr.pinned writes). Kept while disconnected. */
     val supportsLabels: Boolean get() = core?.supports(CoreInfo.TERMINAL_LABEL) == true

@@ -132,6 +132,30 @@ class CoreSessionSharesTest {
         }
 
     @Test
+    fun `first read time is set by an empty document and never reset`() =
+        runTest {
+            val r = Remote()
+            val host = host(r)
+            val s = host.session(this)
+            s.start()
+            s.awaitOnline()
+            eventually {
+                host.core.shareGets(null).isNotEmpty() &&
+                    s.state.value.sharesFirstReadAt
+                        .isNotEmpty()
+            }
+            val first = s.state.value.sharesFirstReadAt[null]
+            assertEquals(true, first != null)
+            assertEquals(emptyList<String>(), s.shareIds())
+            delay(5 * 60_000)
+            r.docs[""] = shareDoc(Triple("a", "t1", 10))
+            host.core.shareEvent(null)
+            eventually { s.shareIds() == listOf("a") }
+            assertEquals(mapOf<String?, Long>(null to first!!), s.state.value.sharesFirstReadAt)
+            s.stop()
+        }
+
+    @Test
     fun `doc event for flocket-share refetches`() =
         runTest {
             val r = Remote()

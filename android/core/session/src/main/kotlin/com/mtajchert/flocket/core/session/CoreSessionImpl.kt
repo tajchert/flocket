@@ -498,6 +498,10 @@ class CoreSessionImpl(
             if (link.get() !== l) return
             if (machine != null && stateFlow.value.machines.none { it.name == machine }) return
             if (shares.isEmpty()) sharesByMachine.remove(machine) else sharesByMachine[machine] = shares
+            if (machine !in stateFlow.value.sharesFirstReadAt) {
+                val at = clock.nowMillis() / 1000
+                stateFlow.update { it.copy(sharesFirstReadAt = it.sharesFirstReadAt + (machine to at)) }
+            }
             publishShares()
         }
     }
@@ -1091,6 +1095,7 @@ class CoreSessionImpl(
         if (bytes.size > MAX_TRANSFER_BYTES) return AppResult.Failure(TOO_LARGE_INPUT)
         return transfer("terminal.put", CoreInfo.TERMINAL_PUT, mutating = true) { c ->
             val r = c.terminalPut(address.value, name, bytes, CallTimeouts.transfer(bytes.size.toLong()))
+            if (r.path.isBlank()) throw AppException(AppError.Protocol("terminal.put reply without a path"))
             PutReceipt(r.path, r.bytes)
         }
     }

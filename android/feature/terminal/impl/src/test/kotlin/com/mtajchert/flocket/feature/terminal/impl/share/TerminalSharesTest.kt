@@ -28,7 +28,9 @@ class TerminalSharesTest {
     @get:Rule val main = MainDispatcherRule()
 
     private val now = 1_000_000L
+    private var clock = now
     private val shares = MutableStateFlow<List<AgentShare>>(emptyList())
+    private val firstReadAt = MutableStateFlow<Map<String?, Long>>(emptyMap())
     private val seen = FakeShareSeenRepository()
     private val session = FakeCoreSession(SampleData.studio.endpoint)
     private val pasted = mutableListOf<String>()
@@ -50,10 +52,11 @@ class TerminalSharesTest {
             hostId = HostId("studio"),
             address = TerminalAddress(address),
             shares = shares,
+            firstReadAt = firstReadAt,
             session = { session as CoreSession },
             seen = repo,
             pasteText = { pasted += it },
-            nowSeconds = { now },
+            nowSeconds = { clock },
         ).also { runCurrent() }
 
     @Test
@@ -115,6 +118,50 @@ class TerminalSharesTest {
             runCurrent()
             assertEquals(
                 "late",
+                c.ui.value.card
+                    ?.id,
+            )
+        }
+
+    @Test
+    fun `empty first read at T0 then a share then a late viewmodel still shows the card`() =
+        runTest {
+            // The session read an empty document at T0; the share arrived a minute later; the screen opens at T0+15.
+            firstReadAt.value = mapOf(null to now)
+            shares.value = listOf(share("new", at = now + 60))
+            clock = now + 15 * 60
+            val c = controller()
+            assertEquals(
+                "new",
+                c.ui.value.card
+                    ?.id,
+            )
+        }
+
+    @Test
+    fun `an empty first read records the source so later shares are not judged again`() =
+        runTest {
+            firstReadAt.value = mapOf(null to now)
+            val early = controller()
+            clock = now + 20 * 60
+            shares.value = listOf(share("late", at = now - 3_000))
+            runCurrent()
+            assertEquals(
+                "late",
+                early.ui.value.card
+                    ?.id,
+            )
+        }
+
+    @Test
+    fun `an entry older than ten minutes before the first read stays hidden`() =
+        runTest {
+            firstReadAt.value = mapOf(null to now)
+            clock = now + 15 * 60
+            shares.value = listOf(share("old", at = now - 601), share("fresh", at = now - 599))
+            val c = controller()
+            assertEquals(
+                "fresh",
                 c.ui.value.card
                     ?.id,
             )
@@ -185,5 +232,16 @@ class TerminalSharesTest {
             runCurrent()
             c.pastePath()
             assertEquals(listOf("/work/out/a.txt "), pasted)
+        }
+
+    @Test
+    fun `paste path escapes spaces like a dropped path`() =
+        runTest {
+            shares.value = listOf(share("sp", paths = arrayOf("/home/u/My Report.png")))
+            val c = controller()
+            c.open("sp")
+            runCurrent()
+            c.pastePath()
+            assertEquals(listOf("/home/u/My\\ Report.png "), pasted)
         }
 }

@@ -10,6 +10,7 @@ import com.mtajchert.flocket.core.ui.error.UiError
 import com.mtajchert.flocket.core.ui.error.UiText
 import com.mtajchert.flocket.core.ui.error.toUiError
 import com.mtajchert.flocket.feature.terminal.impl.R
+import com.mtajchert.flocket.feature.terminal.impl.escapeForShell
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -346,17 +347,6 @@ class TerminalTransfers(
 
     companion object {
         private val STAMP: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss")
-
-        private const val SHELL_SPECIAL = " \t\"'\\$`()&;|<>*?[]{},!"
-
-        /** Backslash-escapes characters a shell or agent prompt would split on, like a dropped path. */
-        internal fun escapeForShell(path: String): String =
-            buildString {
-                for (c in path) {
-                    if (c in SHELL_SPECIAL) append('\\')
-                    append(c)
-                }
-            }
 
         internal fun extensionFor(mime: String?): String =
             when (mime?.lowercase()) {
