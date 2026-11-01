@@ -35,7 +35,9 @@ class SshConnector {
         val client =
             withContext(Dispatchers.IO) {
                 SshCrypto.ensureProvider()
-                SSHClient(DefaultConfig().apply { keepAliveProvider = KeepAliveProvider.KEEP_ALIVE })
+                SSHClient(DefaultConfig().apply { keepAliveProvider = KeepAliveProvider.KEEP_ALIVE }).apply {
+                    socketFactory = NoDelaySocketFactory
+                }
             }
         return coroutineScope {
             val attempt = async(Dispatchers.IO) { connectBlocking(client, target, credentials, verifier, timeouts) }
