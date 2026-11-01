@@ -244,7 +244,8 @@ sealed interface StreamEnd {
 
     /**
      * A kept terminal lost its program (stream closed with the loss reason, or `unavailable` on
-     * re-attach). The record stays live; offer a new [CoreSession.attach] after `restarted`
+     * re-attach while the record is waiting for a new shell; other `unavailable`s, e.g. a remote
+     * machine's line being down, keep the handle parked and retry). The record stays live; offer a new [CoreSession.attach] after `restarted`
      * (it is then a fresh shell, not the old task).
      */
     data class ProgramLost(
