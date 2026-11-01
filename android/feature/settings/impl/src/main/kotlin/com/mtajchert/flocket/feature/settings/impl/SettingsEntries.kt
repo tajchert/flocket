@@ -15,6 +15,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.mtajchert.flocket.core.ui.component.ImportKeyDialog
 import com.mtajchert.flocket.core.ui.component.rememberKeyFilePicker
 import com.mtajchert.flocket.core.ui.nav.EntryProviderInstaller
 import com.mtajchert.flocket.core.ui.nav.Navigator
@@ -133,7 +134,7 @@ private fun SettingsRoute(
 
         is SettingsDialog.Import -> {
             ImportKeyDialog(
-                d,
+                d.form,
                 onChange = { label, pem, pass -> viewModel.onImportChange(label, pem, pass) },
                 onSource = viewModel::onImportSource,
                 onPickFile = pickKeyFile,

@@ -15,10 +15,10 @@ import com.mtajchert.flocket.core.model.DeviceKey
 import com.mtajchert.flocket.core.model.HostAuth
 import com.mtajchert.flocket.core.model.TerminalColorScheme
 import com.mtajchert.flocket.core.model.TerminalPreferences
+import com.mtajchert.flocket.core.ui.component.ImportKeyDialogState
 import com.mtajchert.flocket.core.ui.component.KeySource
 import com.mtajchert.flocket.core.ui.component.PickedKeyFile
-import com.mtajchert.flocket.core.ui.component.keyLabelFromFileName
-import com.mtajchert.flocket.core.ui.component.looksLikePrivateKey
+import com.mtajchert.flocket.core.ui.component.importFrom
 import com.mtajchert.flocket.core.ui.error.UiError
 import com.mtajchert.flocket.core.ui.error.UiText
 import com.mtajchert.flocket.core.ui.error.toUiError
@@ -59,16 +59,9 @@ sealed interface SettingsDialog {
         val busy: Boolean = false,
     ) : SettingsDialog
 
-    /** [pem] holds the picked file's text in [KeySource.File] mode; it is never shown there, only [fileName]. */
+    /** The shared import form; [form] never holds anything but what the dialog shows. */
     data class Import(
-        val source: KeySource = KeySource.File,
-        val fileName: String? = null,
-        val label: String = "",
-        val pem: String = "",
-        val passphrase: String = "",
-        val error: UiError? = null,
-        val problem: ImportProblem? = null,
-        val busy: Boolean = false,
+        val form: ImportKeyDialogState = ImportKeyDialogState(),
     ) : SettingsDialog
 
     data class Delete(
@@ -79,8 +72,6 @@ sealed interface SettingsDialog {
         const val DEFAULT_KEY_LABEL = "flocket"
     }
 }
-
-enum class ImportProblem { LabelMissing, NotAPrivateKey }
 
 sealed interface SettingsEvent {
     data class Info(
@@ -203,75 +194,36 @@ class SettingsViewModel
             }
         }
 
-        fun requestImport(pem: String = "") {
-            dialogState.value = SettingsDialog.Import(pem = pem)
+        fun requestImport() {
+            dialogState.value = SettingsDialog.Import()
         }
 
-        /** A key file was picked: keep its text (never shown), name it after the file if unnamed, pre-check it. */
-        fun onImportFilePicked(file: PickedKeyFile) {
-            dialogState.update {
-                val d = it as? SettingsDialog.Import ?: SettingsDialog.Import()
-                d.copy(
-                    source = KeySource.File,
-                    fileName = file.name,
-                    pem = file.text,
-                    label = d.label.ifBlank { keyLabelFromFileName(file.name).orEmpty() },
-                    problem = if (looksLikePrivateKey(file.text)) null else ImportProblem.NotAPrivateKey,
-                    error = null,
-                )
-            }
+        private fun updateImport(transform: (ImportKeyDialogState) -> ImportKeyDialogState) {
+            dialogState.update { (it as? SettingsDialog.Import)?.copy(form = transform(it.form)) ?: it }
         }
 
-        /** Switching between file and paste drops whatever key text the other mode held. */
-        fun onImportSource(source: KeySource) {
-            dialogState.update {
-                (it as? SettingsDialog.Import)?.takeIf { d -> d.source != source }?.copy(
-                    source = source,
-                    fileName = null,
-                    pem = "",
-                    problem = null,
-                    error = null,
-                ) ?: it
-            }
-        }
+        /** A key file was picked: keep its text (never shown), name the key after the file if unnamed, pre-check it. */
+        fun onImportFilePicked(file: PickedKeyFile) = updateImport { it.withFilePicked(file) }
+
+        fun onImportSource(source: KeySource) = updateImport { it.withSource(source) }
 
         fun onImportChange(
             label: String? = null,
             pem: String? = null,
             passphrase: String? = null,
-        ) {
-            dialogState.update {
-                (it as? SettingsDialog.Import)?.copy(
-                    label = label ?: it.label,
-                    pem = pem ?: it.pem,
-                    passphrase = passphrase ?: it.passphrase,
-                    problem = null,
-                    error = null,
-                ) ?: it
-            }
-        }
+        ) = updateImport { it.withChange(label, pem, passphrase) }
 
         fun import() {
             val d = dialogState.value as? SettingsDialog.Import ?: return
-            if (d.busy) return
-            val problem =
-                when {
-                    d.label.isBlank() -> ImportProblem.LabelMissing
-                    !looksLikePrivateKey(d.pem) -> ImportProblem.NotAPrivateKey
-                    else -> null
-                }
+            if (d.form.busy) return
+            val problem = d.form.validate()
             if (problem != null) {
-                dialogState.value = d.copy(problem = problem)
+                dialogState.value = d.copy(form = d.form.copy(problem = problem))
                 return
             }
-            dialogState.value = d.copy(busy = true, error = null, problem = null)
-            val pem = d.pem.trim().toCharArray()
-            val passphrase = d.passphrase.takeIf { it.isNotEmpty() }?.toCharArray()
+            dialogState.value = d.copy(form = d.form.copy(busy = true, error = null, problem = null))
             viewModelScope.launch {
-                val result = keyRepository.import(d.label.trim(), pem, passphrase)
-                pem.fill('\u0000')
-                passphrase?.fill('\u0000')
-                when (result) {
+                when (val result = keyRepository.importFrom(d.form)) {
                     is AppResult.Success -> {
                         dialogState.value = null
                         eventChannel.trySend(
@@ -280,10 +232,7 @@ class SettingsViewModel
                     }
 
                     is AppResult.Failure -> {
-                        dialogState.update {
-                            (it as? SettingsDialog.Import)?.copy(busy = false, error = result.error.toUiError())
-                                ?: it
-                        }
+                        updateImport { it.copy(busy = false, error = result.error.toUiError()) }
                     }
                 }
             }

@@ -80,6 +80,7 @@ import com.mtajchert.flocket.core.ui.component.ConnectionStateBadge
 import com.mtajchert.flocket.core.ui.component.ErrorBanner
 import com.mtajchert.flocket.core.ui.component.HostKeyChangedDialog
 import com.mtajchert.flocket.core.ui.component.HostKeyTrustDialog
+import com.mtajchert.flocket.core.ui.component.ImportKeyDialog
 import com.mtajchert.flocket.core.ui.component.KeySource
 import com.mtajchert.flocket.core.ui.component.KeySourceFields
 import com.mtajchert.flocket.core.ui.component.PublicKeyCard
@@ -100,6 +101,9 @@ data class OnboardingActions(
     val onPickKeyFile: () -> Unit = {},
     val onImportPassphrase: (String) -> Unit = {},
     val onImportKey: () -> Unit = {},
+    val onOpenHostImport: () -> Unit = {},
+    val onDismissHostImport: () -> Unit = {},
+    val onImportLabel: (String) -> Unit = {},
     val onUsePassword: () -> Unit = {},
     val onFormChange: (HostFormState) -> Unit = {},
     val onTrust: () -> Unit = {},
@@ -504,15 +508,31 @@ private fun AddHostPage(
     state: OnboardingUiState,
     actions: OnboardingActions,
 ) {
+    if (state.hostImportOpen) {
+        ImportKeyDialog(
+            state = state.importDialog,
+            onChange = { label, pem, passphrase ->
+                label?.let(actions.onImportLabel)
+                pem?.let(actions.onImportPem)
+                passphrase?.let(actions.onImportPassphrase)
+            },
+            onSource = actions.onImportSource,
+            onPickFile = actions.onPickKeyFile,
+            onConfirm = actions.onImportKey,
+            onDismiss = actions.onDismissHostImport,
+        )
+    }
     Page {
         Text(stringResource(R.string.host_title), style = MaterialTheme.typography.headlineMedium)
         Text(stringResource(R.string.host_body), style = MaterialTheme.typography.bodyLarge)
-        state.error?.let { ErrorBanner(it) }
+        // While the import dialog is open its own error shows there.
+        state.error?.takeUnless { state.hostImportOpen }?.let { ErrorBanner(it) }
         HostForm(
             state = state.form,
             errors = state.formErrors,
             keys = state.keys,
             onChange = actions.onFormChange,
+            onImportKey = actions.onOpenHostImport,
             onCreateKey = actions.onGenerateKey,
             isCreatingKey = state.generatingKey,
         )

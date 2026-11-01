@@ -104,6 +104,28 @@ class OnboardingTest {
         }
 
     @Test
+    fun `importing from the host step selects the key and closes the dialog`() =
+        runTest {
+            val vm = viewModel()
+            vm.uiState.onEach { }.launchIn(CoroutineScope(UnconfinedTestDispatcher(testScheduler)))
+            vm.openHostImport()
+            assertTrue(vm.uiState.value.hostImportOpen)
+
+            vm.onImportFilePicked(PickedKeyFile("android_mini_ed25519", PRIVATE_KEY))
+            assertEquals("android_mini_ed25519", vm.uiState.value.importLabel)
+            assertFalse(vm.uiState.value.importOpen) // the key step's inline form stays closed
+            vm.importKey()
+
+            val key = vm.uiState.value.selectedKey
+            assertNotNull(key)
+            assertEquals(AuthKind.Key, vm.uiState.value.form.authKind)
+            assertEquals(key!!.alias, vm.uiState.value.form.keyAlias)
+            assertFalse(vm.uiState.value.hostImportOpen)
+            assertEquals("", vm.uiState.value.importPem)
+            assertEquals("", vm.uiState.value.importLabel)
+        }
+
+    @Test
     fun `switching key import to paste drops the picked file`() =
         runTest {
             val vm = viewModel()
@@ -203,3 +225,5 @@ class OnboardingTest {
         rule.onNodeWithText("Add your machine").assertIsDisplayed()
     }
 }
+
+private const val PRIVATE_KEY = "-----BEGIN OPENSSH PRIVATE KEY-----\nabc\n-----END OPENSSH PRIVATE KEY-----"

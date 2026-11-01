@@ -30,6 +30,7 @@ import com.mtajchert.flocket.feature.hosts.impl.R
 fun HostEditScreen(
     state: HostEditUiState,
     onFormChange: (HostFormState) -> Unit,
+    onImportKey: () -> Unit,
     onCreateKey: () -> Unit,
     onSave: () -> Unit,
     onClose: () -> Unit,
@@ -69,6 +70,7 @@ fun HostEditScreen(
                         errors = state.errors,
                         keys = state.keys,
                         onChange = onFormChange,
+                        onImportKey = onImportKey,
                         onCreateKey = onCreateKey,
                         isCreatingKey = state.creatingKey,
                     )

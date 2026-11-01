@@ -8,8 +8,13 @@ import com.mtajchert.flocket.core.data.DeviceKeyRepository
 import com.mtajchert.flocket.core.data.HostRepository
 import com.mtajchert.flocket.core.model.DeviceKey
 import com.mtajchert.flocket.core.model.HostId
+import com.mtajchert.flocket.core.ui.component.ImportKeyDialogState
+import com.mtajchert.flocket.core.ui.component.KeySource
+import com.mtajchert.flocket.core.ui.component.PickedKeyFile
+import com.mtajchert.flocket.core.ui.component.importFrom
 import com.mtajchert.flocket.core.ui.error.UiError
 import com.mtajchert.flocket.core.ui.error.toUiError
+import com.mtajchert.flocket.core.ui.hostform.AuthKind
 import com.mtajchert.flocket.core.ui.hostform.HostFormError
 import com.mtajchert.flocket.core.ui.hostform.HostFormField
 import com.mtajchert.flocket.core.ui.hostform.HostFormState
@@ -34,6 +39,8 @@ data class HostEditUiState(
     val keys: List<DeviceKey> = emptyList(),
     val saving: Boolean = false,
     val creatingKey: Boolean = false,
+    /** The "Import a private key" dialog, or null when it is closed. */
+    val importDialog: ImportKeyDialogState? = null,
     val error: UiError? = null,
     /** One-shot result delivered as state: the screen navigates away when true. */
     val saved: Boolean = false,
@@ -96,6 +103,54 @@ class HostEditViewModel
 
                     is AppResult.Failure -> {
                         transient.update { it.copy(creatingKey = false, error = result.error.toUiError()) }
+                    }
+                }
+            }
+        }
+
+        // ---- Import an existing key ---------------------------------------------------------------
+
+        fun requestImport() = transient.update { it.copy(importDialog = ImportKeyDialogState(), error = null) }
+
+        fun dismissImport() = transient.update { it.copy(importDialog = null) }
+
+        private fun updateImport(transform: (ImportKeyDialogState) -> ImportKeyDialogState) =
+            transient.update { t -> t.importDialog?.let { t.copy(importDialog = transform(it)) } ?: t }
+
+        fun onImportFilePicked(file: PickedKeyFile) = updateImport { it.withFilePicked(file) }
+
+        fun onImportFileFailed() = updateImport { it.withFileFailed() }
+
+        fun onImportSource(source: KeySource) = updateImport { it.withSource(source) }
+
+        fun onImportChange(
+            label: String? = null,
+            pem: String? = null,
+            passphrase: String? = null,
+        ) = updateImport { it.withChange(label, pem, passphrase) }
+
+        /**
+         * Stores the key, then switches the form to key sign-in with it selected. Nothing is generated. On failure
+         * the dialog stays open with the error and every input kept.
+         */
+        fun importKey() {
+            val dialog = transient.value.importDialog ?: return
+            if (dialog.busy) return
+            val problem = dialog.validate()
+            if (problem != null) {
+                updateImport { it.copy(problem = problem) }
+                return
+            }
+            updateImport { it.copy(busy = true, error = null, problem = null) }
+            viewModelScope.launch {
+                when (val result = deviceKeyRepository.importFrom(dialog)) {
+                    is AppResult.Success -> {
+                        setForm(form.value.copy(authKind = AuthKind.Key, keyAlias = result.value.alias))
+                        transient.update { it.copy(importDialog = null) }
+                    }
+
+                    is AppResult.Failure -> {
+                        updateImport { it.copy(busy = false, error = result.error.toUiError()) }
                     }
                 }
             }

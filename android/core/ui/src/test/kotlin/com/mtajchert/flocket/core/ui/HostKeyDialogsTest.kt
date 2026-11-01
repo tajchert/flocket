@@ -66,7 +66,7 @@ class HostKeyDialogsTest {
     @Test
     fun `form shows inline validation errors`() {
         val state = HostFormState(hostname = "a b")
-        rule.setContent { FlocketTheme { HostForm(state, state.validate(), emptyList(), {}, {}) } }
+        rule.setContent { FlocketTheme { HostForm(state, state.validate(), emptyList(), {}, {}, {}) } }
         rule.onNodeWithText("Enter a hostname or IP address without spaces").assertIsDisplayed()
         rule.onNodeWithText("Choose or create a device key").assertExists()
     }
