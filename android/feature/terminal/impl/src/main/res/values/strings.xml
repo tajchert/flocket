@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Top bar -->
+    <string name="terminal_back">Back</string>
+    <string name="terminal_subtitle_host">%1$s · %2$s</string>
+    <string name="terminal_subtitle_machine">%1$s · %2$s · %3$s</string>
+    <string name="terminal_action_fit">Fit to screen</string>
+    <string name="terminal_action_fit_tooltip">Resizes the terminal for every viewer</string>
+    <string name="terminal_action_paste">Paste</string>
+    <string name="terminal_action_copy">Copy screen text</string>
+    <string name="terminal_action_interrupt">Interrupt</string>
+    <string name="terminal_action_kill">Kill</string>
+    <string name="terminal_action_keyboard">Show or hide keyboard</string>
+    <string name="terminal_action_more">More actions</string>
+
+    <!-- States -->
+    <string name="terminal_connecting">Connecting…</string>
+    <string name="terminal_attaching">Opening terminal…</string>
+    <string name="terminal_reconnecting">Reconnecting…</string>
+    <string name="terminal_exited_code">Exited (code %1$d)</string>
+    <string name="terminal_exited_signal">Killed (signal %1$d)</string>
+    <string name="terminal_exited">Exited</string>
+    <string name="terminal_waiting_shell">Waiting for a new shell…</string>
+    <string name="terminal_fresh_shell">This is a fresh shell: the previous program is gone.</string>
+    <string name="terminal_stream_ended">Stream ended</string>
+    <string name="terminal_host_missing">This host no longer exists.</string>
+    <string name="terminal_close">Close</string>
+    <string name="terminal_remove">Remove</string>
+    <string name="terminal_reattach">Reattach</string>
+    <string name="terminal_retry">Retry</string>
+    <string name="terminal_dismiss">Dismiss</string>
+
+    <!-- Messages -->
+    <string name="terminal_fit_done">Resized for every viewer of this terminal</string>
+    <string name="terminal_copied">Screen text copied</string>
+    <string name="terminal_interrupt_stopped">Stopped</string>
+    <string name="terminal_interrupt_exited">The program exited</string>
+    <string name="terminal_interrupt_still_working">Interrupt sent; it is still working</string>
+    <string name="terminal_interrupt_sent">Interrupt sent</string>
+    <string name="terminal_outcome_unknown">The connection dropped: this may not have been delivered. Check the terminal before trying again.</string>
+    <string name="terminal_error_format">%1$s: %2$s</string>
+
+    <!-- Dialogs -->
+    <string name="terminal_kill_title">Kill this terminal?</string>
+    <string name="terminal_kill_message">The program in %1$s is stopped on the host. This cannot be undone.</string>
+    <string name="terminal_kill_confirm">Kill</string>
+    <string name="terminal_cancel">Cancel</string>
+    <string name="terminal_clipboard_title">Allow clipboard access?</string>
+    <string name="terminal_clipboard_message">The program wants to copy this to your clipboard:</string>
+    <string name="terminal_clipboard_allow">Copy</string>
+    <string name="terminal_clipboard_deny">Don\'t copy</string>
+</resources>
