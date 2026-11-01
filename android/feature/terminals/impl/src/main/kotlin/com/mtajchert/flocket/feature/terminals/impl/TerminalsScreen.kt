@@ -47,6 +47,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.mtajchert.flocket.core.model.HostId
@@ -99,10 +101,13 @@ fun TerminalsScreen(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         floatingActionButton = {
             if (state.emptyKind != EmptyKind.NoHosts && state.loaded) {
+                val label = stringResource(R.string.new_terminal)
                 ExtendedFloatingActionButton(
                     onClick = actions.onNewTerminal,
                     icon = { Icon(Icons.Outlined.Add, contentDescription = null) },
-                    text = { Text(stringResource(R.string.new_terminal)) },
+                    text = { Text(label) },
+                    // The label lives on the button node itself, so TalkBack and UI dumps find it.
+                    modifier = Modifier.semantics { contentDescription = label },
                 )
             }
         },
@@ -322,7 +327,11 @@ private fun HostHeader(
                 )
                 if (group.total > 0) {
                     Text(
-                        pluralStringResource(R.plurals.host_terminal_count, group.total, group.total),
+                        if (group.visibleCount == group.total) {
+                            pluralStringResource(R.plurals.host_terminal_count, group.total, group.total)
+                        } else {
+                            stringResource(R.string.host_terminal_count_filtered, group.visibleCount, group.total)
+                        },
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
