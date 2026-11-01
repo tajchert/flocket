@@ -21,6 +21,7 @@ rootProject.name = "flocket"
 
 include(":app")
 include(":benchmark")
+include(":samples:terminal-playground")
 
 // Pure Kotlin/JVM (no Android)
 include(":core:model")
