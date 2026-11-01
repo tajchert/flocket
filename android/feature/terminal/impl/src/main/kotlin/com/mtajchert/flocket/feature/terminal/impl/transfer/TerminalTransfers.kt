@@ -347,7 +347,7 @@ class TerminalTransfers(
     companion object {
         private val STAMP: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss")
 
-        private const val SHELL_SPECIAL = " \t\"'\\$`()&;|<>*?[]#~!"
+        private const val SHELL_SPECIAL = " \t\"'\\$`()&;|<>*?[]{},!"
 
         /** Backslash-escapes characters a shell or agent prompt would split on, like a dropped path. */
         internal fun escapeForShell(path: String): String =

@@ -318,7 +318,9 @@ class TerminalTransfersTest {
     @Test
     fun `plain path pastes unchanged`() {
         assertEquals("/a/b-c_d.9/e.png", TerminalTransfers.escapeForShell("/a/b-c_d.9/e.png"))
-        assertEquals("a\\\$b\\`c\\;d\\#e", TerminalTransfers.escapeForShell("a\$b`c;d#e"))
+        assertEquals("a\\\$b\\`c\\;d", TerminalTransfers.escapeForShell("a\$b`c;d"))
+        assertEquals("a~b#c", TerminalTransfers.escapeForShell("a~b#c"))
+        assertEquals("x\\{a\\,b\\}.png", TerminalTransfers.escapeForShell("x{a,b}.png"))
     }
 
     @Test
