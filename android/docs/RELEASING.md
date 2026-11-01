@@ -11,27 +11,37 @@ An AAB is not directly installable with `adb install`; use [bundletool](https://
 
 ## Release signing
 
-`app/build.gradle.kts` signs the `release` build only when all four values are set, as environment variables or Gradle properties (for example in `~/.gradle/gradle.properties`; the environment wins): `FLOCKET_KEYSTORE_FILE`, `FLOCKET_KEYSTORE_PASSWORD`, `FLOCKET_KEY_ALIAS`, `FLOCKET_KEY_PASSWORD`. If any is missing, `assembleRelease` produces `app-release-unsigned.apk`, so `scripts/check.sh full` and CI work without secrets. The values are never printed.
+`app/build.gradle.kts` signs the `release` build only when all four values are set. It reads them from the gitignored file `android/keystore.properties` first, then from environment variables, then from Gradle properties:
 
-Create an upload key once, outside the repository (`*.jks` and `*.keystore` are gitignored; back it up somewhere safe, and never commit it):
-
-```sh
-mkdir -p ~/.flocket
-keytool -genkeypair -v -keystore ~/.flocket/upload.jks -keyalg RSA -keysize 4096 -validity 10000 -alias upload
+```properties
+storeFile=/Users/<user>/keystores/flocket-release.jks
+storePassword=<password>
+keyAlias=flocket
+keyPassword=<password>
 ```
 
-Build locally:
+The matching environment variables or Gradle properties are `FLOCKET_KEYSTORE_FILE`, `FLOCKET_KEYSTORE_PASSWORD`, `FLOCKET_KEY_ALIAS` and `FLOCKET_KEY_PASSWORD`. If any value is missing, `assembleRelease` produces `app-release-unsigned.apk`, so `scripts/check.sh full` and CI work without secrets. The values are never printed.
+
+`keystore.properties`, `*.jks` and `*.keystore` must stay uncommitted. Keep a backup of the keystore and its password outside the machine: a lost key means users cannot upgrade in place.
+
+Expected release certificate:
+
+```text
+CN=Flocket Release, O=Tajchert, C=PL
+SHA-256: fc55e7f3ad29d64d165f1881b4f05b21aad25b2dbaf3afec7a185361b91fa47c
+```
+
+Build and verify locally; the certificate DN and SHA-256 must match the values above:
 
 ```sh
-export FLOCKET_KEYSTORE_FILE=~/.flocket/upload.jks FLOCKET_KEY_ALIAS=upload
-read -rs FLOCKET_KEYSTORE_PASSWORD; read -rs FLOCKET_KEY_PASSWORD; export FLOCKET_KEYSTORE_PASSWORD FLOCKET_KEY_PASSWORD
 ./gradlew :app:assembleRelease    # or :app:bundleRelease
-apksigner verify --print-certs app/build/outputs/apk/release/app-release.apk
+APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -n1)
+"$APKSIGNER" verify --print-certs app/build/outputs/apk/release/app-release.apk
 ```
 
 The APK uses signature scheme v2+ only (minSdk 29), so use `apksigner`, not `keytool -printcert -jarfile`.
 
-In GitHub Actions, store the keystore as a base64 secret (`base64 -i ~/.flocket/upload.jks | pbcopy`) named `FLOCKET_KEYSTORE_BASE64`, plus secrets `FLOCKET_KEYSTORE_PASSWORD`, `FLOCKET_KEY_ALIAS` and `FLOCKET_KEY_PASSWORD`, then decode it to a temp file in a release-only job (never on pull requests from forks):
+In GitHub Actions, store the keystore as a base64 secret (`base64 -i ~/keystores/flocket-release.jks | pbcopy`) named `FLOCKET_KEYSTORE_BASE64`, plus secrets `FLOCKET_KEYSTORE_PASSWORD`, `FLOCKET_KEY_ALIAS` and `FLOCKET_KEY_PASSWORD`, then decode it to a temp file in a release-only job (never on pull requests from forks):
 
 ```yaml
 - name: Sign release
@@ -41,6 +51,6 @@ In GitHub Actions, store the keystore as a base64 secret (`base64 -i ~/.flocket/
     FLOCKET_KEY_ALIAS: ${{ secrets.FLOCKET_KEY_ALIAS }}
     FLOCKET_KEY_PASSWORD: ${{ secrets.FLOCKET_KEY_PASSWORD }}
   run: |
-    echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/upload.jks"
-    FLOCKET_KEYSTORE_FILE="$RUNNER_TEMP/upload.jks" ./gradlew --no-daemon :app:bundleRelease
+    echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/flocket-release.jks"
+    FLOCKET_KEYSTORE_FILE="$RUNNER_TEMP/flocket-release.jks" ./gradlew --no-daemon :app:bundleRelease
 ```

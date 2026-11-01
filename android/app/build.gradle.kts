@@ -1,19 +1,27 @@
 // :app - Application shell: single Activity, Navigation 3 host, Hilt graph. The only module that may depend
 // on every :feature:*:impl.
+import java.util.Properties
+
 plugins {
     id("flocket.android.application")
     alias(libs.plugins.baselineprofile)
 }
 
-// Release signing comes from the environment (or Gradle properties; the environment wins). Only when all four
-// values are present is the release build signed; otherwise it stays unsigned. Values are never logged.
-fun signingValue(name: String): String? =
-    (System.getenv(name) ?: providers.gradleProperty(name).orNull)?.takeIf { it.isNotBlank() }
+// Release signing. Values come from keystore.properties (local, gitignored), then the environment, then Gradle
+// properties. Only when all four values are present is the release build signed; otherwise it stays unsigned.
+// Values are never logged. See docs/RELEASING.md.
+val keystoreProperties = Properties().apply {
+    rootProject.file("keystore.properties").takeIf { it.exists() }?.inputStream()?.use(::load)
+}
 
-val releaseKeystoreFile = signingValue("FLOCKET_KEYSTORE_FILE")
-val releaseKeystorePassword = signingValue("FLOCKET_KEYSTORE_PASSWORD")
-val releaseKeyAlias = signingValue("FLOCKET_KEY_ALIAS")
-val releaseKeyPassword = signingValue("FLOCKET_KEY_PASSWORD")
+fun signingValue(property: String, name: String): String? =
+    (keystoreProperties.getProperty(property) ?: System.getenv(name) ?: providers.gradleProperty(name).orNull)
+        ?.takeIf { it.isNotBlank() }
+
+val releaseKeystoreFile = signingValue("storeFile", "FLOCKET_KEYSTORE_FILE")
+val releaseKeystorePassword = signingValue("storePassword", "FLOCKET_KEYSTORE_PASSWORD")
+val releaseKeyAlias = signingValue("keyAlias", "FLOCKET_KEY_ALIAS")
+val releaseKeyPassword = signingValue("keyPassword", "FLOCKET_KEY_PASSWORD")
 val hasReleaseSigning =
     listOf(releaseKeystoreFile, releaseKeystorePassword, releaseKeyAlias, releaseKeyPassword).all { it != null }
 
