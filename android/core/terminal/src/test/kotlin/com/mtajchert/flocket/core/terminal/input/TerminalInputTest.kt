@@ -147,12 +147,13 @@ class TerminalInputTest {
     }
 
     @Test
-    fun `editor info disables suggestions and fullscreen`() {
+    fun `editor info asks for a normal keyboard without autocorrect, capitals or fullscreen`() {
         val info = EditorInfo()
         TerminalInputConnection.configure(info)
-        assertTrue(info.inputType and android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS != 0)
-        assertTrue(info.inputType and android.text.InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD != 0)
+        assertEquals(android.text.InputType.TYPE_CLASS_TEXT, info.inputType)
         assertTrue(info.imeOptions and EditorInfo.IME_FLAG_NO_EXTRACT_UI != 0)
+        assertTrue(info.imeOptions and EditorInfo.IME_FLAG_NO_FULLSCREEN != 0)
+        assertEquals(0, info.imeOptions and EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING)
     }
 
     @Test

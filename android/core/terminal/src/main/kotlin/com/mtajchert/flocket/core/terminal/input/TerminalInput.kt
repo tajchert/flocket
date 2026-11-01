@@ -227,16 +227,16 @@ class TerminalInputConnection(
     }
 
     companion object {
-        /** Plain text, no suggestions/autocorrect, no fullscreen extract UI, no learning. */
+        /**
+         * A normal text keyboard (suggestions, swipe, voice, learning) without autocorrect or
+         * auto-capitals: no AUTO_CORRECT, MULTI_LINE or CAP_* flags, so `ls` is sent as typed.
+         * No fullscreen extract UI.
+         */
         fun configure(outAttrs: EditorInfo) {
-            outAttrs.inputType =
-                android.text.InputType.TYPE_CLASS_TEXT or
-                android.text.InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD or
-                android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            outAttrs.inputType = android.text.InputType.TYPE_CLASS_TEXT
             outAttrs.imeOptions =
                 EditorInfo.IME_FLAG_NO_EXTRACT_UI or
                 EditorInfo.IME_FLAG_NO_FULLSCREEN or
-                EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING or
                 EditorInfo.IME_ACTION_NONE
             outAttrs.initialSelStart = 0
             outAttrs.initialSelEnd = 0
