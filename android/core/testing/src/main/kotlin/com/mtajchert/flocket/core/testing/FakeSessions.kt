@@ -69,21 +69,45 @@ class FakeCoreSession(
 
     private fun <T> unsupported(): AppResult<T> = AppResult.Failure(AppError.Unsupported("fake"))
 
-    override suspend fun run(request: RunRequest): AppResult<TerminalRecord> = unsupported()
+    /** Scripted behaviour for tests. Each handler defaults to `Unsupported`; calls are recorded in [calls]. */
+    var runHandler: suspend (RunRequest) -> AppResult<TerminalRecord> = { unsupported() }
+    var killHandler: suspend (TerminalAddress) -> AppResult<TerminalRecord> = { unsupported() }
+    var removeHandler: suspend (TerminalAddress) -> AppResult<Unit> = { unsupported() }
+    var sendHandler: suspend (TerminalAddress, String, Boolean) -> AppResult<SendReceipt> = { _, _, _ -> unsupported() }
+    var interruptHandler: suspend (TerminalAddress) -> AppResult<InterruptOutcome> = { unsupported() }
+    var templatesHandler: suspend () -> AppResult<List<TerminalTemplate>> = { AppResult.Success(emptyList()) }
+    val calls = mutableListOf<String>()
 
-    override suspend fun kill(address: TerminalAddress): AppResult<TerminalRecord> = unsupported()
+    override suspend fun run(request: RunRequest): AppResult<TerminalRecord> {
+        calls += "run:${request.cwd}:${request.line}:${request.template}:${request.machine}:${request.keep}"
+        return runHandler(request)
+    }
 
-    override suspend fun remove(address: TerminalAddress): AppResult<Unit> = unsupported()
+    override suspend fun kill(address: TerminalAddress): AppResult<TerminalRecord> {
+        calls += "kill:${address.value}"
+        return killHandler(address)
+    }
+
+    override suspend fun remove(address: TerminalAddress): AppResult<Unit> {
+        calls += "remove:${address.value}"
+        return removeHandler(address)
+    }
 
     override suspend fun sendText(
         address: TerminalAddress,
         text: String,
         force: Boolean,
-    ): AppResult<SendReceipt> = unsupported()
+    ): AppResult<SendReceipt> {
+        calls += "send:${address.value}:$text:$force"
+        return sendHandler(address, text, force)
+    }
 
-    override suspend fun interrupt(address: TerminalAddress): AppResult<InterruptOutcome> = unsupported()
+    override suspend fun interrupt(address: TerminalAddress): AppResult<InterruptOutcome> {
+        calls += "interrupt:${address.value}"
+        return interruptHandler(address)
+    }
 
-    override suspend fun templates(): AppResult<List<TerminalTemplate>> = AppResult.Success(emptyList())
+    override suspend fun templates(): AppResult<List<TerminalTemplate>> = templatesHandler()
 
     override suspend fun readText(
         address: TerminalAddress,

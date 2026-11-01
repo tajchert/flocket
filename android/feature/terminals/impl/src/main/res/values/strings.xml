@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="terminals_title">Terminals</string>
+    <string name="terminals_select_placeholder">Select a terminal to open it</string>
+
+    <!-- Filters and list options -->
+    <string name="filter_all">All</string>
+    <string name="filter_attention">Needs attention</string>
+    <string name="filter_working">Working</string>
+    <string name="filter_finished">Finished</string>
+    <string name="filters_description">Filter terminals</string>
+    <string name="menu_options">List options</string>
+    <string name="menu_sort_attention">Needs attention first</string>
+    <string name="menu_show_finished">Show finished</string>
+    <plurals name="finished_hidden">
+        <item quantity="one">%d finished terminal hidden</item>
+        <item quantity="other">%d finished terminals hidden</item>
+    </plurals>
+    <string name="finished_hidden_show">Show</string>
+
+    <!-- Headers -->
+    <plurals name="host_terminal_count">
+        <item quantity="one">%d terminal</item>
+        <item quantity="other">%d terminals</item>
+    </plurals>
+    <string name="host_no_terminals">No terminals on this host yet.</string>
+    <string name="host_no_matches">Nothing matches this filter on this host.</string>
+    <string name="machine_header">Machine %1$s</string>
+    <string name="machine_state_connected">Connected</string>
+    <string name="machine_state_connecting">Connecting</string>
+    <string name="machine_state_needs_login">Needs login</string>
+    <string name="machine_state_needs_update">Needs update</string>
+    <string name="machine_state_unreachable">Unreachable</string>
+
+    <!-- Rows -->
+    <string name="row_shell">shell</string>
+    <string name="row_finished">Finished</string>
+    <string name="row_finished_exit">Finished · exit %1$d</string>
+    <string name="row_finished_signal">Finished · signal %1$d</string>
+    <string name="row_waiting">Waiting for a new shell</string>
+    <string name="row_actions">Actions for %1$s</string>
+    <string name="row_read_only">Read-only until the host reconnects</string>
+    <string name="action_interrupt">Interrupt (stop key)</string>
+    <string name="action_send_text">Send text…</string>
+    <string name="action_kill">Kill…</string>
+    <string name="action_remove">Remove finished</string>
+    <string name="action_open">Open</string>
+
+    <!-- Empty states -->
+    <string name="empty_no_hosts_title">No hosts yet</string>
+    <string name="empty_no_hosts_message">Add a machine running herdr-core to watch and control its terminals from here.</string>
+    <string name="empty_no_hosts_action">Add a host</string>
+    <string name="empty_no_terminals_title">No terminals yet</string>
+    <string name="empty_no_terminals_message">Nothing is running on your hosts. Start a terminal and it shows up here, on every device.</string>
+    <string name="empty_no_terminals_action">Start a terminal</string>
+    <string name="empty_offline_title">No host is online</string>
+    <string name="empty_offline_message">Flocket can’t reach any of your hosts right now. Saved data is read-only until one reconnects.</string>
+    <string name="empty_offline_action">Try again</string>
+    <string name="empty_no_matches_title">Nothing to show</string>
+    <string name="empty_no_matches_message">No terminals match this filter.</string>
+    <string name="empty_no_matches_action">Show everything</string>
+
+    <!-- Snackbars -->
+    <string name="msg_killed">Killed %1$s</string>
+    <string name="msg_removed">Removed %1$s</string>
+    <string name="msg_interrupt_stopped">Stop key sent. The program stopped.</string>
+    <string name="msg_interrupt_exited">Stop key sent. The program exited.</string>
+    <string name="msg_interrupt_still_working">Stop key sent, but the program is still working.</string>
+    <string name="msg_interrupt_sent">Stop key sent.</string>
+    <string name="msg_read_only">This host is offline, so its terminals are read-only.</string>
+    <string name="msg_outcome_unknown">May not have been delivered. Check the terminal before trying again.</string>
+    <string name="msg_error_format">%1$s. %2$s</string>
+    <string name="snackbar_dismiss">Dismiss</string>
+
+    <!-- Kill dialog -->
+    <string name="kill_title">Kill this terminal?</string>
+    <string name="kill_message">This stops %1$s and everything running in it. Unsaved work in the program is lost.</string>
+    <string name="kill_confirm">Kill</string>
+
+    <!-- Send text dialog -->
+    <string name="send_title">Send text to %1$s</string>
+    <string name="send_label">Text to send</string>
+    <string name="send_hint">It is pasted and submitted with Enter once nobody has typed for a few seconds.</string>
+    <string name="send_action">Send</string>
+    <string name="send_queued">Queued. Waiting for the terminal to be quiet…</string>
+    <string name="send_sent">Sent.</string>
+    <string name="send_sent_status">Sent. The program now reports “%1$s”.</string>
+    <string name="send_blocked_title">The program is blocked</string>
+    <string name="send_blocked_message">%1$s Sending now may answer a prompt you haven’t seen. Send anyway?</string>
+    <string name="send_blocked_confirm">Send anyway</string>
+    <string name="send_unknown">May not have been delivered. Check the terminal before sending again.</string>
+    <string name="send_close">Close</string>
+
+    <!-- New terminal -->
+    <string name="new_terminal">New terminal</string>
+    <string name="new_terminal_start">Start</string>
+    <string name="new_terminal_no_hosts">No host is online. Connect to a host to start a terminal.</string>
+    <string name="new_terminal_host">Host</string>
+    <string name="new_terminal_machine">Machine</string>
+    <string name="new_terminal_machine_local">This machine</string>
+    <string name="new_terminal_run">Run</string>
+    <string name="new_terminal_shell">Default shell</string>
+    <string name="new_terminal_command_option">Command line</string>
+    <string name="new_terminal_command">Command</string>
+    <string name="new_terminal_command_required">Enter a command to run</string>
+    <string name="new_terminal_templates_loading">Loading templates…</string>
+    <string name="new_terminal_templates_failed">Couldn’t load templates. You can still run a shell or a command.</string>
+    <string name="new_terminal_cwd">Working directory</string>
+    <string name="new_terminal_cwd_hint">Required. ~ is the host user’s home.</string>
+    <string name="new_terminal_cwd_required">Enter a working directory</string>
+    <string name="new_terminal_name">Name (optional)</string>
+    <string name="new_terminal_keep">Keep this terminal</string>
+    <string name="new_terminal_keep_hint">If its program is lost, replace it with a fresh shell instead of finishing.</string>
+    <string name="new_terminal_cancel">Cancel</string>
+</resources>

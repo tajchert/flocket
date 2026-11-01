@@ -7,6 +7,9 @@ import androidx.navigation3.runtime.NavKey
 
 /** What features may do to navigation. `:app` owns the back stack and implements this. */
 interface Navigator {
+    /** The destination currently on top of the back stack (read in composition to highlight a selected list row). */
+    val current: NavKey? get() = null
+
     fun navigate(key: NavKey)
 
     fun back()

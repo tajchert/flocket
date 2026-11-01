@@ -1,4 +1,4 @@
-// :feature:/Users/mtajchert/coding/priv/flocket/android/settingspi - Navigation keys and public contracts of the settings feature. Other modules may depend on
+// :feature:/Users/mtajchert/coding/priv/flocket/.worktrees/features/android/settingspi - Navigation keys and public contracts of the settings feature. Other modules may depend on
 // this module. May depend on: :core:model, Navigation 3 runtime. Never on an :impl module.
 plugins {
     id("flocket.android.library")
