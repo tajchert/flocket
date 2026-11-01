@@ -10,12 +10,14 @@ import com.mtajchert.flocket.core.model.CoreEndpoint
 import com.mtajchert.flocket.core.model.Host
 import com.mtajchert.flocket.core.model.HostId
 import com.mtajchert.flocket.core.model.LayoutRef
+import com.mtajchert.flocket.core.model.PutReceipt
 import com.mtajchert.flocket.core.model.TerminalAddress
 import com.mtajchert.flocket.core.model.TerminalRecord
 import com.mtajchert.flocket.core.model.TerminalRef
 import com.mtajchert.flocket.core.model.TerminalTemplate
 import com.mtajchert.flocket.core.session.AttachRequest
 import com.mtajchert.flocket.core.session.CoreSession
+import com.mtajchert.flocket.core.session.ExecOutcome
 import com.mtajchert.flocket.core.session.InterruptOutcome
 import com.mtajchert.flocket.core.session.RunRequest
 import com.mtajchert.flocket.core.session.SendReceipt
@@ -155,6 +157,56 @@ class FakeCoreSession(
     ): AppResult<TerminalStream> {
         calls += "attach:${address.value}:${request.mode}"
         return attachHandler(address, request)
+    }
+
+    // ---- file transfers: scripted like the handlers above; every call is recorded in [transferCalls] ----
+
+    var putHandler: suspend (TerminalAddress, String, ByteArray) -> AppResult<PutReceipt> = { a, name, bytes ->
+        AppResult.Success(PutReceipt("/fake/files/${a.value}/$name", bytes.size.toLong()))
+    }
+    var writeHandler: suspend (String?, String, ByteArray) -> AppResult<Unit> = { _, _, _ -> AppResult.Success(Unit) }
+    var readHandler: suspend (String?, String) -> AppResult<ByteArray> = { _, _ -> AppResult.Success(ByteArray(0)) }
+    var execHandler: suspend (String?, List<String>, Boolean) -> AppResult<ExecOutcome> = { _, _, _ ->
+        AppResult.Success(ExecOutcome(0, ByteArray(0), "", false))
+    }
+    private val transferLog: MutableList<String> = java.util.Collections.synchronizedList(mutableListOf())
+
+    /** `put:<address>:<name>:<size>`, `write:<machine>:<path>:<size>`, `read:<machine>:<path>`, `exec:<machine>:<argv joined by space>:<mutating>`. */
+    val transferCalls: List<String> get() = synchronized(transferLog) { transferLog.toList() }
+
+    override suspend fun putFile(
+        address: TerminalAddress,
+        name: String,
+        bytes: ByteArray,
+    ): AppResult<PutReceipt> {
+        transferLog += "put:${address.value}:$name:${bytes.size}"
+        return putHandler(address, name, bytes)
+    }
+
+    override suspend fun writeFile(
+        machine: String?,
+        path: String,
+        bytes: ByteArray,
+    ): AppResult<Unit> {
+        transferLog += "write:$machine:$path:${bytes.size}"
+        return writeHandler(machine, path, bytes)
+    }
+
+    override suspend fun readFile(
+        machine: String?,
+        path: String,
+    ): AppResult<ByteArray> {
+        transferLog += "read:$machine:$path"
+        return readHandler(machine, path)
+    }
+
+    override suspend fun exec(
+        machine: String?,
+        argv: List<String>,
+        mutating: Boolean,
+    ): AppResult<ExecOutcome> {
+        transferLog += "exec:$machine:${argv.joinToString(" ")}:$mutating"
+        return execHandler(machine, argv, mutating)
     }
 }
 

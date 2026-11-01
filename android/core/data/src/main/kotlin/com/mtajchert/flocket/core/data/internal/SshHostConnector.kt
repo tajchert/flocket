@@ -8,6 +8,7 @@ import com.mtajchert.flocket.core.data.HostTrustRepository
 import com.mtajchert.flocket.core.model.HostAuth
 import com.mtajchert.flocket.core.model.HostId
 import com.mtajchert.flocket.core.protocol.transport.ByteTransport
+import com.mtajchert.flocket.core.protocol.transport.SiblingTransportSource
 import com.mtajchert.flocket.core.protocol.transport.TransportException
 import com.mtajchert.flocket.core.security.KeyVault
 import com.mtajchert.flocket.core.ssh.CommandRunner
@@ -21,6 +22,7 @@ import com.mtajchert.flocket.core.ssh.SshTarget
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CopyOnWriteArrayList
 import kotlin.coroutines.cancellation.CancellationException
 
 /** Opens the transport to one host's `hc connect` and holds in-memory passwords. */
@@ -175,8 +177,9 @@ internal class SshHostConnector(
                 runCatching { hcPathCache.cacheHcPath(hostId, path) }
                     .onFailure { if (it is CancellationException) throw it }
             }
-            val transport = ssh.exec(HcLocator.coreCommand(path, host.session))
-            return AppResult.Success(ClosingTransport(transport, ssh))
+            val command = HcLocator.coreCommand(path, host.session)
+            val transport = ssh.exec(command)
+            return AppResult.Success(ClosingTransport(transport, ssh, command))
         } catch (e: CancellationException) {
             closeQuietly(ssh)
             throw e
@@ -199,11 +202,23 @@ internal class SshHostConnector(
         }
     }
 
-    /** Closes the SSH connection together with its exec channel. */
+    /**
+     * Closes the SSH connection together with its exec channel. Also a [SiblingTransportSource]: a
+     * sibling is another exec of the same [command] on the same SSH connection (the session's
+     * transfer connection). Closing a sibling closes only its channel; closing this transport closes
+     * every sibling and the link.
+     */
     private class ClosingTransport(
         private val inner: ByteTransport,
         private val link: SshLink,
-    ) : ByteTransport {
+        private val command: List<String>,
+    ) : ByteTransport,
+        SiblingTransportSource {
+        private val siblings = CopyOnWriteArrayList<ByteTransport>()
+
+        @Volatile
+        private var closed = false
+
         override suspend fun read(buffer: ByteArray): Int = inner.read(buffer)
 
         override suspend fun write(
@@ -214,10 +229,31 @@ internal class SshHostConnector(
 
         override fun diagnostics(): String = inner.diagnostics()
 
+        override suspend fun openSibling(): ByteTransport {
+            if (closed) throw TransportException("connection closed")
+            val raw = link.exec(command)
+            val sibling =
+                object : ByteTransport by raw {
+                    override suspend fun close() {
+                        siblings -= this
+                        raw.close()
+                    }
+                }
+            siblings += sibling
+            if (closed) {
+                // Lost the race against close(): never leave a channel open on a closing link.
+                runCatching { sibling.close() }
+                throw TransportException("connection closed")
+            }
+            return sibling
+        }
+
         override suspend fun close() {
+            closed = true
             try {
                 inner.close()
             } finally {
+                siblings.forEach { runCatching { it.close() } }
                 link.close()
             }
         }

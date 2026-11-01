@@ -194,6 +194,20 @@ data class ExecResult(
     val signal: String? = null,
 )
 
+/** `terminal.put` result: where the file landed (next to the terminal, on its machine). */
+@Serializable
+data class PutResult(
+    val path: String = "",
+    val bytes: Long = 0,
+)
+
+/** `file.write` result. */
+@Serializable
+data class FileResult(
+    val path: String = "",
+    val bytes: Long = 0,
+)
+
 @Serializable
 data class RemovedResult(
     val removed: String = "",

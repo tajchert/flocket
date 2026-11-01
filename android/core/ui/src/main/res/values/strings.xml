@@ -53,6 +53,10 @@
     <string name="error_outcome_unknown_message">The connection dropped during “%1$s”. It may or may not have happened. Check the current state before trying again.</string>
     <string name="error_unsupported_title">Not supported by this host</string>
     <string name="error_unsupported_message">This version of herdr-core doesn’t offer “%1$s”. Update hc on the host.</string>
+    <string name="error_file_missing_title">That file no longer exists</string>
+    <string name="error_file_missing_message">It may have been moved or deleted on the host.</string>
+    <string name="error_file_too_large_title">File too large</string>
+    <string name="error_file_too_large_message">Files over 8 MB can’t be transferred yet.</string>
     <string name="error_storage_title">Couldn’t save</string>
     <string name="error_storage_message">Flocket couldn’t read or write its data on this device.</string>
     <string name="error_secure_storage_title">Secure storage unavailable</string>

@@ -8,6 +8,7 @@ import com.mtajchert.flocket.core.model.CoreInfo
 import com.mtajchert.flocket.core.model.DesktopLayout
 import com.mtajchert.flocket.core.model.LayoutRef
 import com.mtajchert.flocket.core.model.MachineInfo
+import com.mtajchert.flocket.core.model.PutReceipt
 import com.mtajchert.flocket.core.model.TerminalAddress
 import com.mtajchert.flocket.core.model.TerminalRecord
 import com.mtajchert.flocket.core.model.TerminalTemplate
@@ -121,6 +122,41 @@ interface CoreSession {
         address: TerminalAddress,
         request: AttachRequest,
     ): AppResult<TerminalStream>
+
+    // ---- file transfers -------------------------------------------------------------------------
+    // Uploads and downloads run on a separate, short-lived transfer connection, so a large file never
+    // blocks terminal output or other calls. Bytes over `MAX_TRANSFER_BYTES` fail with
+    // `InvalidInput("file", "larger than 8 MB")` before any call. Writes need Online (not stale).
+
+    /** Upload next to [address]'s terminal (`terminal.put`, full address). At most once. */
+    suspend fun putFile(
+        address: TerminalAddress,
+        name: String,
+        bytes: ByteArray,
+    ): AppResult<PutReceipt>
+
+    /** Write [path] on [machine] (null = this core) with `file.write`. Overwrites. At most once. */
+    suspend fun writeFile(
+        machine: String?,
+        path: String,
+        bytes: ByteArray,
+    ): AppResult<Unit>
+
+    /**
+     * Download [path] from [machine]: size check (`wc -c`), then `cat`, on the transfer connection.
+     * `FileMissing` when it does not exist, `FileTooLarge` over `MAX_TRANSFER_BYTES`. Retried once.
+     */
+    suspend fun readFile(
+        machine: String?,
+        path: String,
+    ): AppResult<ByteArray>
+
+    /** Run [argv] on [machine] (`machine.exec`); [mutating] selects at-most-once vs retry-once. */
+    suspend fun exec(
+        machine: String?,
+        argv: List<String>,
+        mutating: Boolean,
+    ): AppResult<ExecOutcome>
 }
 
 /** Snapshot of everything the app knows about one endpoint. */
@@ -179,6 +215,23 @@ data class SendReceipt(
     val turn: Long,
     val started: Boolean?,
 )
+
+/** `machine.exec` result: [code] null when killed by a signal; [stdout] raw bytes (at most 8 MB, see [truncated]). */
+data class ExecOutcome(
+    val code: Int?,
+    val stdout: ByteArray,
+    val stderr: String,
+    val truncated: Boolean,
+) {
+    override fun equals(other: Any?): Boolean =
+        other is ExecOutcome &&
+            code == other.code &&
+            stdout.contentEquals(other.stdout) &&
+            stderr == other.stderr &&
+            truncated == other.truncated
+
+    override fun hashCode(): Int = ((code ?: 0) * 31 + stdout.contentHashCode()) * 31 + stderr.hashCode()
+}
 
 enum class InterruptOutcome { Stopped, Exited, StillWorking, Unknown }
 

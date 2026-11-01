@@ -35,6 +35,8 @@ data class SessionConfig(
     val readRetryWait: Duration = 15.seconds,
     /** How long `stop()` waits for CLOSE frames to be written before closing the link anyway. */
     val detachGrace: Duration = 2.seconds,
+    /** The transfer connection closes after this long without an upload or download. */
+    val transferIdleTimeout: Duration = 30.seconds,
 )
 
 /** Jittered exponential backoff for the [failures]-th consecutive failure (1-based). */

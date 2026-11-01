@@ -28,6 +28,8 @@ data class CoreInfo(
         const val MACHINE_EXEC = "machine.exec"
         const val DOC_GET = "doc.get"
         const val DOC_SET = "doc.set"
+        const val TERMINAL_PUT = "terminal.put"
+        const val FILE_WRITE = "file.write"
     }
 }
 

@@ -3,8 +3,10 @@ package com.mtajchert.flocket.core.protocol
 import com.mtajchert.flocket.core.protocol.dto.DocGetResult
 import com.mtajchert.flocket.core.protocol.dto.DocSetResult
 import com.mtajchert.flocket.core.protocol.dto.ExecResult
+import com.mtajchert.flocket.core.protocol.dto.FileResult
 import com.mtajchert.flocket.core.protocol.dto.InterruptResult
 import com.mtajchert.flocket.core.protocol.dto.MachineViewDto
+import com.mtajchert.flocket.core.protocol.dto.PutResult
 import com.mtajchert.flocket.core.protocol.dto.ReadResult
 import com.mtajchert.flocket.core.protocol.dto.RemovedResult
 import com.mtajchert.flocket.core.protocol.dto.RunResult
@@ -24,7 +26,9 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.put
+import java.util.Base64
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
 /** Suggested timeouts (SPEC §11). Mutating calls are never auto-retried regardless. */
@@ -35,6 +39,9 @@ object CallTimeouts {
 
     /** `terminal.send`/`keys` wait for ~3 s of typing quiet; be generous. */
     val SEND: Duration = 60.seconds
+
+    /** Uploads and downloads of [bytes] raw bytes: 30 s plus 1 s per 100 KiB (8 MiB ≈ 112 s). */
+    fun transfer(bytes: Long): Duration = 30.seconds + (bytes.coerceAtLeast(0) * 1000 / (100 * 1024)).milliseconds
 }
 
 // Typed helpers over the generic [CoreConnection.call]. Each throws what `call` throws.
@@ -247,3 +254,37 @@ suspend fun CoreConnection.docSet(
         },
         timeout,
     ).decode(DocSetResult.serializer())
+
+/** Upload [data] next to [terminal] (`terminal.put`; federated addresses work). A mutation: never retried. */
+suspend fun CoreConnection.terminalPut(
+    terminal: String,
+    name: String,
+    data: ByteArray,
+    timeout: Duration,
+): PutResult =
+    call(
+        "terminal.put",
+        obj {
+            put("terminal", terminal)
+            put("name", name)
+            put("data", Base64.getEncoder().encodeToString(data))
+        },
+        timeout,
+    ).decode(PutResult.serializer())
+
+/** Write [data] to [path] on the core or on machine [on] (`file.write`, atomic, overwrites). Never retried. */
+suspend fun CoreConnection.fileWrite(
+    path: String,
+    data: ByteArray,
+    on: String?,
+    timeout: Duration,
+): FileResult =
+    call(
+        "file.write",
+        obj {
+            put("path", path)
+            put("data", Base64.getEncoder().encodeToString(data))
+            on?.let { put("on", it) }
+        },
+        timeout,
+    ).decode(FileResult.serializer())

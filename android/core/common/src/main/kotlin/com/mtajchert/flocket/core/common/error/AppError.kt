@@ -108,6 +108,18 @@ sealed interface AppError {
         val capability: String,
     ) : AppError
 
+    // ---- Files ----------------------------------------------------------------------------------
+
+    /** The file to download does not exist (or cannot be read) on the host. */
+    data class FileMissing(
+        val path: String,
+    ) : AppError
+
+    /** The file is over the transfer limit ([limitBytes], raw bytes); nothing was transferred. */
+    data class FileTooLarge(
+        val limitBytes: Long,
+    ) : AppError
+
     // ---- Device -------------------------------------------------------------------------------
 
     /** Local persistence failed (database, DataStore, file). */

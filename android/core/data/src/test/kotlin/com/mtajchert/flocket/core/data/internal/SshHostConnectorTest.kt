@@ -7,6 +7,8 @@ import com.mtajchert.flocket.core.model.DeviceKey
 import com.mtajchert.flocket.core.model.HostAuth
 import com.mtajchert.flocket.core.model.PinnedHostKey
 import com.mtajchert.flocket.core.protocol.transport.ByteTransport
+import com.mtajchert.flocket.core.protocol.transport.SiblingTransportSource
+import com.mtajchert.flocket.core.protocol.transport.TransportException
 import com.mtajchert.flocket.core.security.KeyVault
 import com.mtajchert.flocket.core.ssh.CommandResult
 import com.mtajchert.flocket.core.ssh.HostKeyDecision
@@ -17,7 +19,10 @@ import com.mtajchert.flocket.core.testing.FakeHostRepository
 import com.mtajchert.flocket.core.testing.FakeHostTrustRepository
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Test
 
 class SshHostConnectorTest {
@@ -26,7 +31,10 @@ class SshHostConnectorTest {
     ) : SshLink {
         var closed = false
         val commands = mutableListOf<List<String>>()
-        val transport = T()
+
+        /** One transport per exec, in order; the first is the main `hc connect`. */
+        val execs = mutableListOf<T>()
+        val transport: T get() = execs.first()
 
         class T : ByteTransport {
             var closedT = false
@@ -48,7 +56,7 @@ class SshHostConnectorTest {
 
         override suspend fun exec(command: List<String>): ByteTransport {
             commands += command
-            return transport
+            return T().also { execs += it }
         }
 
         override suspend fun run(command: List<String>) =
@@ -212,5 +220,51 @@ class SshHostConnectorTest {
             // forgotten: asks again
             assertTrue((connector.open(h.id) as AppResult.Failure).error is AppError.AuthFailed)
             assertEquals(h.hostname, target?.hostname)
+        }
+
+    private suspend fun openTrusted(): ByteTransport {
+        val h = addHost(session = "work")
+        pin("SHA256:seen")
+        return (connector.open(h.id) as AppResult.Success).value
+    }
+
+    @Test
+    fun `a sibling runs the same hc connect on the same SSH link`() =
+        runBlocking {
+            val main = openTrusted()
+            assertTrue(main is SiblingTransportSource)
+            val sibling = (main as SiblingTransportSource).openSibling()
+            assertEquals(2, link.execs.size)
+            assertEquals(link.commands[0], link.commands[1])
+            assertEquals(listOf("/opt/bin/hc", "connect", "--session", "work"), link.commands[1])
+            assertNotSame(main, sibling)
+        }
+
+    @Test
+    fun `closing a sibling never closes the link or the main channel`() =
+        runBlocking {
+            val main = openTrusted() as SiblingTransportSource
+            main.openSibling().close()
+            assertTrue(link.execs[1].closedT)
+            assertFalse(link.execs[0].closedT)
+            assertFalse(link.closed)
+        }
+
+    @Test
+    fun `closing the main transport closes every sibling and the link`() =
+        runBlocking {
+            val main = openTrusted()
+            val source = main as SiblingTransportSource
+            source.openSibling()
+            source.openSibling()
+            main.close()
+            assertTrue(link.execs.all { it.closedT })
+            assertTrue(link.closed)
+            try {
+                source.openSibling()
+                fail("a closed transport must not open siblings")
+            } catch (e: TransportException) {
+                assertEquals(3, link.execs.size)
+            }
         }
 }
