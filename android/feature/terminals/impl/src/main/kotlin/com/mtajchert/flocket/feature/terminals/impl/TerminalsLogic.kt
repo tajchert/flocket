@@ -296,6 +296,15 @@ private fun WorkspaceSpace.autoName(): String = folderName(folder).orEmpty()
 
 private fun String.endsWithSegment(name: String): Boolean = trimEnd('/').substringAfterLast('/') == name
 
+/**
+ * The list as the screen shows [overview] with no filter, without a ViewModel. For screenshot tests in modules that
+ * cannot see [buildUiState] (`:app` renders the whole multi-pane layout).
+ */
+fun previewTerminalsUiState(
+    overview: List<HostOverview>,
+    sort: TerminalSort = TerminalSort.Priority,
+): TerminalsUiState = buildUiState(overview, ListControls(sort = sort), refreshing = false)
+
 /** Groups by host, then by federated machine (own terminals first), filtering and sorting each section. */
 internal fun buildUiState(
     overview: List<HostOverview>,

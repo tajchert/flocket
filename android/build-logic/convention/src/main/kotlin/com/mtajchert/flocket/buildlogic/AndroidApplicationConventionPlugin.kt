@@ -46,7 +46,7 @@ class AndroidApplicationConventionPlugin : Plugin<Project> {
                 }
                 buildFeatures.buildConfig = true
                 packaging.resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
-                configureCompose(this, screenshot = false)
+                configureCompose(this, screenshot = true)
             }
             addUnitTestDependencies()
             addDependency("testImplementation", lib("hilt-android-testing"))
