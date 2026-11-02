@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.GppMaybe
@@ -23,9 +24,11 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.DialogProperties
+import com.mtajchert.flocket.core.designsystem.theme.FlocketMono
 import com.mtajchert.flocket.core.ui.R
 
 /** `SHA256:abc…` -> `SHA256:` followed by groups of four characters, for reading aloud and comparing. */
@@ -46,16 +49,15 @@ private fun LabelledMono(
     Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Surface(
-            shape = MaterialTheme.shapes.small,
+            shape = RoundedCornerShape(14.dp),
             color =
-                if (emphasise) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.surfaceContainerHighest,
+                if (emphasise) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.surfaceContainerLow,
             contentColor = if (emphasise) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSurface,
         ) {
             Text(
                 value,
-                style = MaterialTheme.typography.bodyMedium,
-                fontFamily = FontFamily.Monospace,
-                modifier = Modifier.padding(12.dp),
+                style = FlocketMono.body.copy(fontWeight = FontWeight.Medium, lineHeight = 20.sp),
+                modifier = Modifier.padding(14.dp),
             )
         }
     }

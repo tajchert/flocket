@@ -16,6 +16,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -34,6 +35,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import com.mtajchert.flocket.core.designsystem.theme.FlocketMono
 import com.mtajchert.flocket.core.model.DeviceKey
 import com.mtajchert.flocket.core.ui.R
 
@@ -71,6 +73,7 @@ fun HostForm(
                     keyboardType = KeyboardType.Uri,
                     imeAction = ImeAction.Next,
                 ),
+            mono = true,
             onValueChange = { onChange(state.copy(hostname = it)) },
         )
         FormField(
@@ -83,6 +86,7 @@ fun HostForm(
                     capitalization = KeyboardCapitalization.None,
                     imeAction = ImeAction.Next,
                 ),
+            mono = true,
             onValueChange = { onChange(state.copy(username = it)) },
         )
 
@@ -137,6 +141,7 @@ fun HostForm(
                     label = stringResource(R.string.form_port),
                     error = errors[HostFormField.Port],
                     keyboard = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Next),
+                    mono = true,
                     onValueChange = { onChange(state.copy(port = it.filter(Char::isDigit))) },
                 )
                 FormField(
@@ -150,6 +155,7 @@ fun HostForm(
                             keyboardType = KeyboardType.Uri,
                             imeAction = ImeAction.Next,
                         ),
+                    mono = true,
                     onValueChange = { onChange(state.copy(hcPath = it)) },
                 )
                 FormField(
@@ -163,6 +169,7 @@ fun HostForm(
                             capitalization = KeyboardCapitalization.None,
                             imeAction = ImeAction.Done,
                         ),
+                    mono = true,
                     onValueChange = { onChange(state.copy(session = it)) },
                 )
             }
@@ -178,6 +185,7 @@ private fun FormField(
     keyboard: KeyboardOptions,
     onValueChange: (String) -> Unit,
     placeholder: String? = null,
+    mono: Boolean = false,
 ) {
     OutlinedTextField(
         value = value,
@@ -187,6 +195,7 @@ private fun FormField(
         isError = error != null,
         supportingText = error?.let { { Text(stringResource(it.message)) } },
         singleLine = true,
+        textStyle = if (mono) FlocketMono.body else LocalTextStyle.current,
         keyboardOptions = keyboard,
         modifier = Modifier.fillMaxWidth(),
     )
