@@ -106,11 +106,11 @@ class TerminalsViewModelTest {
     private fun grouped() = FakePreferencesRepository(UserPreferences(terminalSort = TerminalSort.Grouped))
 
     @Test
-    fun `sort defaults to inbox and follows the stored preference`() =
+    fun `sort defaults to Priority and follows the stored preference`() =
         runTest {
             val prefs = FakePreferencesRepository()
             val vm = vm(prefs = prefs)
-            assertEquals(TerminalSort.Inbox, vm.uiState.value.sort)
+            assertEquals(TerminalSort.Priority, vm.uiState.value.sort)
             // priority sections: needs you, done, working, idle, no status
             assertEquals(listOf("t2", "t3", "t1", "t4", "t5"), vm.uiState.value.addresses(studio))
             prefs.update { it.copy(terminalSort = TerminalSort.Grouped) }

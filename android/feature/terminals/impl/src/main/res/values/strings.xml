@@ -11,7 +11,6 @@
     <string name="menu_options_filtered">List options, filter on</string>
     <string name="menu_options">List options</string>
     <string name="menu_sort_title">Sort</string>
-    <string name="menu_sort_inbox">Inbox (by status)</string>
     <string name="menu_filter_title">Show</string>
     <plurals name="summary_working">
         <item quantity="one">%d working</item>
@@ -21,13 +20,9 @@
         <item quantity="one">%1$d of %2$d host online</item>
         <item quantity="other">%1$d of %2$d hosts online</item>
     </plurals>
-    <string name="menu_sort_priority">Priority</string>
+    <string name="menu_sort_priority">Priority (by status)</string>
     <string name="menu_sort_grouped">Grouped by space</string>
-    <string name="priority_needs_you">Needs you</string>
-    <string name="priority_done">Done</string>
-    <string name="priority_working">Working</string>
-    <string name="priority_idle">Idle</string>
-    <string name="priority_no_status">No status</string>
+    <string name="priority_other_terminals">Other terminals</string>
 
     <!-- Headers -->
     <plurals name="host_terminal_count">

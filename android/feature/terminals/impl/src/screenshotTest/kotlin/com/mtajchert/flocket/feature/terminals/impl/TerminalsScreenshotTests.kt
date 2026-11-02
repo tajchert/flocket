@@ -222,20 +222,6 @@ private fun TerminalsDenseDesktopLayoutScreenshot() =
     }
 
 @PreviewTest
-@PreviewPhone
-@PreviewPhoneDark
-@Composable
-private fun TerminalsPriorityScreenshot() =
-    Shot {
-        TerminalsScreen(
-            stateFor(desktopWorkspace, ListControls()),
-            TerminalsActions(),
-            selected = TerminalRoute("studio", "t1"),
-            nowMs = NOW,
-        )
-    }
-
-@PreviewTest
 @PreviewSidebar
 @Composable
 private fun TerminalsDenseFilteredScreenshot() =
@@ -336,20 +322,20 @@ private fun NewTerminalErrorsScreenshot() =
         )
     }
 
-private val inbox = buildUiState(SampleData.overview, ListControls(sort = TerminalSort.Inbox), refreshing = false)
+private val priority = buildUiState(SampleData.overview, ListControls(sort = TerminalSort.Priority), refreshing = false)
 
 @PreviewTest
 @PreviewFormFactors
 @PreviewLargeFont
 @PreviewPhoneDark
 @Composable
-private fun TerminalsInboxScreenshot() = Shot { TerminalsScreen(inbox, TerminalsActions(), nowMs = NOW) }
+private fun TerminalsPriorityScreenshot() = Shot { TerminalsScreen(priority, TerminalsActions(), nowMs = NOW) }
 
 @PreviewTest
 @PreviewSidebar
 @PreviewSidebarDark
 @Composable
-private fun TerminalsDenseInboxScreenshot() =
+private fun TerminalsDensePriorityScreenshot() =
     Shot {
-        Dense { TerminalsScreen(inbox, TerminalsActions(), selected = TerminalRoute("studio", "t1"), nowMs = NOW) }
+        Dense { TerminalsScreen(priority, TerminalsActions(), selected = TerminalRoute("studio", "t1"), nowMs = NOW) }
     }
