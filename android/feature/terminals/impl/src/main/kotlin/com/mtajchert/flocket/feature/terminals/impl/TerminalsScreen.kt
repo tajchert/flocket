@@ -145,9 +145,30 @@ fun TerminalsScreen(
         modifier = modifier,
         topBar = {
             TopAppBar(
-                navigationIcon = {
-                    // Beside an open terminal the list can step aside (focus mode); the terminal's top bar
-                    // brings it back from the same spot.
+                title = {
+                    Text(
+                        stringResource(R.string.terminals_title),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                },
+                // Beside a terminal both top bars share one container so the status bar strip is uniform.
+                // As a pane card (the status bar sits above the cards) the bar is the card itself. Compact height
+                // is the only visible list without cards; checking it, not paneCards, keeps the bar's colour while
+                // the list slides away into focus mode.
+                colors =
+                    if (dense && paneLayout.compactHeight) {
+                        TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
+                    } else {
+                        TopAppBarDefaults.topAppBarColors()
+                    },
+                actions = {
+                    if (dense && showAdd) {
+                        IconButton(onClick = actions.onNewTerminal) {
+                            Icon(Icons.Outlined.Add, contentDescription = stringResource(R.string.new_terminal))
+                        }
+                    }
+                    // Beside an open terminal the list can step aside (focus mode), from just before the menu.
                     if (dense && selected != null) {
                         IconButton(
                             onClick = { sidebar.setSidebarVisible(false) },
@@ -157,28 +178,6 @@ fun TerminalsScreen(
                                 Icons.AutoMirrored.Outlined.MenuOpen,
                                 contentDescription = stringResource(R.string.terminals_collapse),
                             )
-                        }
-                    }
-                },
-                title = {
-                    Text(
-                        stringResource(R.string.terminals_title),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                },
-                // Beside a terminal both top bars share one container so the status bar strip is uniform.
-                // As a pane card (the status bar sits above the cards) the bar is the card itself.
-                colors =
-                    if (dense && !paneLayout.paneCards) {
-                        TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
-                    } else {
-                        TopAppBarDefaults.topAppBarColors()
-                    },
-                actions = {
-                    if (dense && showAdd) {
-                        IconButton(onClick = actions.onNewTerminal) {
-                            Icon(Icons.Outlined.Add, contentDescription = stringResource(R.string.new_terminal))
                         }
                     }
                     if (state.emptyKind != EmptyKind.NoHosts) OptionsMenu(state, actions, showFilters = inbox || dense)

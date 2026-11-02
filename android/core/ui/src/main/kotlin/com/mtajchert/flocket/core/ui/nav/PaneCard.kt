@@ -1,5 +1,6 @@
 package com.mtajchert.flocket.core.ui.nav
 
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
@@ -16,6 +17,7 @@ import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -77,23 +79,49 @@ fun PaneCard(
 ) {
     val scheme = MaterialTheme.colorScheme
     val list = role == PaneRole.List
+    val outerEnd = position != PanePosition.Leading
+    // Margins and corners ease in and out (focus mode, a pane joining or leaving the row) instead of snapping.
+    val margin by animateDpAsState(if (enabled) PaneMargin else 0.dp, label = "paneMargin")
+    val endMargin by animateDpAsState(if (enabled && outerEnd) PaneMargin else 0.dp, label = "paneEndMargin")
+    val startCorner by animateDpAsState(
+        if (enabled && position != PanePosition.Trailing) PaneCorner else 0.dp,
+        label = "paneStartCorner",
+    )
+    val endCorner by animateDpAsState(
+        if (enabled && position != PanePosition.Leading) PaneCorner else 0.dp,
+        label = "paneEndCorner",
+    )
+    val drawn = enabled || margin > 0.dp
     val cardModifier =
-        if (enabled) {
-            val outerEnd = position != PanePosition.Leading
-            val sides = if (outerEnd) WindowInsetsSides.Vertical + WindowInsetsSides.End else WindowInsetsSides.Vertical
+        if (drawn) {
             val color = if (list) scheme.surfaceContainerLow else containerColor
+            // Once disabled the screen inside pads for the system bars itself; the card only eases its margins out.
+            val insets =
+                if (enabled) {
+                    val sides =
+                        if (outerEnd) WindowInsetsSides.Vertical + WindowInsetsSides.End else WindowInsetsSides.Vertical
+                    Modifier.windowInsetsPadding(WindowInsets.systemBars.union(WindowInsets.displayCutout).only(sides))
+                } else {
+                    Modifier
+                }
             Modifier
                 .fillMaxSize()
-                .windowInsetsPadding(WindowInsets.systemBars.union(WindowInsets.displayCutout).only(sides))
-                .padding(top = PaneMargin, bottom = PaneMargin, end = if (outerEnd) PaneMargin else 0.dp)
-                .clip(position.shape())
-                .then(if (color.isSpecified) Modifier.background(color) else Modifier)
+                .then(insets)
+                .padding(top = margin, bottom = margin, end = endMargin)
+                .clip(
+                    RoundedCornerShape(
+                        topStart = startCorner,
+                        bottomStart = startCorner,
+                        topEnd = endCorner,
+                        bottomEnd = endCorner,
+                    ),
+                ).then(if (color.isSpecified) Modifier.background(color) else Modifier)
         } else {
             Modifier
         }
     // The same tree whether or not the card shows, so switching keeps the content's state.
     Box(modifier.then(cardModifier)) {
-        MaterialTheme(colorScheme = if (enabled && list) scheme.listPaneColors() else scheme, content = content)
+        MaterialTheme(colorScheme = if (drawn && list) scheme.listPaneColors() else scheme, content = content)
     }
 }
 
@@ -130,13 +158,6 @@ fun ColorScheme.listPaneColors(): ColorScheme =
         surfaceContainer = surfaceContainerHigh,
         surfaceContainerHigh = surfaceContainerHighest,
     )
-
-private fun PanePosition.shape(): RoundedCornerShape =
-    when (this) {
-        PanePosition.Leading -> RoundedCornerShape(topStart = PaneCorner, bottomStart = PaneCorner)
-        PanePosition.Trailing -> RoundedCornerShape(topEnd = PaneCorner, bottomEnd = PaneCorner)
-        PanePosition.Alone -> RoundedCornerShape(PaneCorner)
-    }
 
 private val PaneMargin = 8.dp
 private val PaneCorner = 24.dp

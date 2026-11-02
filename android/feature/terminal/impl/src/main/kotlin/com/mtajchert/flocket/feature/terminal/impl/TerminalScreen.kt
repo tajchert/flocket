@@ -308,7 +308,7 @@ private fun TerminalTopBar(
             navigationIcon = {
                 if (layout.multiPane) {
                     // The list sits beside the terminal: no back arrow. The list hides itself from its own
-                    // header; once hidden (focus mode), this button brings it back in the same spot.
+                    // header; once hidden (focus mode), this button brings it back.
                     if (!layout.sidebarVisible) {
                         IconButton(
                             onClick = { sidebar.setSidebarVisible(true) },
