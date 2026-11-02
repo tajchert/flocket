@@ -24,7 +24,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi
 import androidx.compose.material3.adaptive.WindowAdaptiveInfo
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfoV2
-import androidx.compose.material3.adaptive.layout.calculatePaneScaffoldDirective
+import androidx.compose.material3.adaptive.layout.PaneScaffoldDirective
+import androidx.compose.material3.adaptive.layout.calculatePaneScaffoldDirectiveWithTwoPanesOnMediumWidth
 import androidx.compose.material3.adaptive.navigation3.rememberListDetailSceneStrategy
 import androidx.compose.material3.adaptive.navigationsuite.NavigationSuite
 import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffold
@@ -87,19 +88,10 @@ fun FlocketNavHost(
 ) {
     val navigator = remember(backStack) { BackStackNavigator(backStack) }
 
-    // The spacer override removes the gap between panes (b/418201867); drop it once fixed upstream.
-    // Sidebar width (Ruling 8): 300dp on expanded windows, 280dp on other multi-pane ones; the detail gets the rest.
     val adaptiveInfo = currentWindowAdaptiveInfoV2()
-    val windowSizeClass = adaptiveInfo.windowSizeClass
-    val expandedWidth = windowSizeClass.isWidthAtLeastBreakpoint(WindowSizeClass.WIDTH_DP_EXPANDED_LOWER_BOUND)
-    val compactHeight = !windowSizeClass.isHeightAtLeastBreakpoint(WindowSizeClass.HEIGHT_DP_MEDIUM_LOWER_BOUND)
-    val baseDirective =
-        remember(adaptiveInfo) {
-            calculatePaneScaffoldDirective(adaptiveInfo).copy(
-                horizontalPartitionSpacerSize = 0.dp,
-                defaultPanePreferredWidth = if (expandedWidth) SidebarWidthExpanded else SidebarWidth,
-            )
-        }
+    val compactHeight =
+        !adaptiveInfo.windowSizeClass.isHeightAtLeastBreakpoint(WindowSizeClass.HEIGHT_DP_MEDIUM_LOWER_BOUND)
+    val baseDirective = remember(adaptiveInfo) { paneScaffoldDirective(adaptiveInfo) }
     // Measured BEFORE focus mode narrows the directive: it says what the window can do, not what is shown.
     val multiPane = baseDirective.maxHorizontalPartitions > 1
 
@@ -238,6 +230,23 @@ private fun navigationSuiteInsets(layoutType: NavigationSuiteType): WindowInsets
         NavigationSuiteType.NavigationDrawer -> DrawerDefaults.windowInsets.only(WindowInsetsSides.Start)
         else -> WindowInsets(0)
     }
+
+/**
+ * How many panes the window gets and how wide the list is. Medium widths (unfolded foldables, small
+ * tablets) get two panes, as the default directive only splits expanded windows.
+ *
+ * The spacer override removes the gap between panes (b/418201867); drop it once fixed upstream.
+ * Sidebar width (Ruling 8): 300dp on expanded windows, 280dp on other multi-pane ones; the detail gets the rest.
+ */
+@OptIn(ExperimentalMaterial3AdaptiveApi::class)
+internal fun paneScaffoldDirective(adaptiveInfo: WindowAdaptiveInfo): PaneScaffoldDirective {
+    val expandedWidth =
+        adaptiveInfo.windowSizeClass.isWidthAtLeastBreakpoint(WindowSizeClass.WIDTH_DP_EXPANDED_LOWER_BOUND)
+    return calculatePaneScaffoldDirectiveWithTwoPanesOnMediumWidth(adaptiveInfo).copy(
+        horizontalPartitionSpacerSize = 0.dp,
+        defaultPanePreferredWidth = if (expandedWidth) SidebarWidthExpanded else SidebarWidth,
+    )
+}
 
 /**
  * The default picks a bottom bar for compact-height windows, which on a landscape phone eats a quarter
