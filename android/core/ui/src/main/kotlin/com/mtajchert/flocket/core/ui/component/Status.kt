@@ -2,22 +2,17 @@ package com.mtajchert.flocket.core.ui.component
 
 import android.text.format.DateUtils
 import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.HelpOutline
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.outlined.Block
-import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.CloudOff
-import androidx.compose.material.icons.outlined.ErrorOutline
-import androidx.compose.material.icons.outlined.PauseCircle
-import androidx.compose.material.icons.outlined.PlayCircle
-import androidx.compose.material.icons.outlined.Sync
-import androidx.compose.material.icons.outlined.WarningAmber
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -33,13 +28,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.clearAndSetSemantics
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.mtajchert.flocket.core.model.AgentState
+import com.mtajchert.flocket.core.designsystem.theme.FlocketCorners
+import com.mtajchert.flocket.core.designsystem.theme.flocketColors
 import com.mtajchert.flocket.core.model.AgentStatus
-import com.mtajchert.flocket.core.model.BlockKind
 import com.mtajchert.flocket.core.model.ConnectionState
 import com.mtajchert.flocket.core.ui.R
 import kotlinx.coroutines.delay
@@ -57,46 +50,64 @@ fun rememberNowMs(intervalMs: Long = 1_000L): Long {
     return now
 }
 
-/** A small pill: icon + text. Meaning is never carried by color alone. */
+/** Agent status pill: 24dp tall (grows with font scale), 6dp radius, 14dp icon, 11sp semibold label. */
 @Composable
 private fun StatusPill(
     text: String,
+    icon: ImageVector,
     container: Color,
     content: Color,
     modifier: Modifier = Modifier,
-    border: Boolean = false,
-    leading: @Composable () -> Unit,
+    outlined: Boolean = false,
 ) {
     Surface(
         modifier = modifier.animateContentSize(),
-        shape = MaterialTheme.shapes.small,
+        shape = FlocketCorners.StatusPill,
         color = container,
         contentColor = content,
-        border =
-            if (border) {
-                androidx.compose.foundation.BorderStroke(
-                    1.dp,
-                    MaterialTheme.colorScheme.outlineVariant,
-                )
-            } else {
-                null
-            },
+        border = if (outlined) BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant) else null,
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+            modifier = Modifier.heightIn(min = 24.dp).padding(horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            leading()
-            Text(text = text, style = MaterialTheme.typography.labelMedium)
+            Icon(icon, contentDescription = null, modifier = Modifier.size(14.dp))
+            Text(text = text, style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold))
         }
     }
 }
 
+/** Host status pill: 24dp tall, 12dp radius, a 7dp dot and the word. */
 @Composable
-private fun PillIcon(icon: ImageVector) = Icon(icon, contentDescription = null, modifier = Modifier.size(16.dp))
+private fun HostPill(
+    text: String,
+    container: Color,
+    content: Color,
+    dot: Color,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier.animateContentSize(),
+        shape = FlocketCorners.HostPill,
+        color = container,
+        contentColor = content,
+    ) {
+        Row(
+            modifier = Modifier.heightIn(min = 24.dp).padding(horizontal = 9.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(5.dp),
+        ) {
+            Box(Modifier.size(7.dp).background(dot, CircleShape))
+            Text(text = text, style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold))
+        }
+    }
+}
 
-/** Connection state of a host: Idle, Connecting, Online, Reconnecting (with countdown), NeedsAttention. */
+/**
+ * Connection state of a host as the design's host pill: Online (green), Needs attention (amber),
+ * Idle, Connecting and Reconnecting (neutral, with the countdown).
+ */
 @Composable
 fun ConnectionStateBadge(
     state: ConnectionState,
@@ -104,162 +115,74 @@ fun ConnectionStateBadge(
     nowMs: Long = rememberNowMs(),
 ) {
     val scheme = MaterialTheme.colorScheme
+    val fixed = MaterialTheme.flocketColors
+    val neutral = scheme.surfaceContainerHigh
     when (state) {
         ConnectionState.Idle -> {
-            StatusPill(
+            HostPill(
                 stringResource(R.string.connection_idle),
-                scheme.surfaceContainerHighest,
+                neutral,
                 scheme.onSurfaceVariant,
+                scheme.outline,
                 modifier,
-            ) {
-                PillIcon(Icons.Outlined.PauseCircle)
-            }
+            )
         }
 
         is ConnectionState.Connecting -> {
-            StatusPill(
+            HostPill(
                 stringResource(R.string.connection_connecting),
-                scheme.secondaryContainer,
-                scheme.onSecondaryContainer,
+                neutral,
+                scheme.onSurfaceVariant,
+                scheme.primary,
                 modifier,
-            ) {
-                CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
-            }
+            )
         }
 
         is ConnectionState.Online -> {
-            StatusPill(
+            HostPill(
                 stringResource(R.string.connection_online),
-                scheme.primaryContainer,
-                scheme.onPrimaryContainer,
+                fixed.doneContainer,
+                fixed.onDoneContainer,
+                fixed.done,
                 modifier,
-            ) {
-                PillIcon(Icons.Filled.CheckCircle)
-            }
+            )
         }
 
         is ConnectionState.Reconnecting -> {
-            val seconds = ((state.nextAttemptAtMs - nowMs) / 1000).coerceAtLeast(0).toInt()
+            val seconds = ((state.nextAttemptAtMs - nowMs) / 1_000L).coerceAtLeast(0L).toInt()
             val text =
                 if (seconds > 0) {
                     stringResource(R.string.connection_reconnecting_in, seconds)
                 } else {
                     stringResource(R.string.connection_reconnecting)
                 }
-            StatusPill(
-                text,
-                scheme.tertiaryContainer,
-                scheme.onTertiaryContainer,
-                modifier,
-            ) { PillIcon(Icons.Outlined.Sync) }
+            HostPill(text, neutral, scheme.onSurfaceVariant, fixed.attention, modifier)
         }
 
         is ConnectionState.NeedsAttention -> {
-            StatusPill(
+            HostPill(
                 stringResource(R.string.connection_needs_attention),
-                scheme.errorContainer,
-                scheme.onErrorContainer,
+                fixed.attentionContainer,
+                fixed.onAttentionContainer,
+                fixed.attention,
                 modifier,
-            ) {
-                PillIcon(Icons.Outlined.WarningAmber)
-            }
+            )
         }
     }
 }
 
 /**
- * Program-reported status. [AgentStatus.Unknown] is neutral "No status" and never reads as Idle;
- * blocked and error are emphasised with container colors AND distinct icons and wording.
+ * Program-reported status as the design pill (see [agentStatusStyle]). [AgentStatus.Unknown] is
+ * neutral "No status" and never reads as Idle; blocked and error use amber/red containers AND
+ * distinct icons and wording.
  */
 @Composable
 fun AgentStatusChip(
     status: AgentStatus,
     modifier: Modifier = Modifier,
 ) {
-    val scheme = MaterialTheme.colorScheme
-    when (status) {
-        AgentStatus.Unknown -> {
-            StatusPill(
-                stringResource(R.string.status_unknown),
-                Color.Transparent,
-                scheme.onSurfaceVariant,
-                modifier,
-                border = true,
-            ) {
-                PillIcon(Icons.AutoMirrored.Outlined.HelpOutline)
-            }
-        }
-
-        is AgentStatus.Reported -> {
-            val progress = status.progress
-            when (status.state) {
-                AgentState.Idle -> {
-                    StatusPill(
-                        stringResource(R.string.status_idle),
-                        scheme.surfaceContainerHighest,
-                        scheme.onSurfaceVariant,
-                        modifier,
-                    ) {
-                        PillIcon(Icons.Outlined.PauseCircle)
-                    }
-                }
-
-                AgentState.Working -> {
-                    val text =
-                        if (progress != null) {
-                            stringResource(R.string.status_working_progress, progress.coerceIn(0, 100))
-                        } else {
-                            stringResource(R.string.status_working)
-                        }
-                    StatusPill(text, scheme.secondaryContainer, scheme.onSecondaryContainer, modifier) {
-                        if (progress != null) {
-                            CircularProgressIndicator(
-                                progress = { progress.coerceIn(0, 100) / 100f },
-                                modifier = Modifier.size(14.dp),
-                                strokeWidth = 2.dp,
-                            )
-                        } else {
-                            CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
-                        }
-                    }
-                }
-
-                AgentState.Done -> {
-                    StatusPill(
-                        stringResource(R.string.status_done),
-                        scheme.primaryContainer,
-                        scheme.onPrimaryContainer,
-                        modifier,
-                    ) {
-                        PillIcon(Icons.Outlined.CheckCircle)
-                    }
-                }
-
-                AgentState.Blocked -> {
-                    val text =
-                        when (status.kind) {
-                            BlockKind.Permission -> stringResource(R.string.status_blocked_permission)
-                            BlockKind.Question -> stringResource(R.string.status_blocked_question)
-                            BlockKind.Auth -> stringResource(R.string.status_blocked_auth)
-                            else -> stringResource(R.string.status_blocked)
-                        }
-                    StatusPill(text, scheme.tertiary, scheme.onTertiary, modifier) { PillIcon(Icons.Outlined.Block) }
-                }
-
-                AgentState.Error -> {
-                    StatusPill(stringResource(R.string.status_error), scheme.error, scheme.onError, modifier) {
-                        PillIcon(Icons.Outlined.ErrorOutline)
-                    }
-                }
-
-                AgentState.Other -> {
-                    StatusPill(status.rawState, scheme.surfaceContainerHighest, scheme.onSurfaceVariant, modifier) {
-                        PillIcon(Icons.Outlined.PlayCircle)
-                    }
-                }
-            }
-        }
-    }
+    val style = agentStatusStyle(status)
+    StatusPill(style.label, style.icon, style.container, style.onContainer, modifier, style.outlined)
 }
 
 /** Shown above cached data from a host that is not live: the data is read-only until it reconnects. */

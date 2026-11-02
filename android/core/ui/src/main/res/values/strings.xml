@@ -83,6 +83,19 @@
     <string name="status_blocked_auth">Needs sign-in</string>
     <string name="status_error">Error</string>
 
+    <!-- Inbox groups and shared design components -->
+    <string name="group_needs_you">Needs you</string>
+    <string name="group_working">Working</string>
+    <string name="group_done">Done</string>
+    <string name="group_idle">Idle</string>
+    <string name="group_no_status">No status</string>
+    <string name="group_expanded">Expanded</string>
+    <string name="group_collapsed">Collapsed</string>
+    <plurals name="need_you_count">
+        <item quantity="one">%d needs you</item>
+        <item quantity="other">%d need you</item>
+    </plurals>
+
     <!-- Stale data -->
     <string name="stale_banner_never">Not connected yet. Nothing here is live.</string>
     <string name="stale_banner">Saved data from %1$s. Read-only until the host is back online.</string>

@@ -28,6 +28,7 @@ private val GenericTile = Color(0xFF1C1D21)
  * `null` or an unknown id draws the generic terminal tile. Icons come from LobeHub icons (MIT, see
  * `THIRD_PARTY_NOTICES.md`). [contentDescription] defaults to the agent name or "Terminal"; pass `null`
  * where a text label next to the icon already names the terminal, so TalkBack does not read it twice.
+ * [cornerRadius] defaults to a quarter of [size]; [AgentTile] uses the design's 28%.
  */
 @Composable
 fun AgentIcon(
@@ -35,6 +36,7 @@ fun AgentIcon(
     modifier: Modifier = Modifier,
     size: Dp = 28.dp,
     contentDescription: String? = agentIconDescription(agentId),
+    cornerRadius: Dp = size / 4,
 ) {
     val agent = remember(agentId) { AgentCatalog.agents.firstOrNull { it.id == agentId } }
     val res = agentIconRes(agent?.id)
@@ -42,7 +44,7 @@ fun AgentIcon(
     // Tinted icons are drawn in white and recoloured; the others keep their own colours.
     val filter = if (agent != null && agent.tint && res != null) ColorFilter.tint(Color(agent.colorArgb)) else null
     Box(
-        modifier = modifier.size(size).clip(RoundedCornerShape(size / 4)).background(tile),
+        modifier = modifier.size(size).clip(RoundedCornerShape(cornerRadius)).background(tile),
         contentAlignment = Alignment.Center,
     ) {
         Image(

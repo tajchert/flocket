@@ -2,7 +2,9 @@
 
 ## Principles
 
-- Generic Material 3 from `:core:designsystem` (`FlocketTheme`, dynamic color on, teal fallback). No custom widget kits.
+- Generic Material 3 from `:core:designsystem` (`FlocketTheme`, dynamic color on, design v2 teal fallback scheme). No custom widget kits.
+- Fixed semantic colors (attention/amber = blocked on you, red = error only, done/green, terminal preview, key caps) are not dynamic: read `MaterialTheme.flocketColors` (`FlocketColors`), never hard-code hex. Map an `AgentStatus` with `agentStatusStyle()` (`:core:ui`); shared pieces: `AgentTile`, `AgentStatusChip`, `NeedYouPill`, `CountBadge`, `GroupHeader`, `DotFilterChip`.
+- Mono UI text (previews, addresses, fingerprints, commands, key caps) uses `FlocketMonoFamily` / `FlocketMono.label|small|body` (JetBrains Mono, shared with the terminal); other text stays the system font. Corner radii: `FlocketCorners`.
 - Accessible by default: touch targets of at least 48dp, a `contentDescription` for every icon button (decorative icons use `null`), and no color-only meaning. Status always pairs color with an icon and a word (`AgentStatusChip`, `ConnectionStateBadge`). `Unknown` agent status is neutral "No status", never "Idle".
 - All user-visible text is in `res/values/strings.xml` of the owning module; use plurals for counts; layouts must survive RTL and font scale 1.5.
 - Dark theme must work: screenshot wrappers put content in a `Surface`.
