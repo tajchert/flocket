@@ -7,4 +7,6 @@
     <string name="terminal_handle_next_word">Move to next word</string>
     <string name="terminal_handle_previous_line">Move to previous line</string>
     <string name="terminal_handle_next_line">Move to next line</string>
+    <string name="terminal_keyboard_show">Show keyboard</string>
+    <string name="terminal_keyboard_hide">Hide keyboard</string>
 </resources>
