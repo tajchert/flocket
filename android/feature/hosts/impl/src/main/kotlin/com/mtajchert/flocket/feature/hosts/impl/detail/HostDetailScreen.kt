@@ -6,10 +6,12 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -17,6 +19,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.Key
@@ -173,7 +176,16 @@ fun HostDetailScreen(
                             onClick = callbacks.onRequestDelete,
                             modifier = Modifier.fillMaxWidth().height(44.dp),
                             border = BorderStroke(1.dp, MaterialTheme.colorScheme.error),
-                        ) { Text(stringResource(R.string.detail_delete), color = MaterialTheme.colorScheme.error) }
+                        ) {
+                            Icon(
+                                Icons.Outlined.Delete,
+                                contentDescription = null,
+                                Modifier.size(18.dp),
+                                tint = MaterialTheme.colorScheme.error,
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(stringResource(R.string.detail_delete), color = MaterialTheme.colorScheme.error)
+                        }
                     }
                 }
             }
@@ -232,20 +244,19 @@ private fun SettingsCard(
         ListItem(
             colors = ListItemDefaults.colors(containerColor = none),
             leadingContent = { Icon(Icons.Outlined.Key, contentDescription = null) },
-            overlineContent = { Text(stringResource(R.string.detail_security)) },
-            headlineContent = {
+            headlineContent = { Text(stringResource(R.string.detail_security)) },
+            supportingContent = {
                 if (pinned == null) {
                     Text(stringResource(R.string.detail_no_pinned), style = MaterialTheme.typography.bodyMedium)
                 } else {
                     Text(
-                        pinned.fingerprint,
+                        "${pinned.keyType} ${pinned.fingerprint}",
                         style = FlocketMono.small,
-                        maxLines = 2,
+                        maxLines = 3,
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
             },
-            supportingContent = pinned?.let { { Text(it.keyType) } },
             trailingContent =
                 pinned?.let {
                     { TextButton(onClick = onForget) { Text(stringResource(R.string.detail_forget)) } }

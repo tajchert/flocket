@@ -42,13 +42,13 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.outlined.Bolt
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.ContentCopy
-import androidx.compose.material.icons.outlined.Dashboard
 import androidx.compose.material.icons.outlined.Done
+import androidx.compose.material.icons.outlined.FrontHand
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Terminal
-import androidx.compose.material.icons.outlined.TouchApp
 import androidx.compose.material.icons.outlined.Wifi
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -388,11 +388,11 @@ private fun WelcomeHeadline(headline: TextStyle) {
 private fun ValuePoints() {
     Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
         ValuePoint(
-            Icons.Outlined.Dashboard,
+            Icons.Outlined.FrontHand,
             R.string.welcome_point_overview_title,
             R.string.welcome_point_overview_body,
         )
-        ValuePoint(Icons.Outlined.TouchApp, R.string.welcome_point_answer_title, R.string.welcome_point_answer_body)
+        ValuePoint(Icons.Outlined.Bolt, R.string.welcome_point_answer_title, R.string.welcome_point_answer_body)
         ValuePoint(Icons.Outlined.Lock, R.string.welcome_point_private_title, R.string.welcome_point_private_body)
     }
 }

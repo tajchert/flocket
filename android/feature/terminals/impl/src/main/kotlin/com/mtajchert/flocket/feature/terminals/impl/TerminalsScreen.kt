@@ -140,7 +140,13 @@ fun TerminalsScreen(
         modifier = modifier,
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.terminals_title)) },
+                title = {
+                    Text(
+                        stringResource(R.string.terminals_title),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                },
                 // Beside a terminal both top bars share one container so the status bar strip is uniform.
                 colors =
                     if (dense) {
