@@ -24,6 +24,7 @@ import com.mtajchert.flocket.core.model.folderName
 import com.mtajchert.flocket.core.model.isAgent
 import com.mtajchert.flocket.core.model.isPinned
 import com.mtajchert.flocket.core.model.shownStatus
+import com.mtajchert.flocket.core.model.shownTitle
 import com.mtajchert.flocket.core.session.SessionState
 import com.mtajchert.flocket.core.ui.error.toUiError
 
@@ -99,7 +100,8 @@ internal fun TerminalRecord.toItem(
         agentId = agent?.id,
         name = name,
         status = status,
-        headline = statusLine() ?: title.ifBlank { where.orEmpty() },
+        // Without the agent's spinner (Codex spins one in its title): the row shows WorkingDots instead.
+        headline = shownTitle(statusLine() ?: title.ifBlank { where.orEmpty() }),
         cwd = shortenPath(displayCwd),
         sinceMs = if (finished != null) finished.finishedAtMs ?: statusChangedAtMs else statusChangedAtMs,
         liveness = kind,

@@ -370,6 +370,29 @@ class TerminalsLogicTest {
     }
 
     @Test
+    fun `the row's preview line drops the agent's spinner, so every frame reads the same`() {
+        fun headline(title: String) =
+            SampleData
+                .terminal(
+                    address = "t29",
+                    name = null,
+                    argv = listOf("codex"),
+                    status = AgentStatus.Reported(AgentState.Working, "codex", title = title),
+                ).copy(title = title)
+                .toItem(writable = true)
+                .headline
+        val frames = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏⠃".map { headline("$it Download MyInsta | myinsta") }
+        assertEquals(setOf("Download MyInsta | myinsta"), frames.toSet())
+        // The terminal's own title, when the status says nothing, is cleaned the same way.
+        val plain =
+            SampleData
+                .terminal(address = "t30", name = null, argv = listOf("codex"))
+                .copy(title = "⠙ codexdir")
+                .toItem(writable = true)
+        assertEquals("codexdir", plain.headline)
+    }
+
+    @Test
     fun `a telling title drops the spinner glyph and ignores paths, prompts and the agent's own name`() {
         val claude = AgentCatalog.of(SampleData.terminal(address = "t1", name = null, argv = listOf("claude")))
         assertEquals("QA", tellingTitle("\u2733 QA", claude, "claude-code"))

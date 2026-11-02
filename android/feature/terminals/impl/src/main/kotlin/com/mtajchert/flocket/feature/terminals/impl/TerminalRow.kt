@@ -74,6 +74,7 @@ import com.mtajchert.flocket.core.model.folderName
 import com.mtajchert.flocket.core.ui.component.AgentIcon
 import com.mtajchert.flocket.core.ui.component.AgentStatusChip
 import com.mtajchert.flocket.core.ui.component.AgentTile
+import com.mtajchert.flocket.core.ui.component.WorkingDots
 import com.mtajchert.flocket.core.ui.component.WorkingSpinner
 import com.mtajchert.flocket.feature.terminal.api.TerminalRoute
 import com.mtajchert.flocket.core.ui.R as CoreUiR
@@ -355,13 +356,17 @@ private fun RowBody(
                 )
             }
         }
-        Text(
-            preview,
-            style = FlocketMono.small,
-            color = previewColor,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            // Flocket's own mark for a working agent, the same for every agent and never jumping.
+            if (state == AgentState.Working) WorkingDots(color = scheme.primary, size = 4.dp)
+            Text(
+                preview,
+                style = FlocketMono.small,
+                color = previewColor,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
         if (progress != null) {
             LinearProgressIndicator(
                 progress = { progress.coerceIn(0, 100) / 100f },
