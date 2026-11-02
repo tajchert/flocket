@@ -63,6 +63,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mtajchert.flocket.core.data.ThemePreference
+import com.mtajchert.flocket.core.designsystem.component.FlocketMark
 import com.mtajchert.flocket.core.designsystem.theme.FlocketCorners
 import com.mtajchert.flocket.core.designsystem.theme.FlocketMono
 import com.mtajchert.flocket.core.ui.component.CenteredContent
@@ -116,12 +117,18 @@ fun SettingsScreen(
                 item { HostsSection(callbacks) }
                 item { AboutSection(appInfo, callbacks) }
                 item {
-                    Text(
-                        stringResource(R.string.settings_footer, appInfo.versionName),
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 24.dp),
-                    )
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 24.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        FlocketMark(24.dp)
+                        Text(
+                            stringResource(R.string.settings_footer, appInfo.versionName),
+                            style = FlocketMono.label.copy(fontSize = 12.sp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
             }
         }

@@ -64,5 +64,5 @@
     <!-- Licenses -->
     <string name="licenses_title">Open-source licenses</string>
     <string name="licenses_libraries">Libraries</string>
-    <string name="settings_footer">Flocket %1$s · No account, no cloud relay</string>
+    <string name="settings_footer">› flocket %1$s · no account, no cloud relay</string>
 </resources>

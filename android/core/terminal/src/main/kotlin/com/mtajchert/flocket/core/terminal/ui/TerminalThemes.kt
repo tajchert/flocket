@@ -6,12 +6,12 @@ import com.mtajchert.flocket.core.terminal.fake.FakeTerminalEngine
 
 /** Built-in terminal color schemes (ARGB). */
 object TerminalThemes {
-    /** Design v2 terminal colors (`tbg`/`tfg`/`tcur`) over the default ANSI palette. */
+    /** Design v2 terminal colors (`tbg`/`tfg`) with the brand orange cursor over the default ANSI palette. */
     val Dark: TerminalTheme =
         FakeTerminalEngine.DEFAULT_THEME.copy(
             foreground = 0xFFD7DEDB.toInt(),
             background = 0xFF0A0E0D.toInt(),
-            cursor = 0xFF82D5C8.toInt(),
+            cursor = 0xFFFF7A3D.toInt(),
         )
 
     /** Design v2 light terminal colors (`tbg`/`tfg`/`tcur`). */
@@ -19,7 +19,7 @@ object TerminalThemes {
         TerminalTheme(
             foreground = 0xFF1B1F1E.toInt(),
             background = 0xFFFBFCFB.toInt(),
-            cursor = 0xFF006A60.toInt(),
+            cursor = 0xFFE0560F.toInt(),
             palette =
                 intArrayOf(
                     0xFF3A3F4B.toInt(),

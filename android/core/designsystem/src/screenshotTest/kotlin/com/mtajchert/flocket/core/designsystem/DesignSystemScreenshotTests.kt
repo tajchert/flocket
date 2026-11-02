@@ -21,6 +21,7 @@ import com.mtajchert.flocket.core.designsystem.component.FlocketElevatedCard
 import com.mtajchert.flocket.core.designsystem.component.FlocketEmptyState
 import com.mtajchert.flocket.core.designsystem.component.FlocketErrorState
 import com.mtajchert.flocket.core.designsystem.component.FlocketLoadingIndicator
+import com.mtajchert.flocket.core.designsystem.component.FlocketMark
 import com.mtajchert.flocket.core.designsystem.component.FlocketOutlinedButton
 import com.mtajchert.flocket.core.designsystem.component.FlocketSmallLoadingIndicator
 import com.mtajchert.flocket.core.designsystem.component.FlocketTextButton
@@ -121,6 +122,19 @@ private fun TopAppBarsScreenshotTest() {
         Column {
             FlocketTopAppBar(title = "Overview")
             FlocketTopAppBar(title = "Details", onNavigationClick = {})
+        }
+    }
+}
+
+@PreviewTest
+@PreviewComponentThemes
+@Composable
+private fun FlocketMarkScreenshotTest() {
+    FlocketTheme(dynamicColor = false) {
+        Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            FlocketMark(24.dp)
+            FlocketMark(72.dp)
+            FlocketMark(96.dp)
         }
     }
 }

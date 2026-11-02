@@ -20,14 +20,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.mtajchert.flocket.core.designsystem.theme.FlocketMono
 import com.mtajchert.flocket.core.ui.R
 
 /**
- * Inbox group header: title (13sp semibold in [color], e.g. `StatusGroup.color()`), count, a 1dp
+ * Inbox group header: a decorative mono `›` prompt chevron, title (13sp semibold in [color], e.g. `StatusGroup.color()`), count, a 1dp
  * divider filling the rest and an expand chevron. The whole row is a 48dp-min button; TalkBack
  * hears "Needs you, 3, Expanded".
  */
@@ -52,6 +55,13 @@ fun GroupHeader(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
+        // Decorative prompt chevron: hidden from TalkBack, the title alone is announced.
+        Text(
+            "›",
+            style = FlocketMono.label.copy(fontSize = 13.sp, fontWeight = FontWeight.Bold),
+            color = color,
+            modifier = Modifier.clearAndSetSemantics {},
+        )
         Text(title, style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold), color = color)
         Text(
             count.toString(),
