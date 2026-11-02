@@ -52,6 +52,7 @@ class DeviceFakeStream : TerminalStream {
     override val end = MutableStateFlow<StreamEnd?>(null)
     val chunks = Channel<ByteArray>(Channel.UNLIMITED)
     val collections = AtomicInteger()
+    val resizes: MutableList<String> = java.util.Collections.synchronizedList(mutableListOf())
     override val output =
         flow {
             collections.incrementAndGet()
@@ -64,6 +65,7 @@ class DeviceFakeStream : TerminalStream {
         cols: Int,
         rows: Int,
     ) {
+        resizes += "${cols}x$rows"
         size.value = TerminalSize(cols, rows)
     }
 
@@ -86,6 +88,9 @@ class TerminalTestViewModel : ViewModel() {
                 },
             theme = TerminalThemes.Dark,
         ).also { it.bind(stream, AttachMode.Passive) }
+
+    fun sizeState() =
+        "core=${stream.size.value} resizes=${stream.resizes} grid=${controller.gridSize.value} preferred=${controller.preferredSize()}"
 
     override fun onCleared() = controller.close()
 }
@@ -115,11 +120,12 @@ class TerminalSurfaceDeviceTest {
 
     private fun waitFor(
         timeoutMs: Long = 5_000,
+        state: () -> String = { "" },
         check: () -> Boolean,
     ) {
         val end = System.currentTimeMillis() + timeoutMs
         while (!check()) {
-            check(System.currentTimeMillis() < end) { "timed out" }
+            check(System.currentTimeMillis() < end) { "timed out ${state()}" }
             Thread.sleep(20)
         }
     }
@@ -216,10 +222,19 @@ class TerminalSurfaceDeviceTest {
             scenario.onActivity { vm = it.vm }
             waitFor { vm.controller.preferredSize() != TerminalSize(40, 12) } // laid out
             vm.controller.fitToScreen()
-            waitFor { vm.controller.isOwner.value }
+            // isOwner flips just before the RESIZE is sent; a desktop size set before it would lose to it.
+            waitFor(state = { vm.sizeState() }) {
+                vm.controller.isOwner.value && vm.stream.size.value == vm.controller.preferredSize()
+            }
             vm.stream.size.value = TerminalSize(200, 50) // the desktop took the size
-            waitFor { !vm.controller.isOwner.value }
+            waitFor(state = { vm.sizeState() }) { !vm.controller.isOwner.value }
 
+            // An injected tap fails while another window (launch transition, system dialog) has focus.
+            var focused = false
+            waitFor(state = { "window not focused" }) {
+                scenario.onActivity { focused = it.hasWindowFocus() }
+                focused
+            }
             var x = 0f
             var y = 0f
             scenario.onActivity { a ->
@@ -238,7 +253,9 @@ class TerminalSurfaceDeviceTest {
                 instrumentation.sendPointerSync(e)
                 e.recycle()
             }
-            waitFor { vm.controller.isOwner.value }
+            waitFor(state = { vm.sizeState() }) {
+                vm.controller.isOwner.value && vm.stream.size.value == vm.controller.preferredSize()
+            }
             assertEquals(vm.controller.preferredSize(), vm.stream.size.value)
         }
     }
