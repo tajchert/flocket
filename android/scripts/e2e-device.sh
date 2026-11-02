@@ -14,7 +14,8 @@
 # default emulator-5580), sshd port FLOCKET_SSHD_PORT (2222), hc session FLOCKET_HC_SESSION (default
 # flocket-e2e) and state dir FLOCKET_E2E_DIR. It never touches ~/.ssh, the system sshd, the default
 # herdr session or other devices. Never use Gradle connected* tasks for journeys: they install on
-# every attached device.
+# every attached device. It refuses to use or stop an emulator whose AVD is not FLOCKET_AVD (another
+# project may hold the same port); FLOCKET_ALLOW_FOREIGN=1 overrides.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -41,16 +42,42 @@ hc_e2e() { (cd /tmp && env -u HC_TERMINAL_SOCKET HC_SESSION="$HC_SESSION_NAME" T
 
 booted() { [[ "$(A shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" == 1 ]]; }
 
+# Other projects and agents on this Mac boot their own emulators, sometimes on the same ports. The harness
+# only uses or stops an emulator running the AVD $AVD; FLOCKET_ALLOW_FOREIGN=1 overrides.
+avd_of_serial() { # AVD name of $SERIAL, empty when unreadable
+  local n
+  n="$(timeout 10 adb -s "$SERIAL" shell getprop ro.boot.qemu.avd_name 2>/dev/null </dev/null | tr -d '\r' | head -1 || true)"
+  [[ -n "$n" ]] || n="$(timeout 10 adb -s "$SERIAL" emu avd name 2>/dev/null </dev/null | tr -d '\r' | grep -v '^OK$' | head -1 || true)"
+  echo "$n"
+}
+require_ours() {
+  [[ "${FLOCKET_ALLOW_FOREIGN:-0}" == 1 ]] && return 0
+  local have
+  have="$(avd_of_serial)"
+  [[ "$have" == "$AVD" ]] && return 0
+  die "$SERIAL runs AVD '${have:-unknown}', not $AVD (another project's emulator?); refusing to use or stop it." \
+    "Set FLOCKET_SERIAL to a free port (e.g. emulator-5590), or FLOCKET_ALLOW_FOREIGN=1."
+}
+
 emulator_up() {
   if adb devices | grep -q "^$SERIAL[[:space:]]*device"; then
+    require_ours
     log "reusing $SERIAL"
   else
+    if lsof -nP -iTCP:"$EMU_PORT" -sTCP:LISTEN >/dev/null 2>&1; then
+      die "port $EMU_PORT is already in use by another process; set FLOCKET_SERIAL to a free port"
+    fi
     # Raw `emulator`: `android emulator start` cannot pin the console port, so the serial would vary.
     log "booting $AVD as $SERIAL"
     mkdir -p "$STATE"
     nohup emulator -avd "$AVD" -port "$EMU_PORT" -no-window -no-audio -no-boot-anim -read-only \
       >"$STATE/emulator.log" 2>&1 &
-    A wait-for-device
+    local pid=$! deadline=$((SECONDS + 120))
+    until adb devices | grep -q "^$SERIAL[[:space:]]*device"; do
+      kill -0 "$pid" 2>/dev/null || die "emulator exited early (port $EMU_PORT taken?): $(tail -5 "$STATE/emulator.log")"
+      ((SECONDS < deadline)) || die "$SERIAL did not show up in adb (see $STATE/emulator.log)"
+      sleep 2
+    done
   fi
   local end=$((SECONDS + 180))
   until booted; do ((SECONDS < end)) || die "emulator did not boot (see $STATE/emulator.log)"; sleep 2; done
@@ -186,6 +213,7 @@ cmd_journey() {
     shift
   done
   booted || die "no emulator on $SERIAL (run: scripts/e2e-device.sh up)"
+  require_ours
   ((build)) && build_apks
   [[ -f "$APK" && -f "$TEST_APK" ]] || die "APKs missing (run without --no-build)"
   mkdir -p "$JOURNEYS"
@@ -271,6 +299,7 @@ cmd_journey() {
 cmd_shot() {
   local out="${1:-$STATE/shot.png}" px="${2:-600}"
   mkdir -p "$(dirname "$out")"
+  require_ours
   android screen capture "$DEV" -o "$out" >/dev/null
   if command -v sips >/dev/null; then sips -Z "$px" "$out" >/dev/null; fi
   echo "$out"
@@ -279,7 +308,9 @@ cmd_shot() {
 cmd_down() {
   hc_e2e server stop >/dev/null 2>&1 && log "hc session $HC_SESSION_NAME stopped" || true
   scripts/dev-sshd.sh stop >&2 || true
-  if adb devices | grep -q "^$SERIAL[[:space:]]"; then android emulator stop "$SERIAL" >/dev/null 2>&1 || A emu kill >/dev/null 2>&1; log "$SERIAL stopped"; fi
+  if adb devices | grep -q "^$SERIAL[[:space:]]"; then
+    require_ours
+    android emulator stop "$SERIAL" >/dev/null 2>&1 || A emu kill >/dev/null 2>&1; log "$SERIAL stopped"; fi
 }
 
 cmd="${1:-}"; shift || true

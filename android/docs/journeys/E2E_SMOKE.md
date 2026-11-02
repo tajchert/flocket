@@ -33,7 +33,9 @@ the steps that stay manual. How to run them: [TESTING.md](../TESTING.md#device-j
 - The app's host uses the hc session **`flocket-e2e`**. On the machine, only ever run
   `HC_SESSION=flocket-e2e TMPDIR=/tmp hc …` (and `--no-parent` for `hc run`, so a terminal you run
   from inside your own herdr terminal is not parented to it). Never touch the default session.
-- Start your own emulator on a fixed port and address it with `adb -s emulator-5580` only. Don't
+- Start your own emulator on a fixed port and address it with `adb -s emulator-5580` only. Another
+  project may already hold that port: check the AVD (`adb -s emulator-5580 shell getprop
+  ro.boot.qemu.avd_name` must print `pixel`) before using or killing it. Don't
   run Gradle `connected*` tasks while other devices are attached (they install on all of them).
 - `dev-sshd.sh stop` only stops the listener: open connections survive. To cut the app's link,
   kill only the `sshd-session` whose socket is `127.0.0.1:2222` (`lsof -nP -a -p <pid> -iTCP`), never

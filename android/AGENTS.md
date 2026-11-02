@@ -55,7 +55,7 @@ scripts/e2e-device.sh shot [file] [px]         # small PNG; Read it only for a v
 scripts/e2e-device.sh down                     # stop the hc session, sshd and the emulator
 ```
 
-- Never use Gradle `connected*` tasks for journeys: they install on every attached device. Address adb only with `-s $FLOCKET_SERIAL`; never touch other emulators.
+- Never use Gradle `connected*` tasks for journeys: they install on every attached device. Address adb only with `-s $FLOCKET_SERIAL`; never touch other emulators. Other projects on this Mac boot emulators too, sometimes on the same port: the harness refuses an emulator whose AVD is not `$FLOCKET_AVD` (`pixel`). If you boot one by hand, check `adb -s <serial> shell getprop ro.boot.qemu.avd_name` first, and only `emu kill` an emulator you started.
 - Assert on the core (`hc read`, `hc get`), not on pixels.
 - Commands, isolation, timings: [docs/TESTING.md](docs/TESTING.md#device-journeys). Safety rules and the manual steps: [docs/journeys/E2E_SMOKE.md](docs/journeys/E2E_SMOKE.md).
 
