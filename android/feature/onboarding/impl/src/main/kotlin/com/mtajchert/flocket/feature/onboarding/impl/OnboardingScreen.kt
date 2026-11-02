@@ -48,7 +48,6 @@ import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Done
 import androidx.compose.material.icons.outlined.FrontHand
 import androidx.compose.material.icons.outlined.Lock
-import androidx.compose.material.icons.outlined.Terminal
 import androidx.compose.material.icons.outlined.Wifi
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -83,6 +82,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.mtajchert.flocket.core.designsystem.component.FlocketMark
 import com.mtajchert.flocket.core.designsystem.theme.FlocketCorners
 import com.mtajchert.flocket.core.designsystem.theme.flocketColors
 import com.mtajchert.flocket.core.ui.component.CenteredContent
@@ -337,28 +337,6 @@ private fun Page(
 }
 
 @Composable
-private fun HeroIcon(
-    icon: ImageVector,
-    modifier: Modifier = Modifier,
-    size: Int = 72,
-) {
-    Surface(
-        modifier.size(size.dp),
-        shape = RoundedCornerShape((size * 0.3f).dp),
-        color = MaterialTheme.colorScheme.primaryContainer,
-    ) {
-        Box(contentAlignment = Alignment.Center) {
-            Icon(
-                icon,
-                contentDescription = null,
-                modifier = Modifier.size((size / 2).dp),
-                tint = MaterialTheme.colorScheme.onPrimaryContainer,
-            )
-        }
-    }
-}
-
-@Composable
 private fun WelcomePage() {
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val twoPane = maxWidth >= 840.dp
@@ -369,7 +347,7 @@ private fun WelcomePage() {
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    HeroIcon(Icons.Outlined.Terminal, size = 96)
+                    FlocketMark(96.dp)
                     WelcomeHeadline(MaterialTheme.typography.displayMedium.copy(letterSpacing = (-0.5).sp))
                 }
                 Column(Modifier.weight(1f)) { ValuePoints() }
@@ -380,7 +358,7 @@ private fun WelcomePage() {
                     Modifier.fillMaxWidth().padding(top = 24.dp),
                     verticalArrangement = Arrangement.spacedBy(28.dp),
                 ) {
-                    HeroIcon(Icons.Outlined.Terminal)
+                    FlocketMark(72.dp)
                     WelcomeHeadline(
                         MaterialTheme.typography.displaySmall.copy(
                             fontSize = 40.sp,
