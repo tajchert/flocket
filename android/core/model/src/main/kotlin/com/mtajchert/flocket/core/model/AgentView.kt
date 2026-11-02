@@ -41,12 +41,15 @@ fun TerminalRecord.shownStatus(): ShownStatus? {
     }
 }
 
-/** Shown status of a sub-agent: error counts as needs-you, done as idle, the rest as [shownStatus]. */
+/**
+ * Shown status of a sub-agent, from its raw word: blocked or error needs you, working works, anything else
+ * is idle. A sub-agent is never "done" (the desktop's `kidStatus`): the parent's done is the news.
+ */
 fun TerminalRecord.childShownStatus(): ShownStatus? {
     val reported = status as? AgentStatus.Reported ?: return null
     return when (reported.state) {
-        AgentState.Error -> ShownStatus.NeedsYou
-        AgentState.Done -> ShownStatus.Idle
-        else -> shownStatus()
+        AgentState.Blocked, AgentState.Error -> ShownStatus.NeedsYou
+        AgentState.Working -> ShownStatus.Working
+        else -> ShownStatus.Idle
     }
 }
