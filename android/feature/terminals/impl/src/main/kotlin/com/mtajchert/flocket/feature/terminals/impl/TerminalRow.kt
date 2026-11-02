@@ -13,10 +13,13 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CloudOff
 import androidx.compose.material.icons.outlined.DeleteSweep
@@ -31,6 +34,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -42,6 +46,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -49,15 +54,19 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.mtajchert.flocket.core.designsystem.theme.FlocketMono
+import com.mtajchert.flocket.core.designsystem.theme.flocketColors
 import com.mtajchert.flocket.core.model.AgentState
 import com.mtajchert.flocket.core.model.AgentStatus
 import com.mtajchert.flocket.core.model.BlockKind
 import com.mtajchert.flocket.core.ui.component.AgentIcon
 import com.mtajchert.flocket.core.ui.component.AgentStatusChip
+import com.mtajchert.flocket.core.ui.component.AgentTile
 import com.mtajchert.flocket.core.ui.R as CoreUiR
 
 /** One terminal. Tap opens it; long-press or the overflow button opens the action menu. */
-@OptIn(ExperimentalLayoutApi::class, ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun TerminalRow(
     item: TerminalItem,
@@ -66,10 +75,12 @@ internal fun TerminalRow(
     actions: TerminalsActions,
     modifier: Modifier = Modifier,
     dense: Boolean = false,
-    /** Priority mode: where the terminal lives ("Space · Tab"), shown under it. */
+    /** Priority and inbox modes: where the terminal lives ("Space · Tab"), shown beside the agent. */
     place: String? = null,
-    /** Priority mode: the row's space and tab, for the rename entries. */
+    /** Priority and inbox modes: the row's space and tab, for the rename entries. */
     placeInfo: RowPlace? = null,
+    /** Inbox with several hosts: which host the terminal is on. */
+    hostLabel: String? = null,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     val scheme = MaterialTheme.colorScheme
@@ -77,33 +88,32 @@ internal fun TerminalRow(
     Surface(
         modifier = modifier.padding(horizontal = 8.dp).semantics { this.selected = selected },
         shape = MaterialTheme.shapes.large,
-        color = if (selected) scheme.secondaryContainer else scheme.surface,
+        color = if (selected) scheme.secondaryContainer else Color.Transparent,
     ) {
         Row(
             Modifier
                 .clip(MaterialTheme.shapes.large)
                 .combinedClickable(onClick = { actions.onOpen(item) }, onLongClick = { menuOpen = true })
-                .heightIn(min = if (dense) 48.dp else 72.dp)
+                .heightIn(min = if (dense) 56.dp else 72.dp)
                 .padding(
-                    start = 16.dp,
-                    top = if (dense) 4.dp else 10.dp,
-                    bottom = if (dense) 4.dp else 10.dp,
-                    end = 4.dp,
+                    start = 8.dp,
+                    top = if (dense) 6.dp else 10.dp,
+                    bottom = if (dense) 6.dp else 10.dp,
+                    end = 0.dp,
                 ),
-            verticalAlignment = if (dense) Alignment.CenterVertically else Alignment.Top,
+            verticalAlignment = Alignment.Top,
         ) {
-            AgentIcon(
+            // The tile's status badge overhangs it by a fifth of its size, so the gap is wider than it looks.
+            AgentTile(
                 item.agentId,
-                Modifier.padding(end = 12.dp, top = if (dense) 0.dp else 2.dp),
+                if (item.isFinished) AgentStatus.Unknown else item.status,
+                Modifier.padding(end = 20.dp, top = 2.dp),
+                ringColor = if (selected) scheme.secondaryContainer else scheme.surface,
                 contentDescription = null,
             )
-            if (dense) {
-                DenseBody(item, label, nowMs, place, Modifier.weight(1f))
-            } else {
-                FullBody(item, label, nowMs, place, Modifier.weight(1f))
-            }
+            RowBody(item, label, nowMs, place, hostLabel, Modifier.weight(1f))
             Box {
-                IconButton(onClick = { menuOpen = true }, modifier = if (dense) Modifier.size(40.dp) else Modifier) {
+                IconButton(onClick = { menuOpen = true }) {
                     Icon(Icons.Outlined.MoreVert, contentDescription = stringResource(R.string.row_actions, label))
                 }
                 RowMenu(menuOpen, { menuOpen = false }, item, actions, placeInfo)
@@ -112,58 +122,18 @@ internal fun TerminalRow(
     }
 }
 
-/** Two compact lines: dot, agent and name; then status word and short age. */
+/** Compact age: "now", "5m", "3h", "2d". */
 @Composable
-private fun DenseBody(
-    item: TerminalItem,
-    label: String,
+private fun shortAge(
+    sinceMs: Long,
     nowMs: Long,
-    place: String?,
-    modifier: Modifier = Modifier,
-) {
-    val scheme = MaterialTheme.colorScheme
-    val state = (item.status as? AgentStatus.Reported)?.state
-    val word = statusWord(item)
-    val age =
-        item.sinceMs?.let {
-            DateUtils
-                .getRelativeTimeSpanString(
-                    it,
-                    nowMs,
-                    DateUtils.MINUTE_IN_MILLIS,
-                    DateUtils.FORMAT_ABBREV_RELATIVE,
-                ).toString()
-        }
-    Column(modifier) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Box(Modifier.size(8.dp).background(statusColor(if (item.isFinished) null else state, scheme), CircleShape))
-            Text(
-                label,
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.Bold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f, fill = false),
-            )
-            if (!item.name.isNullOrBlank()) {
-                Text(
-                    item.name,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = scheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false),
-                )
-            }
-        }
-        Text(
-            listOfNotNull(place, word, age).joinToString(" · "),
-            style = MaterialTheme.typography.labelSmall,
-            color = scheme.onSurfaceVariant,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(start = 16.dp),
-        )
+): String {
+    val minutes = ((nowMs - sinceMs) / 60_000L).coerceAtLeast(0)
+    return when {
+        minutes < 1 -> stringResource(R.string.age_now)
+        minutes < 60 -> stringResource(R.string.age_minutes, minutes.toInt())
+        minutes < 60 * 24 -> stringResource(R.string.age_hours, (minutes / 60).toInt())
+        else -> stringResource(R.string.age_days, (minutes / (60 * 24)).toInt())
     }
 }
 
@@ -214,86 +184,99 @@ private fun statusWord(item: TerminalItem): String {
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun FullBody(
+private fun RowBody(
     item: TerminalItem,
     label: String,
     nowMs: Long,
     place: String?,
+    hostLabel: String?,
     modifier: Modifier = Modifier,
 ) {
     val scheme = MaterialTheme.colorScheme
-    run {
-        run {
-            Column(modifier, verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
+    val fixed = MaterialTheme.flocketColors
+    val reported = item.status as? AgentStatus.Reported
+    val state = if (item.isFinished) null else reported?.state
+    val title = item.name?.takeIf { it.isNotBlank() } ?: label
+    val subtitle =
+        listOfNotNull(
+            label.takeIf { !item.name.isNullOrBlank() },
+            place ?: item.cwd.takeIf { it.isNotBlank() },
+            hostLabel,
+        ).joinToString(" · ")
+    val previewColor =
+        when (state) {
+            AgentState.Blocked -> fixed.attention
+            AgentState.Error -> scheme.error
+            else -> scheme.onSurfaceVariant
+        }
+    val preview = item.headline.ifBlank { statusWord(item) }
+    val progress = if (state == AgentState.Working) reported?.progress else null
+    Column(modifier.padding(top = 2.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                Modifier.weight(1f),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.Bottom,
+            ) {
+                Text(
+                    title,
+                    style = MaterialTheme.typography.bodyLarge.copy(fontSize = 15.sp, fontWeight = FontWeight.Medium),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                if (subtitle.isNotEmpty()) {
                     Text(
-                        label,
-                        style = MaterialTheme.typography.titleMedium,
+                        subtitle,
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
+                        color = scheme.onSurfaceVariant,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f, fill = false),
                     )
-                    if (!item.name.isNullOrBlank()) {
-                        Text(
-                            item.name,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = scheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f, fill = false),
-                        )
-                    }
-                }
-                if (item.headline.isNotBlank()) {
-                    Text(
-                        item.headline,
-                        style = MaterialTheme.typography.bodyMedium,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                if (place != null) {
-                    Text(
-                        place,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = scheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                if (item.cwd.isNotBlank()) {
-                    Text(
-                        item.cwd,
-                        style = MaterialTheme.typography.bodySmall,
-                        fontFamily = FontFamily.Monospace,
-                        color = scheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                FlowRow(
-                    modifier = Modifier.padding(top = 4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                    itemVerticalAlignment = Alignment.CenterVertically,
-                ) {
-                    AgentStatusChip(item.status)
-                    LivenessLabel(item)
-                    item.sinceMs?.let {
-                        Text(
-                            DateUtils.getRelativeTimeSpanString(it, nowMs, DateUtils.MINUTE_IN_MILLIS).toString(),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = scheme.onSurfaceVariant,
-                        )
-                    }
                 }
             }
+            if (!item.writable) {
+                Icon(
+                    Icons.Outlined.CloudOff,
+                    contentDescription = stringResource(R.string.row_stale),
+                    Modifier.size(14.dp),
+                    tint = scheme.onSurfaceVariant,
+                )
+            }
+            item.sinceMs?.let {
+                Text(
+                    shortAge(it, nowMs),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = scheme.onSurfaceVariant,
+                    maxLines = 1,
+                )
+            }
         }
+        Text(
+            preview,
+            style = FlocketMono.small,
+            color = previewColor,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        if (progress != null) {
+            LinearProgressIndicator(
+                progress = { progress.coerceIn(0, 100) / 100f },
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(top = 4.dp)
+                        .height(4.dp)
+                        .clip(RoundedCornerShape(2.dp)),
+                color = scheme.primary,
+                trackColor = scheme.primaryContainer,
+                gapSize = 0.dp,
+                drawStopIndicator = {},
+            )
+        }
+        if (item.liveness != LivenessKind.Running) LivenessLabel(item)
     }
 }
 

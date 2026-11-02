@@ -145,7 +145,7 @@ data class UserPreferences(
      */
     val keepConnectedInBackground: Boolean = true,
     /** How the terminal list is ordered. */
-    val terminalSort: TerminalSort = TerminalSort.Priority,
+    val terminalSort: TerminalSort = TerminalSort.Inbox,
 )
 
 /**

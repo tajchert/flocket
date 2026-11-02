@@ -1,7 +1,9 @@
 package com.mtajchert.flocket.navigation
 
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi
 import androidx.compose.material3.adaptive.WindowAdaptiveInfo
@@ -31,6 +33,7 @@ import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import androidx.navigation3.ui.NavDisplay
 import androidx.window.core.layout.WindowSizeClass
 import com.mtajchert.flocket.R
+import com.mtajchert.flocket.core.ui.component.CountBadge
 import com.mtajchert.flocket.core.ui.nav.EntryProviderInstaller
 import com.mtajchert.flocket.core.ui.nav.LocalPaneLayout
 import com.mtajchert.flocket.core.ui.nav.LocalSidebarToggle
@@ -55,6 +58,8 @@ fun FlocketNavHost(
     installers: Set<EntryProviderInstaller>,
     showOnboarding: Boolean,
     modifier: Modifier = Modifier,
+    /** Terminals needing the user across all hosts; shown as a badge on the Terminals item. */
+    needsYouCount: Int = 0,
     backStack: NavBackStack<NavKey> = rememberNavBackStack(if (showOnboarding) OnboardingRoute else TerminalsRoute),
 ) {
     val navigator = remember(backStack) { BackStackNavigator(backStack) }
@@ -114,7 +119,17 @@ fun FlocketNavHost(
                     item(
                         selected = destination.key == selectedRoot,
                         onClick = { navigator.selectTopLevel(destination.key) },
-                        icon = { Icon(destination.icon, contentDescription = null) },
+                        icon = {
+                            val selected = destination.key == selectedRoot
+                            val icon = if (selected) destination.selectedIcon else destination.icon
+                            if (destination.key == TerminalsRoute && needsYouCount > 0) {
+                                BadgedBox(
+                                    badge = { CountBadge(needsYouCount, color = MaterialTheme.colorScheme.error) },
+                                ) { Icon(icon, contentDescription = null) }
+                            } else {
+                                Icon(icon, contentDescription = null)
+                            }
+                        },
                         label = { Text(stringResource(destination.label)) },
                     )
                 }

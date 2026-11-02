@@ -76,6 +76,36 @@ class TerminalsComposeTest {
         rule.onNodeWithText("Review host key").assertExists()
     }
 
+    private val inboxState =
+        buildUiState(SampleData.overview, ListControls(sort = TerminalSort.Inbox), refreshing = false)
+
+    @Test
+    fun `inbox groups rows by status across hosts with Idle collapsed`() {
+        show(inboxState)
+        rule.onNodeWithText("Needs you").assertExists()
+        val rows = hasContentDescription("Actions for", substring = true)
+        val before = rule.onAllNodes(rows).fetchSemanticsNodes().size
+        val idle =
+            inboxState.groups.flatMap { g -> g.sections.flatMap { it.priority } }.filter {
+                it.bucket ==
+                    PriorityBucket.Idle
+            }
+        assertTrue(idle.isNotEmpty())
+        // Idle starts collapsed; one tap on its header shows its rows.
+        rule.onAllNodesWithText("Idle")[0].performClick()
+        assertEquals(before + idle.sumOf { it.rows.size }, rule.onAllNodes(rows).fetchSemanticsNodes().size)
+    }
+
+    @Test
+    fun `inbox host chips filter and status filter stays in the options menu`() {
+        var chosen: TerminalFilter? = null
+        show(inboxState, TerminalsActions(onFilter = { chosen = it }))
+        rule.onNodeWithText("Studio Mac").performClick()
+        rule.onNodeWithContentDescription("List options").performClick()
+        rule.onNodeWithText("Needs attention").performClick()
+        assertEquals(TerminalFilter.NeedsAttention, chosen)
+    }
+
     @Test
     fun `sort menu switches between Priority and Grouped by space`() {
         var chosen: TerminalSort? = null
@@ -110,9 +140,10 @@ class TerminalsComposeTest {
                 ),
             )
         show(buildUiState(SampleData.overview.take(1), ListControls(), refreshing = false) { ws })
-        rule.onNodeWithText("Flocket · 2").assertExists()
-        rule.onNodeWithText("Flocket · agents").assertExists()
-        rule.onAllNodesWithText("Flocket · Tab 2").assertCountEquals(0)
+        // The place shares the row's subtitle with the agent, so it is matched as a part of it.
+        rule.onAllNodesWithText("Flocket · 2", substring = true)[0].assertExists()
+        rule.onAllNodesWithText("Flocket · agents", substring = true)[0].assertExists()
+        rule.onAllNodesWithText("Flocket · Tab 2", substring = true).assertCountEquals(0)
     }
 
     @Test

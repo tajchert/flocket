@@ -6,8 +6,8 @@ enum class TerminalColorScheme { FollowApp, Light, Dark, SolarizedLight, Solariz
 /** What to do when a program asks to write the clipboard (OSC 52). */
 enum class ClipboardWritePolicy { Ask, Allow, Deny }
 
-/** How the terminal list is ordered: by status like the desktop Agents panel, or grouped by space. */
-enum class TerminalSort { Priority, Grouped }
+/** List layout: [Inbox] (status groups across hosts, default), [Priority] (status per host, like the desktop) or [Grouped] by space. */
+enum class TerminalSort { Priority, Grouped, Inbox }
 
 /** What the terminal bell does. */
 enum class BellMode { Haptic, Off }

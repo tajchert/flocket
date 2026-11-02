@@ -27,7 +27,7 @@ data class StoredPreferences(
     val autoConnect: Boolean = true,
     val defaultWorkingDirectory: String = "~",
     /** Terminal list order (enum entry name); unknown or missing values mean Priority in the mapper. */
-    val terminalListSort: String = "Priority",
+    val terminalListSort: String = "Inbox",
 )
 
 /** Reads and writes [StoredPreferences] on a Preferences DataStore. Unreadable files reset to defaults. */
