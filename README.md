@@ -27,8 +27,8 @@ onto them. It's built for phones, foldables and tablets alike.
   <img src="docs/readme/screenshots/terminal-live-phone-dark.png" alt="A live terminal running a coding agent, with the extra-keys row" width="200">
 </p>
 <p align="center">
-  <img src="docs/readme/screenshots/terminal-two-pane-tablet.png" alt="Tablet: the navigation rail, the agents list and a live agent side by side" width="560">
-  <img src="docs/readme/screenshots/terminals-foldable.png" alt="Unfolded foldable: the agents list and a live agent as two panes" width="280">
+  <img src="docs/readme/screenshots/terminal-two-pane-tablet.png" alt="Tablet: the navigation rail, the agents list and a live agent side by side" width="528">
+  <img src="docs/readme/screenshots/terminals-foldable.png" alt="Unfolded foldable: the agents list and a live agent as two panes" width="264">
 </p>
 
 <picture>
