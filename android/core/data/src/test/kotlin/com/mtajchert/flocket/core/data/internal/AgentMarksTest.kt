@@ -99,13 +99,11 @@ class AgentMarksTest {
         }
 
     @Test
-    fun `markSeen writes once per turn even if the label goes back`() =
+    fun `markSeen raises the label again after another client marked it unread`() =
         runTest {
             val (marks, session) = fixture()
             marks.markSeen(ref)
-            marks.markSeen(ref)
-            assertEquals(1, session.labelWrites.size)
-            session.update { it.copy(terminals = listOf(record(4))) }
+            session.update { it.copy(terminals = listOf(record(3, labels = mapOf("herdr.seen" to "2")))) }
             marks.markSeen(ref)
             assertEquals(2, session.labelWrites.size)
         }
