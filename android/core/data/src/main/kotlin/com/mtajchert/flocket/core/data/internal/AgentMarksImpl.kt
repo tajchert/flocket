@@ -13,14 +13,10 @@ import com.mtajchert.flocket.core.model.isAgent
 import com.mtajchert.flocket.core.model.isOnline
 import com.mtajchert.flocket.core.model.seenTurn
 import com.mtajchert.flocket.core.session.CoreSession
-import java.util.concurrent.ConcurrentHashMap
 
 internal class AgentMarksImpl(
     private val connections: ConnectionManager,
 ) : AgentMarks {
-    /** The turn we last wrote `herdr.seen` for, per terminal (process memory only). */
-    private val written = ConcurrentHashMap<TerminalRef, Long>()
-
     override fun supportsLabels(hostId: HostId): Boolean =
         connections
             .session(hostId)
@@ -31,20 +27,16 @@ internal class AgentMarksImpl(
     override suspend fun markSeen(ref: TerminalRef): AppResult<Unit> =
         withRecord(ref) { session, record ->
             val seen = record.seenTurn
-            if (!record.isAgent || written[ref] == record.turn || (seen != null && seen >= record.turn)) {
+            if (!record.isAgent || (seen != null && seen >= record.turn)) {
                 return@withRecord AppResult.Success(Unit)
             }
-            val result = write(session, record, HerdrLabels.SEEN, record.turn.toString())
-            if (result is AppResult.Success) written[ref] = record.turn
-            result
+            write(session, record, HerdrLabels.SEEN, record.turn.toString())
         }
 
     override suspend fun markUnread(ref: TerminalRef): AppResult<Unit> =
         withRecord(ref) { session, record ->
             if (!record.isAgent || record.turn <= 0) return@withRecord AppResult.Success(Unit)
-            val result = write(session, record, HerdrLabels.SEEN, (record.turn - 1).toString())
-            if (result is AppResult.Success) written.remove(ref)
-            result
+            write(session, record, HerdrLabels.SEEN, (record.turn - 1).toString())
         }
 
     override suspend fun setPinned(

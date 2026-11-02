@@ -17,8 +17,8 @@ interface AgentMarks {
 
     /**
      * A person is looking at this agent: writes `herdr.seen=<turn>` only when the label is missing or lower.
-     * At most one write per terminal and turn (remembered in memory; a later mark-unread by another client
-     * is not overwritten for the same turn). No-op success for non-agents.
+     * No-op success for non-agents. Callers write once per turn per visit (a screen that stays open must not
+     * overrule a mark-unread from another client); looking again later writes again.
      */
     suspend fun markSeen(ref: TerminalRef): AppResult<Unit>
 

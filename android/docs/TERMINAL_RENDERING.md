@@ -107,6 +107,8 @@ one `TerminalController` (Ghostty engine via `TerminalControllerFactory`) and th
 - Screen: "Sized for another screen · Fit to screen" chip (only while another viewer has the size), keyboard toggle, Paste, Copy screen text,
   Interrupt, Kill (confirm); OSC 52 consent dialog; keep-screen-on, font size (pinch persisted) and extra keys from
   `UserPreferences`; the pane takes focus when shown so hardware keyboards type immediately.
+- Seen: while the app is resumed and the pane is composed ("looking"), an agent terminal is marked seen
+  (`AgentMarks.markSeen`) when the visit starts and on each new turn; once per turn per visit, never on the attach path.
 
 ## Input
 
