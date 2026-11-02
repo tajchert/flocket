@@ -137,3 +137,14 @@ private fun TerminalCursorUnderline() = CursorPreview("$E[4 q", focused = true)
 @Preview(name = "CursorUnfocused", widthDp = 240, heightDp = 48)
 @Composable
 private fun TerminalCursorUnfocused() = CursorPreview("$E[2 q", focused = false)
+
+/** An agent's dot spinner, frame by frame: every dot must sit on the same pixels in each frame. */
+@PreviewTest
+@Preview(name = "BrailleSpinner", widthDp = 240, heightDp = 48)
+@Composable
+private fun TerminalBrailleSpinner() {
+    val theme = TerminalThemes.Dark
+    val engine = FakeTerminalEngine(30, 2, theme)
+    engine.feed("⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏\r\n$E[36m⣿ ⡇ ⢸ ⠿ ⣀$E[0m Working…$E[?25l".encodeToByteArray())
+    TerminalSnapshot(engine.snapshot(), theme, Modifier.fillMaxSize(), focused = false)
+}
