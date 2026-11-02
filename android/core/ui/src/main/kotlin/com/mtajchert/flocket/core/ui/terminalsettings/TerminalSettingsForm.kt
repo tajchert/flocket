@@ -4,6 +4,7 @@ package com.mtajchert.flocket.core.ui.terminalsettings
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,37 +12,42 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
+import com.mtajchert.flocket.core.designsystem.theme.FlocketCorners
 import com.mtajchert.flocket.core.model.BellMode
 import com.mtajchert.flocket.core.model.ClipboardWritePolicy
 import com.mtajchert.flocket.core.model.HostSetting
@@ -50,6 +56,7 @@ import com.mtajchert.flocket.core.model.TerminalPreferences
 import com.mtajchert.flocket.core.terminal.ui.TerminalThemes
 import com.mtajchert.flocket.core.ui.R
 import kotlinx.coroutines.delay
+import kotlin.math.roundToInt
 
 /** Slider range for the terminal font size (sp). */
 const val MIN_TERMINAL_FONT_SP = 8f
@@ -239,6 +246,29 @@ private fun SwitchBlock(
     checked: Boolean,
     onChange: (Boolean) -> Unit,
 ) {
+    if (state.overridden == null) {
+        // App-level screen: label and hint on the left, the switch on the right (design v2 setting row).
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .toggleable(value = checked, role = Role.Switch, onValueChange = onChange)
+                .testTag("switch_${setting.name}")
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(stringResource(title), style = MaterialTheme.typography.bodyLarge)
+                Text(
+                    stringResource(hint),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Switch(checked = checked, onCheckedChange = null)
+        }
+        return
+    }
     SettingBlock(setting, title, hint, state, callbacks) {
         Row(
             Modifier
@@ -284,22 +314,82 @@ private fun FontSizeControl(
     value: Float,
     onChange: (Float) -> Unit,
 ) {
-    // Keeps its own value while dragging and saves once on release, so storage isn't written per pixel.
-    var draft by remember(value) { mutableFloatStateOf(value) }
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Slider(
-            value = draft.coerceIn(MIN_TERMINAL_FONT_SP, MAX_TERMINAL_FONT_SP),
-            onValueChange = { draft = it },
-            onValueChangeFinished = { onChange(draft) },
-            valueRange = MIN_TERMINAL_FONT_SP..MAX_TERMINAL_FONT_SP,
-            steps = (MAX_TERMINAL_FONT_SP - MIN_TERMINAL_FONT_SP).toInt() - 1,
-            modifier = Modifier.weight(1f).testTag("font_slider"),
-        )
+    val size = value.toInt().coerceIn(MIN_TERMINAL_FONT_SP.toInt(), MAX_TERMINAL_FONT_SP.toInt())
+    val bars = FONT_STEP_BARS
+    val selectedBar =
+        ((size - MIN_TERMINAL_FONT_SP) / (MAX_TERMINAL_FONT_SP - MIN_TERMINAL_FONT_SP) * (bars - 1))
+            .roundToInt()
+    Column(Modifier.testTag("font_slider"), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(
-            stringResource(R.string.ts_font_size_value, draft.toInt()),
+            stringResource(R.string.ts_font_size_value, size),
             style = MaterialTheme.typography.labelLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(start = 12.dp),
+            modifier = Modifier.align(Alignment.End),
+        )
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            StepButton(
+                stringResource(R.string.ts_font_smaller),
+                "A\u2212",
+                enabled = size > MIN_TERMINAL_FONT_SP.toInt(),
+                tag = "font_smaller",
+            ) { onChange((size - 1).toFloat()) }
+            Row(
+                Modifier.weight(1f).height(24.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                repeat(bars) { i ->
+                    Box(
+                        Modifier
+                            .weight(1f)
+                            .height(if (i == selectedBar) 22.dp else 8.dp)
+                            .background(
+                                if (i <=
+                                    selectedBar
+                                ) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.primaryContainer
+                                },
+                                RoundedCornerShape(if (i == selectedBar) 6.dp else 4.dp),
+                            ),
+                    )
+                }
+            }
+            StepButton(
+                stringResource(R.string.ts_font_larger),
+                "A+",
+                enabled = size < MAX_TERMINAL_FONT_SP.toInt(),
+                tag = "font_larger",
+            ) { onChange((size + 1).toFloat()) }
+        }
+    }
+}
+
+private const val FONT_STEP_BARS = 9
+
+@Composable
+private fun StepButton(
+    description: String,
+    glyph: String,
+    enabled: Boolean,
+    tag: String,
+    onClick: () -> Unit,
+) {
+    Box(
+        Modifier
+            .size(48.dp)
+            .clip(CircleShape)
+            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+            .clickable(enabled = enabled, role = Role.Button, onClickLabel = description, onClick = onClick)
+            .semantics { contentDescription = description }
+            .testTag(tag),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            glyph,
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 1f else 0.38f),
         )
     }
 }
@@ -320,6 +410,12 @@ private fun ColorSchemeControl(
             FilterChip(
                 selected = scheme == selected,
                 onClick = { onChange(scheme) },
+                shape = FlocketCorners.Chip,
+                colors =
+                    FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = MaterialTheme.colorScheme.secondaryContainer,
+                        selectedLabelColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                    ),
                 label = { Text(schemeLabel(scheme)) },
                 leadingIcon = {
                     // Swatch: the scheme's background with its foreground and a few ANSI colors.
@@ -331,8 +427,8 @@ private fun ColorSchemeControl(
                         contentAlignment = Alignment.Center,
                     ) {
                         Row(horizontalArrangement = Arrangement.spacedBy(1.dp)) {
-                            listOf(theme.foreground, theme.palette[1], theme.palette[4]).forEach {
-                                Box(Modifier.size(4.dp).background(Color(it), CircleShape))
+                            listOf(theme.palette[1], theme.palette[4]).forEach {
+                                Box(Modifier.size(5.dp).background(Color(it), CircleShape))
                             }
                         }
                     }

@@ -159,6 +159,8 @@
     <!-- Terminal settings form (app defaults and per-host overrides) -->
     <string name="ts_preview_description">Preview of the terminal with these settings</string>
     <string name="ts_font_size">Font size</string>
+    <string name="ts_font_smaller">Smaller font</string>
+    <string name="ts_font_larger">Larger font</string>
     <string name="ts_font_size_value">%1$d sp</string>
     <string name="ts_color_scheme">Color scheme</string>
     <string name="ts_color_scheme_hint">Follow app uses a light or dark scheme to match the app theme.</string>

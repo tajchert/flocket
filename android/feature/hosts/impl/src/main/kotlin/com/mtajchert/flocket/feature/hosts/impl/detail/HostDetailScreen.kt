@@ -1,9 +1,13 @@
 package com.mtajchert.flocket.feature.hosts.impl.detail
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -15,19 +19,22 @@ import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.ErrorOutline
+import androidx.compose.material.icons.outlined.Key
 import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -40,12 +47,18 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.mtajchert.flocket.core.designsystem.theme.FlocketCorners
+import com.mtajchert.flocket.core.designsystem.theme.FlocketMono
+import com.mtajchert.flocket.core.designsystem.theme.flocketColors
 import com.mtajchert.flocket.core.model.ConnectionState
 import com.mtajchert.flocket.core.model.MachineInfo
 import com.mtajchert.flocket.core.model.MachineState
@@ -130,13 +143,19 @@ fun HostDetailScreen(
                         Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp),
                         verticalArrangement = Arrangement.spacedBy(16.dp),
                     ) {
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             Text(
                                 stringResource(R.string.host_address, host.username, host.hostname, host.port),
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontFamily = FontFamily.Monospace,
+                                style = FlocketMono.body,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
-                            ConnectionStateBadge(state.connection, nowMs = nowMs)
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                ConnectionStateBadge(state.connection, nowMs = nowMs)
+                                state.core?.let { VersionChip(stringResource(R.string.detail_herdr_chip, it.version)) }
+                            }
                             if (state.connection is ConnectionState.Idle) {
                                 Button(onClick = callbacks.onConnect) { Text(stringResource(R.string.detail_connect)) }
                             }
@@ -147,13 +166,13 @@ fun HostDetailScreen(
                             StaleDataBanner(state.confirmedAtMs, nowMs = nowMs)
                         }
                         state.error?.let { ErrorBanner(it, onAction = callbacks.onErrorAction) }
-                        HostSettingsEntry(state.customSettings, callbacks.onHostSettings)
                         CoreSection(state)
                         if (state.machines.isNotEmpty()) MachinesSection(state.machines)
-                        SecuritySection(state, callbacks.onRequestForget)
+                        SettingsCard(state, callbacks.onHostSettings, callbacks.onRequestForget)
                         OutlinedButton(
                             onClick = callbacks.onRequestDelete,
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier.fillMaxWidth().height(44.dp),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.error),
                         ) { Text(stringResource(R.string.detail_delete), color = MaterialTheme.colorScheme.error) }
                     }
                 }
@@ -164,25 +183,73 @@ fun HostDetailScreen(
 }
 
 @Composable
-private fun HostSettingsEntry(
-    customSettings: Int,
-    onClick: () -> Unit,
+private fun VersionChip(text: String) {
+    Text(
+        text,
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier =
+            Modifier
+                .border(1.dp, MaterialTheme.colorScheme.outlineVariant, FlocketCorners.Chip)
+                .padding(horizontal = 10.dp, vertical = 5.dp),
+    )
+}
+
+@Composable
+private fun SettingsCard(
+    state: HostDetailUiState,
+    onHostSettings: () -> Unit,
+    onForget: () -> Unit,
 ) {
-    OutlinedCard(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
+    val none = Color.Transparent
+    Card(
+        Modifier.fillMaxWidth(),
+        shape = FlocketCorners.CardLarge,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+    ) {
         ListItem(
-            colors = ListItemDefaults.colors(containerColor = androidx.compose.ui.graphics.Color.Transparent),
+            modifier = Modifier.clickable(onClick = onHostSettings),
+            colors = ListItemDefaults.colors(containerColor = none),
             leadingContent = { Icon(Icons.Outlined.Tune, contentDescription = null) },
             headlineContent = { Text(stringResource(R.string.detail_host_settings)) },
             supportingContent = {
                 Text(
-                    if (customSettings == 0) {
+                    if (state.customSettings == 0) {
                         stringResource(R.string.detail_host_settings_defaults)
                     } else {
-                        pluralStringResource(R.plurals.detail_host_settings_custom, customSettings, customSettings)
+                        pluralStringResource(
+                            R.plurals.detail_host_settings_custom,
+                            state.customSettings,
+                            state.customSettings,
+                        )
                     },
                 )
             },
             trailingContent = { Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, contentDescription = null) },
+        )
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        val pinned = state.pinnedKey
+        ListItem(
+            colors = ListItemDefaults.colors(containerColor = none),
+            leadingContent = { Icon(Icons.Outlined.Key, contentDescription = null) },
+            overlineContent = { Text(stringResource(R.string.detail_security)) },
+            headlineContent = {
+                if (pinned == null) {
+                    Text(stringResource(R.string.detail_no_pinned), style = MaterialTheme.typography.bodyMedium)
+                } else {
+                    Text(
+                        pinned.fingerprint,
+                        style = FlocketMono.small,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            },
+            supportingContent = pinned?.let { { Text(it.keyType) } },
+            trailingContent =
+                pinned?.let {
+                    { TextButton(onClick = onForget) { Text(stringResource(R.string.detail_forget)) } }
+                },
         )
     }
 }
@@ -192,9 +259,19 @@ private fun Section(
     title: String,
     content: @Composable () -> Unit,
 ) {
-    OutlinedCard(Modifier.fillMaxWidth()) {
+    Card(
+        Modifier.fillMaxWidth(),
+        shape = FlocketCorners.CardLarge,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+    ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(title, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
+            Text(
+                title,
+                style = MaterialTheme.typography.titleSmall,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.primary,
+            )
             content()
         }
     }
@@ -244,11 +321,18 @@ private fun MachinesSection(machines: List<MachineInfo>) {
                         MachineState.Unreachable -> Icons.Outlined.ErrorOutline to R.string.machine_unreachable
                         MachineState.Other -> Icons.Outlined.ErrorOutline to R.string.machine_other
                     }
+                val flocket = MaterialTheme.flocketColors
                 Icon(
                     icon,
                     contentDescription = null,
                     modifier = Modifier.size(20.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    tint =
+                        when (machine.state) {
+                            MachineState.Connected -> flocket.done
+                            MachineState.NeedsLogin, MachineState.NeedsUpdate -> flocket.attention
+                            MachineState.Unreachable, MachineState.Other -> MaterialTheme.colorScheme.error
+                            MachineState.Connecting -> MaterialTheme.colorScheme.onSurfaceVariant
+                        },
                 )
                 Column(Modifier.weight(1f)) {
                     Text(machine.name, style = MaterialTheme.typography.bodyLarge)
@@ -264,27 +348,6 @@ private fun MachinesSection(machines: List<MachineInfo>) {
                     )
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun SecuritySection(
-    state: HostDetailUiState,
-    onForget: () -> Unit,
-) {
-    Section(stringResource(R.string.detail_security)) {
-        val pinned = state.pinnedKey
-        if (pinned == null) {
-            Text(stringResource(R.string.detail_no_pinned), style = MaterialTheme.typography.bodyMedium)
-        } else {
-            Text(
-                pinned.keyType,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Text(pinned.fingerprint, style = MaterialTheme.typography.bodyMedium, fontFamily = FontFamily.Monospace)
-            TextButton(onClick = onForget) { Text(stringResource(R.string.detail_forget)) }
         }
     }
 }

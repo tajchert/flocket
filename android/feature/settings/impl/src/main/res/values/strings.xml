@@ -5,7 +5,6 @@
 
     <!-- Appearance -->
     <string name="section_appearance">Appearance</string>
-    <string name="theme_label">Theme</string>
     <string name="theme_system">System</string>
     <string name="theme_light">Light</string>
     <string name="theme_dark">Dark</string>
@@ -65,4 +64,5 @@
     <!-- Licenses -->
     <string name="licenses_title">Open-source licenses</string>
     <string name="licenses_libraries">Libraries</string>
+    <string name="settings_footer">Flocket %1$s · No account, no cloud relay</string>
 </resources>

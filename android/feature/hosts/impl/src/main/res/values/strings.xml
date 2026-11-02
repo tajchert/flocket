@@ -30,7 +30,8 @@
     <string name="detail_title">Host</string>
     <string name="detail_not_found">This host no longer exists.</string>
     <string name="detail_edit">Edit</string>
-    <string name="detail_delete">Delete host</string>
+    <string name="detail_delete">Remove host</string>
+    <string name="detail_herdr_chip">herdr %1$s</string>
     <string name="detail_connect">Connect</string>
     <string name="detail_host_settings">Host settings</string>
     <string name="detail_host_settings_defaults">Using the app defaults</string>
