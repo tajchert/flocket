@@ -2,38 +2,59 @@
 
 package com.mtajchert.flocket.feature.terminals.impl
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.Code
+import androidx.compose.material.icons.outlined.Terminal
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.mtajchert.flocket.core.designsystem.theme.FlocketCorners
+import com.mtajchert.flocket.core.designsystem.theme.FlocketMono
 import com.mtajchert.flocket.core.model.HostId
 import com.mtajchert.flocket.core.ui.component.ErrorBanner
 
@@ -82,7 +103,10 @@ fun NewTerminalContent(
             .padding(bottom = 16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        Text(stringResource(R.string.new_terminal), style = MaterialTheme.typography.titleLarge)
+        Text(
+            stringResource(R.string.new_terminal),
+            style = MaterialTheme.typography.headlineSmall.copy(fontSize = 22.sp),
+        )
         if (form.hosts.isEmpty()) {
             Text(stringResource(R.string.new_terminal_no_hosts), style = MaterialTheme.typography.bodyMedium)
             TextButton(onClick = callbacks.onCancel) { Text(stringResource(R.string.new_terminal_cancel)) }
@@ -91,10 +115,10 @@ fun NewTerminalContent(
         if (form.hosts.size > 1) {
             Section(stringResource(R.string.new_terminal_host)) {
                 form.hosts.forEach { host ->
-                    FilterChip(
+                    SheetChip(
                         selected = host.id == form.hostId,
                         onClick = { callbacks.onHost(host.id) },
-                        label = { Text(host.label) },
+                        label = host.label,
                     )
                 }
             }
@@ -102,38 +126,55 @@ fun NewTerminalContent(
         val machines = form.host?.machines.orEmpty()
         if (machines.isNotEmpty()) {
             Section(stringResource(R.string.new_terminal_machine)) {
-                FilterChip(
+                SheetChip(
                     selected = form.machine == null,
                     onClick = { callbacks.onMachine(null) },
-                    label = { Text(stringResource(R.string.new_terminal_machine_local)) },
+                    label = stringResource(R.string.new_terminal_machine_local),
                 )
                 machines.forEach { machine ->
-                    FilterChip(
+                    SheetChip(
                         selected = form.machine == machine,
                         onClick = { callbacks.onMachine(machine) },
-                        label = { Text(machine) },
+                        label = machine,
                     )
                 }
             }
         }
-        Section(stringResource(R.string.new_terminal_run)) {
-            FilterChip(
-                selected = form.source == TerminalSource.Shell,
-                onClick = { callbacks.onSource(TerminalSource.Shell) },
-                label = { Text(stringResource(R.string.new_terminal_shell)) },
-            )
-            (form.templates as? TemplatesState.Loaded)?.templates?.forEach { template ->
-                FilterChip(
-                    selected = (form.source as? TerminalSource.Template)?.name == template.name,
-                    onClick = { callbacks.onSource(TerminalSource.Template(template.name)) },
-                    label = { Text(template.name) },
-                )
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            SectionTitle(stringResource(R.string.new_terminal_run))
+            val templates = (form.templates as? TemplatesState.Loaded)?.templates.orEmpty()
+            val tiles =
+                buildList {
+                    add(
+                        SourceTile(
+                            stringResource(R.string.new_terminal_shell),
+                            Icons.Outlined.Terminal,
+                            form.source == TerminalSource.Shell,
+                        ) { callbacks.onSource(TerminalSource.Shell) },
+                    )
+                    templates.forEach { template ->
+                        add(
+                            SourceTile(
+                                template.name,
+                                Icons.Outlined.AutoAwesome,
+                                (form.source as? TerminalSource.Template)?.name == template.name,
+                            ) { callbacks.onSource(TerminalSource.Template(template.name)) },
+                        )
+                    }
+                    add(
+                        SourceTile(
+                            stringResource(R.string.new_terminal_command_option),
+                            Icons.Outlined.Code,
+                            form.source == TerminalSource.Command,
+                        ) { callbacks.onSource(TerminalSource.Command) },
+                    )
+                }
+            tiles.chunked(3).forEach { rowTiles ->
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    rowTiles.forEach { SourceTileView(it, Modifier.weight(1f)) }
+                    repeat(3 - rowTiles.size) { Spacer(Modifier.weight(1f)) }
+                }
             }
-            FilterChip(
-                selected = form.source == TerminalSource.Command,
-                onClick = { callbacks.onSource(TerminalSource.Command) },
-                label = { Text(stringResource(R.string.new_terminal_command_option)) },
-            )
         }
         when (form.templates) {
             TemplatesState.Loading -> {
@@ -185,7 +226,7 @@ fun NewTerminalContent(
                     } else {
                         null
                     },
-                textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
+                textStyle = FlocketMono.body,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
             )
         }
@@ -204,7 +245,7 @@ fun NewTerminalContent(
                     ),
                 )
             },
-            textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
+            textStyle = FlocketMono.body,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
         )
         OutlinedTextField(
@@ -230,14 +271,24 @@ fun NewTerminalContent(
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
             TextButton(onClick = callbacks.onCancel) { Text(stringResource(R.string.new_terminal_cancel)) }
             Button(onClick = callbacks.onSubmit, enabled = !form.submitting) {
-                if (form.submitting) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                Text(
-                    stringResource(R.string.new_terminal_start),
-                    Modifier.padding(start = if (form.submitting) 8.dp else 0.dp),
-                )
+                if (form.submitting) {
+                    CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                } else {
+                    Icon(Icons.Filled.PlayArrow, contentDescription = null, Modifier.size(18.dp))
+                }
+                Text(stringResource(R.string.new_terminal_start), Modifier.padding(start = 8.dp))
             }
         }
     }
+}
+
+@Composable
+private fun SectionTitle(title: String) {
+    Text(
+        title,
+        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
 }
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -247,9 +298,78 @@ private fun Section(
     content: @Composable () -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(title, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        SectionTitle(title)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             content()
+        }
+    }
+}
+
+/** Chip-style option: selected = secondary container with a check, unselected = outlined (8dp radius, 48dp target). */
+@Composable
+private fun SheetChip(
+    selected: Boolean,
+    onClick: () -> Unit,
+    label: String,
+) {
+    val scheme = MaterialTheme.colorScheme
+    Box(
+        Modifier
+            .minimumInteractiveComponentSize()
+            .selectable(selected = selected, role = Role.RadioButton, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Surface(
+            shape = FlocketCorners.Chip,
+            color = if (selected) scheme.secondaryContainer else Color.Transparent,
+            contentColor = if (selected) scheme.onSecondaryContainer else scheme.onSurfaceVariant,
+            border = if (selected) null else BorderStroke(1.dp, scheme.outlineVariant),
+        ) {
+            Row(
+                Modifier.heightIn(min = 32.dp).padding(horizontal = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                if (selected) Icon(Icons.Outlined.Check, contentDescription = null, Modifier.size(16.dp))
+                Text(label, style = MaterialTheme.typography.labelLarge)
+            }
+        }
+    }
+}
+
+private class SourceTile(
+    val label: String,
+    val icon: ImageVector,
+    val selected: Boolean,
+    val onClick: () -> Unit,
+)
+
+@Composable
+private fun SourceTileView(
+    tile: SourceTile,
+    modifier: Modifier = Modifier,
+) {
+    val scheme = MaterialTheme.colorScheme
+    Surface(
+        modifier = modifier.selectable(selected = tile.selected, role = Role.RadioButton, onClick = tile.onClick),
+        shape = FlocketCorners.Card,
+        color = if (tile.selected) scheme.secondaryContainer else Color.Transparent,
+        contentColor = if (tile.selected) scheme.onSecondaryContainer else scheme.onSurface,
+        border = if (tile.selected) null else BorderStroke(1.dp, scheme.outlineVariant),
+    ) {
+        Column(
+            Modifier.heightIn(min = 72.dp).padding(8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            Icon(if (tile.selected) Icons.Outlined.Check else tile.icon, contentDescription = null)
+            Text(
+                tile.label,
+                style = MaterialTheme.typography.labelLarge,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center,
+            )
         }
     }
 }

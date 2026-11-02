@@ -10,6 +10,8 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -19,6 +21,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.FrontHand
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.CloudOff
@@ -71,8 +74,11 @@ import androidx.compose.ui.semantics.onLongClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.mtajchert.flocket.core.designsystem.theme.FlocketCorners
+import com.mtajchert.flocket.core.designsystem.theme.flocketColors
 import com.mtajchert.flocket.core.model.AgentState
 import com.mtajchert.flocket.core.model.HostId
 import com.mtajchert.flocket.core.model.LayoutRef
@@ -80,10 +86,15 @@ import com.mtajchert.flocket.core.model.MachineState
 import com.mtajchert.flocket.core.model.TerminalSort
 import com.mtajchert.flocket.core.ui.component.CenteredContent
 import com.mtajchert.flocket.core.ui.component.ConnectionStateBadge
+import com.mtajchert.flocket.core.ui.component.DotFilterChip
 import com.mtajchert.flocket.core.ui.component.EmptyState
 import com.mtajchert.flocket.core.ui.component.ErrorBanner
+import com.mtajchert.flocket.core.ui.component.GroupHeader
 import com.mtajchert.flocket.core.ui.component.StaleDataBanner
+import com.mtajchert.flocket.core.ui.component.StatusGroup
+import com.mtajchert.flocket.core.ui.component.color
 import com.mtajchert.flocket.core.ui.component.rememberNowMs
+import com.mtajchert.flocket.core.ui.component.title
 import com.mtajchert.flocket.core.ui.error.UiErrorAction
 import com.mtajchert.flocket.core.ui.nav.LocalPaneLayout
 import com.mtajchert.flocket.feature.terminal.api.TerminalRoute
@@ -121,6 +132,10 @@ fun TerminalsScreen(
 ) {
     val dense = LocalPaneLayout.current.multiPane
     val canAdd = state.emptyKind != EmptyKind.NoHosts && state.loaded
+    val inbox = state.sort == TerminalSort.Inbox
+    // The host chip selection; a host that has gone away counts as "All".
+    var hostFilterValue by rememberSaveable { mutableStateOf<String?>(null) }
+    val hostFilter = state.groups.firstOrNull { it.hostId.value == hostFilterValue }?.hostId
     Scaffold(
         modifier = modifier,
         topBar = {
@@ -142,7 +157,7 @@ fun TerminalsScreen(
                             Icon(Icons.Outlined.Add, contentDescription = stringResource(R.string.new_terminal))
                         }
                     }
-                    if (state.emptyKind != EmptyKind.NoHosts) OptionsMenu(state, actions)
+                    if (state.emptyKind != EmptyKind.NoHosts) OptionsMenu(state, actions, showFilters = inbox && !dense)
                 },
             )
         },
@@ -154,6 +169,9 @@ fun TerminalsScreen(
                     onClick = actions.onNewTerminal,
                     icon = { Icon(Icons.Outlined.Add, contentDescription = null) },
                     text = { Text(label) },
+                    shape = FlocketCorners.Fab,
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
                     // The label lives on the button node itself, so TalkBack and UI dumps find it.
                     modifier = Modifier.semantics { contentDescription = label },
                 )
@@ -162,9 +180,9 @@ fun TerminalsScreen(
     ) { padding ->
         CenteredContent(Modifier.padding(padding), maxWidth = 720.dp) {
             Column {
-                if (!dense && state.loaded &&
-                    state.emptyKind != EmptyKind.NoHosts
-                ) {
+                if (inbox && state.loaded && state.emptyKind != EmptyKind.NoHosts) {
+                    InboxHeader(state, hostFilter, onHost = { hostFilterValue = it?.value })
+                } else if (!dense && state.loaded && state.emptyKind != EmptyKind.NoHosts) {
                     FilterRow(state.filter, actions.onFilter)
                 }
                 when (state.emptyKind) {
@@ -199,7 +217,11 @@ fun TerminalsScreen(
                     }
 
                     else -> {
-                        TerminalList(state, actions, selected, nowMs, dense)
+                        if (inbox) {
+                            InboxList(state, actions, selected, nowMs, dense, hostFilter)
+                        } else {
+                            TerminalList(state, actions, selected, nowMs, dense)
+                        }
                     }
                 }
             }
@@ -211,12 +233,33 @@ fun TerminalsScreen(
 private fun OptionsMenu(
     state: TerminalsUiState,
     actions: TerminalsActions,
+    showFilters: Boolean = false,
 ) {
     var open by remember { mutableStateOf(false) }
     IconButton(onClick = { open = true }) {
         Icon(Icons.Outlined.MoreVert, contentDescription = stringResource(R.string.menu_options))
     }
     DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+        if (showFilters) {
+            // The status filter is not a chip row in the inbox: it lives here.
+            Text(
+                stringResource(R.string.menu_filter_title),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+            )
+            TerminalFilter.entries.forEach { entry ->
+                DropdownMenuItem(
+                    text = { Text(stringResource(entry.label())) },
+                    onClick = {
+                        actions.onFilter(entry)
+                        open = false
+                    },
+                    leadingIcon = { RadioButton(selected = state.filter == entry, onClick = null) },
+                )
+            }
+            HorizontalDivider()
+        }
         Text(
             stringResource(R.string.menu_sort_title),
             style = MaterialTheme.typography.labelMedium,
@@ -224,6 +267,7 @@ private fun OptionsMenu(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
         )
         listOf(
+            TerminalSort.Inbox to R.string.menu_sort_inbox,
             TerminalSort.Priority to R.string.menu_sort_priority,
             TerminalSort.Grouped to R.string.menu_sort_grouped,
         ).forEach { (sort, label) ->
@@ -451,20 +495,7 @@ private fun TerminalList(
             }
             if (state.hiddenFinished > 0) {
                 item(key = "hidden-finished", contentType = "footer") {
-                    Row(
-                        Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            pluralStringResource(R.plurals.finished_hidden, state.hiddenFinished, state.hiddenFinished),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.weight(1f),
-                        )
-                        TextButton(
-                            onClick = { actions.onShowFinished(true) },
-                        ) { Text(stringResource(R.string.finished_hidden_show)) }
-                    }
+                    HiddenFinishedFooter(state.hiddenFinished, actions.onShowFinished)
                 }
             }
         }
@@ -711,6 +742,213 @@ private fun OfflineNotice(onRetry: () -> Unit) {
             }
             Text(stringResource(R.string.empty_offline_message), style = MaterialTheme.typography.bodyMedium)
             TextButton(onClick = onRetry) { Text(stringResource(R.string.empty_offline_action)) }
+        }
+    }
+}
+
+@Composable
+private fun HiddenFinishedFooter(
+    count: Int,
+    onShow: (Boolean) -> Unit,
+) {
+    Row(
+        Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            pluralStringResource(R.plurals.finished_hidden, count, count),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f),
+        )
+        TextButton(onClick = { onShow(true) }) { Text(stringResource(R.string.finished_hidden_show)) }
+    }
+}
+
+/** Summary line and host chips above the inbox. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun InboxHeader(
+    state: TerminalsUiState,
+    hostFilter: HostId?,
+    onHost: (HostId?) -> Unit,
+) {
+    val fixed = MaterialTheme.flocketColors
+    val scheme = MaterialTheme.colorScheme
+    val needsYou = state.groups.sumOf { it.needsYouCount() }
+    val working = state.groups.sumOf { g -> g.sections.sumOf { s -> s.items.count { it.isWorking() } } }
+    val online = state.groups.count { it.online }
+    val total = state.groups.size
+    Column {
+        FlowRow(
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+            itemVerticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (needsYou > 0) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Icon(
+                        Icons.Filled.FrontHand,
+                        contentDescription = null,
+                        Modifier.size(16.dp),
+                        tint = fixed.attention,
+                    )
+                    Text(
+                        pluralStringResource(CoreUiR.plurals.need_you_count, needsYou, needsYou),
+                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                        color = fixed.attention,
+                    )
+                }
+            }
+            if (working > 0) {
+                Text(
+                    pluralStringResource(R.plurals.summary_working, working, working),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = scheme.onSurfaceVariant,
+                )
+            }
+            if (total > 0) {
+                Text(
+                    pluralStringResource(R.plurals.summary_hosts_online, total, online, total),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = scheme.onSurfaceVariant,
+                )
+            }
+        }
+        if (state.groups.size > 1) {
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                DotFilterChip(
+                    label = stringResource(R.string.filter_all),
+                    selected = hostFilter == null,
+                    onClick = { onHost(null) },
+                    count = needsYou.takeIf { it > 0 },
+                )
+                state.groups.forEach { group ->
+                    DotFilterChip(
+                        label = group.label,
+                        selected = hostFilter == group.hostId,
+                        onClick = { onHost(group.hostId) },
+                        dotColor = if (group.online) scheme.primary else scheme.outline,
+                        count = group.needsYouCount().takeIf { it > 0 },
+                    )
+                }
+            }
+        }
+    }
+}
+
+private fun PriorityBucket.group(): StatusGroup =
+    when (this) {
+        PriorityBucket.NeedsYou -> StatusGroup.NeedsYou
+        PriorityBucket.Working -> StatusGroup.Working
+        PriorityBucket.Done -> StatusGroup.Done
+        PriorityBucket.Idle -> StatusGroup.Idle
+        PriorityBucket.NoStatus, PriorityBucket.Finished -> StatusGroup.NoStatus
+    }
+
+/** The status-grouped inbox: Needs you, Working, Done, Idle (collapsed), then no status and finished. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun InboxList(
+    state: TerminalsUiState,
+    actions: TerminalsActions,
+    selected: TerminalRoute?,
+    nowMs: Long,
+    dense: Boolean,
+    hostFilter: HostId?,
+) {
+    // Group keys the user flipped away from their default (Idle starts collapsed, the rest expanded).
+    var flipped by rememberSaveable { mutableStateOf(emptySet<String>()) }
+    val sections = remember(state.groups, hostFilter) { inboxSections(state.groups, hostFilter) }
+    val shownGroups = state.groups.filter { hostFilter == null || it.hostId == hostFilter }
+    val showHost = state.groups.size > 1 && hostFilter == null
+    PullToRefreshBox(isRefreshing = state.refreshing, onRefresh = actions.onRefresh) {
+        LazyColumn(
+            contentPadding = PaddingValues(top = 4.dp, bottom = 96.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            if (state.emptyKind == EmptyKind.AllOffline) {
+                item(key = "offline", contentType = "notice") { OfflineNotice(actions.onRefresh) }
+            }
+            shownGroups.filter { !it.online || it.error != null }.forEach { group ->
+                item(key = "host-note:${group.hostId.value}", contentType = "host-note") {
+                    Column(
+                        Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Text(
+                            group.label,
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                        group.error?.let { error ->
+                            ErrorBanner(error, onAction = { actions.onHostAction(group.hostId, it) })
+                        }
+                        if (!group.online && (group.error == null || group.total > 0)) {
+                            StaleDataBanner(group.confirmedAtMs, Modifier, nowMs)
+                        }
+                    }
+                }
+            }
+            sections.forEach { section ->
+                val key = section.bucket.name
+                val expanded = (section.bucket != PriorityBucket.Idle) != (key in flipped)
+                item(key = "group:$key", contentType = "group") {
+                    val group = section.bucket.group()
+                    GroupHeader(
+                        title =
+                            if (section.bucket == PriorityBucket.Finished) {
+                                stringResource(R.string.priority_finished)
+                            } else {
+                                group.title()
+                            },
+                        count = section.rows.size,
+                        color = group.color(),
+                        expanded = expanded,
+                        onToggle = { flipped = if (key in flipped) flipped - key else flipped + key },
+                    )
+                }
+                if (expanded) {
+                    items(
+                        section.rows.size,
+                        key = {
+                            section.rows[it]
+                                .row.item.key
+                        },
+                        contentType = { "row" },
+                    ) { index ->
+                        val inboxRow = section.rows[index]
+                        val item = inboxRow.row.item
+                        TerminalRow(
+                            item = item,
+                            selected =
+                                selected != null && selected.hostId == item.hostId.value &&
+                                    selected.address == item.address,
+                            nowMs = nowMs,
+                            actions = actions,
+                            dense = dense,
+                            place = placeText(inboxRow.row.place),
+                            placeInfo = inboxRow.row.place,
+                            hostLabel =
+                                listOfNotNull(inboxRow.hostLabel.takeIf { showHost }, item.ref.address.machine)
+                                    .joinToString("/")
+                                    .ifEmpty { null },
+                        )
+                    }
+                }
+            }
+            if (state.hiddenFinished > 0) {
+                item(key = "hidden-finished", contentType = "footer") {
+                    HiddenFinishedFooter(state.hiddenFinished, actions.onShowFinished)
+                }
+            }
         }
     }
 }

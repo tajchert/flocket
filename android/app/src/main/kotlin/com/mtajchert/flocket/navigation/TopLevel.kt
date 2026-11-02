@@ -2,6 +2,9 @@ package com.mtajchert.flocket.navigation
 
 import androidx.annotation.StringRes
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Dns
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.outlined.Dns
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Terminal
@@ -22,13 +25,14 @@ data class TopLevelDestination(
     val key: NavKey,
     @StringRes val label: Int,
     val icon: ImageVector,
+    val selectedIcon: ImageVector = icon,
 )
 
 val TopLevelDestinations =
     listOf(
-        TopLevelDestination(TerminalsRoute, R.string.nav_terminals, Icons.Outlined.Terminal),
-        TopLevelDestination(HostsRoute, R.string.nav_hosts, Icons.Outlined.Dns),
-        TopLevelDestination(SettingsRoute, R.string.nav_settings, Icons.Outlined.Settings),
+        TopLevelDestination(TerminalsRoute, R.string.nav_terminals, Icons.Outlined.Terminal, Icons.Filled.Terminal),
+        TopLevelDestination(HostsRoute, R.string.nav_hosts, Icons.Outlined.Dns, Icons.Filled.Dns),
+        TopLevelDestination(SettingsRoute, R.string.nav_settings, Icons.Outlined.Settings, Icons.Filled.Settings),
     )
 
 /**

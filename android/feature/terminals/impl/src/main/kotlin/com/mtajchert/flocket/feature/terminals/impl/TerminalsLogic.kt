@@ -1,10 +1,12 @@
 package com.mtajchert.flocket.feature.terminals.impl
 
+import androidx.compose.runtime.Immutable
 import com.mtajchert.flocket.core.data.HostOverview
 import com.mtajchert.flocket.core.model.AgentCatalog
 import com.mtajchert.flocket.core.model.AgentState
 import com.mtajchert.flocket.core.model.AgentStatus
 import com.mtajchert.flocket.core.model.ConnectionState
+import com.mtajchert.flocket.core.model.HostId
 import com.mtajchert.flocket.core.model.Liveness
 import com.mtajchert.flocket.core.model.MachineState
 import com.mtajchert.flocket.core.model.TerminalAddress
@@ -88,7 +90,7 @@ internal fun buildSections(
 
     // A write goes out only to an online host and, for a federated space, to a connected machine.
     fun canRename(machine: String?) = online && (machine == null || info(machine)?.state == MachineState.Connected)
-    if (controls.sort == TerminalSort.Priority) {
+    if (controls.sort != TerminalSort.Grouped) {
         val places = workspace.rowPlaces(::canRename)
         return shown
             .groupBy { it.ref.address.machine }
@@ -279,3 +281,57 @@ internal fun buildUiState(
         hiddenFinished = hiddenFinished,
     )
 }
+
+/** One row of the inbox: a terminal plus where it lives and which host it is on. */
+@Immutable
+internal data class InboxRow(
+    val row: PriorityRow,
+    val hostId: HostId,
+    val hostLabel: String,
+)
+
+/** One status group of the inbox. */
+@Immutable
+internal data class InboxSection(
+    val bucket: PriorityBucket,
+    val rows: List<InboxRow>,
+)
+
+/** Inbox group order: needs you, working, done, idle, then no status and finished. */
+private val INBOX_ORDER =
+    listOf(
+        PriorityBucket.NeedsYou,
+        PriorityBucket.Working,
+        PriorityBucket.Done,
+        PriorityBucket.Idle,
+        PriorityBucket.NoStatus,
+        PriorityBucket.Finished,
+    )
+
+/** Flattens the hosts' priority sections into one status-grouped list, optionally for a single host. */
+internal fun inboxSections(
+    groups: List<HostGroup>,
+    hostFilter: HostId? = null,
+): List<InboxSection> {
+    val rows =
+        groups
+            .filter { hostFilter == null || it.hostId == hostFilter }
+            .flatMap { group ->
+                group.sections.flatMap { section ->
+                    section.priority.flatMap { prio ->
+                        prio.rows.map { prio.bucket to InboxRow(it, group.hostId, group.label) }
+                    }
+                }
+            }
+    return INBOX_ORDER.mapNotNull { bucket ->
+        rows.filter { it.first == bucket }.map { it.second }.takeIf { it.isNotEmpty() }?.let {
+            InboxSection(
+                bucket,
+                it,
+            )
+        }
+    }
+}
+
+/** Needs-you terminals on one host (finished ones excluded). */
+internal fun HostGroup.needsYouCount(): Int = sections.sumOf { s -> s.items.count { it.needsAttention() } }

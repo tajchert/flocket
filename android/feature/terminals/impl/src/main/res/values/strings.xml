@@ -11,6 +11,16 @@
     <string name="filters_description">Filter terminals</string>
     <string name="menu_options">List options</string>
     <string name="menu_sort_title">Sort</string>
+    <string name="menu_sort_inbox">Inbox (by status)</string>
+    <string name="menu_filter_title">Show</string>
+    <plurals name="summary_working">
+        <item quantity="one">%d working</item>
+        <item quantity="other">%d working</item>
+    </plurals>
+    <plurals name="summary_hosts_online">
+        <item quantity="one">%1$d of %2$d host online</item>
+        <item quantity="other">%1$d of %2$d hosts online</item>
+    </plurals>
     <string name="menu_sort_priority">Priority</string>
     <string name="menu_sort_grouped">Grouped by space</string>
     <string name="priority_needs_you">Needs you</string>
@@ -62,6 +72,11 @@
     <string name="row_finished_signal">Finished · signal %1$d</string>
     <string name="row_waiting">Waiting for a new shell</string>
     <string name="row_actions">Actions for %1$s</string>
+    <string name="row_stale">Stale data, host offline</string>
+    <string name="age_now">now</string>
+    <string name="age_minutes">%dm</string>
+    <string name="age_hours">%dh</string>
+    <string name="age_days">%dd</string>
     <string name="row_read_only">Read-only until the host reconnects</string>
     <string name="action_interrupt">Interrupt (stop key)</string>
     <string name="action_send_text">Send text…</string>

@@ -50,9 +50,16 @@ class MainActivity : ComponentActivity() {
             }
             FlocketTheme(darkTheme = darkTheme, dynamicColor = prefs.dynamicColor) {
                 val showOnboarding by appViewModel.showOnboarding.collectAsStateWithLifecycle()
+                val needsYou by appViewModel.needsYouCount.collectAsStateWithLifecycle()
                 splash.setKeepOnScreenCondition { showOnboarding == null }
                 Surface {
-                    showOnboarding?.let { FlocketNavHost(installers = installers, showOnboarding = it) }
+                    showOnboarding?.let {
+                        FlocketNavHost(
+                            installers = installers,
+                            showOnboarding = it,
+                            needsYouCount = needsYou,
+                        )
+                    }
                 }
             }
         }

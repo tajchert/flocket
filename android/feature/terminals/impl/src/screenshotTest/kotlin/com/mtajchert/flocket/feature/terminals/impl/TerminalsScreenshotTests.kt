@@ -319,3 +319,20 @@ private fun NewTerminalErrorsScreenshot() =
             NewTerminalCallbacks(),
         )
     }
+
+private val inbox = buildUiState(SampleData.overview, ListControls(sort = TerminalSort.Inbox), refreshing = false)
+
+@PreviewTest
+@PreviewFormFactors
+@PreviewLargeFont
+@PreviewPhoneDark
+@Composable
+private fun TerminalsInboxScreenshot() = Shot { TerminalsScreen(inbox, TerminalsActions(), nowMs = NOW) }
+
+@PreviewTest
+@PreviewSidebar
+@Composable
+private fun TerminalsDenseInboxScreenshot() =
+    Shot {
+        Dense { TerminalsScreen(inbox, TerminalsActions(), selected = TerminalRoute("studio", "t1"), nowMs = NOW) }
+    }
