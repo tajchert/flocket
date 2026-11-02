@@ -271,6 +271,66 @@ class CoreSessionTest {
             s.stop()
         }
 
+    @Test
+    fun `run labels the terminal herdr seen 0 unless the caller sets it`() =
+        runTest {
+            val host = hostWith("t1")
+            host.configure = { c -> c.handlers["terminal.run"] = { FakeCore.terminal("t2") } }
+            val s = host.session(this)
+            s.start()
+            s.awaitOnline()
+            s.run(RunRequest(cwd = "/work")).getOrThrow()
+            s.run(RunRequest(cwd = "/work", labels = mapOf("herdr.seen" to "7"))).getOrThrow()
+            val seen =
+                host.core.callsOf("terminal.run").map {
+                    it.params["labels"]!!
+                        .jsonObject["herdr.seen"]!!
+                        .jsonPrimitive.content
+                }
+            assertEquals(listOf("0", "7"), seen)
+            s.stop()
+        }
+
+    @Test
+    fun `setLabels sends terminal label with the label map`() =
+        runTest {
+            val host = hostWith("t1")
+            host.configure = { c -> c.handlers["terminal.label"] = { FakeCore.terminal("t1") } }
+            val s = host.session(this)
+            s.start()
+            s.awaitOnline()
+            assertTrue(s.state.value.supportsLabels)
+            assertEquals(
+                "t1",
+                s
+                    .setLabels(t1, mapOf("herdr.seen" to "3"))
+                    .getOrThrow()
+                    .address.value,
+            )
+            val p =
+                host.core
+                    .callsOf("terminal.label")
+                    .single()
+                    .params
+            assertEquals("t1", p["terminal"]!!.jsonPrimitive.content)
+            assertEquals("3", p["labels"]!!.jsonObject["herdr.seen"]!!.jsonPrimitive.content)
+            s.stop()
+        }
+
+    @Test
+    fun `setLabels without terminal label is Unsupported and makes no call`() =
+        runTest {
+            val host = hostWith("t1")
+            host.coreConfig = FakeCoreConfig(methods = FakeCoreConfig.DEFAULT_METHODS - "terminal.label")
+            val s = host.session(this)
+            s.start()
+            s.awaitOnline()
+            assertFalse(s.state.value.supportsLabels)
+            assertEquals(AppError.Unsupported("terminal.label"), s.setLabels(t1, mapOf("a" to "b")).errorOrNull())
+            assertTrue(host.core.callsOf("terminal.label").isEmpty())
+            s.stop()
+        }
+
     private fun execReply(
         home: String,
         code: Int? = 0,

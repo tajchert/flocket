@@ -113,8 +113,17 @@ data class WorkspaceTab(
     val layoutRef: LayoutRef? = null,
 )
 
-/** Label keys the desktop app puts on terminals it created (SPEC §9.1). Read-only for Flocket. */
+/**
+ * Label keys of the desktop app (SPEC §6.4, §9.1). [SPACE] and [TAB] are read-only for Flocket; [SEEN] and
+ * [PINNED] are the agent-panel marks Flocket writes.
+ */
 object HerdrLabels {
     const val SPACE = "herdr.space"
     const val TAB = "herdr.tab"
+
+    /** Last `turn` a person looked at an agent terminal. */
+    const val SEEN = "herdr.seen"
+
+    /** Present and non-empty = pinned. */
+    const val PINNED = "herdr.pinned"
 }

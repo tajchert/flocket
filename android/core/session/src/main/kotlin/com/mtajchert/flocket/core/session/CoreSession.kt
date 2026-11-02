@@ -67,6 +67,17 @@ interface CoreSession {
     /** Press the program's stop key (`terminal.interrupt`). */
     suspend fun interrupt(address: TerminalAddress): AppResult<InterruptOutcome>
 
+    /**
+     * Merges [labels] into the terminal's labels (`terminal.label`, SPEC §4.8): `key=value` sets, an empty
+     * value removes. Idempotent, so a lost link needs no unknown-outcome dialog: re-read the state. The
+     * `labels` event updates [SessionState]. `Unsupported` when the core lacks the method
+     * (see [SessionState.supportsLabels]).
+     */
+    suspend fun setLabels(
+        address: TerminalAddress,
+        labels: Map<String, String>,
+    ): AppResult<TerminalRecord>
+
     suspend fun templates(): AppResult<List<TerminalTemplate>>
 
     /**
@@ -131,6 +142,9 @@ data class SessionState(
      */
     val machineLayouts: Map<String, DesktopLayout> = emptyMap(),
 ) {
+    /** The core has `terminal.label` (herdr.seen / herdr.pinned writes). Kept while disconnected. */
+    val supportsLabels: Boolean get() = core?.supports(CoreInfo.TERMINAL_LABEL) == true
+
     /** Data is cached, not live: show it as stale and disable writes. */
     val isStale: Boolean get() = connection !is ConnectionState.Online
 
