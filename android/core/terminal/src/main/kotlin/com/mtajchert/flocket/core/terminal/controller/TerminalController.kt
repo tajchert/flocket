@@ -36,6 +36,8 @@ import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.yield
 import java.util.concurrent.Executors
 
@@ -137,6 +139,9 @@ class TerminalController(
     // link), so we are the owner after all. Cleared by any other size.
     private var lateAckPossible = false
     private var theme = theme
+
+    // The screen has set its real theme (the constructor's is a placeholder until then).
+    private val themeSet = MutableStateFlow(false)
 
     @Volatile private var visible = true
 
@@ -469,8 +474,20 @@ class TerminalController(
             aboveStale = true
             requestFrame()
             if (owner) stream?.updateDisplay(displayFacts())
+            themeSet.value = true
         }
     }
+
+    /**
+     * The display facts to attach with (SPEC §6.6), once the screen has set its theme: a program that
+     * asks for its colors right after the attach then gets this screen's, not the last viewer's. Null when
+     * no theme arrives within [timeoutMs] (attach without; [bind] sends them once owner).
+     */
+    suspend fun awaitDisplayFacts(timeoutMs: Long = DISPLAY_WAIT_MS): DisplayFacts? =
+        withTimeoutOrNull(timeoutMs) {
+            themeSet.first { it }
+            withContext(dispatcher) { displayFacts() }
+        }
 
     /** Scroll into scrollback: negative = older. */
     fun scrollBy(rows: Int) {
@@ -764,6 +781,9 @@ class TerminalController(
         const val DEFAULT_RESIZE_DEBOUNCE_MS = 120L
         const val DEFAULT_SIZE_ACK_TIMEOUT_MS = 1_000L
         const val DEFAULT_INPUT_QUEUE = 256
+
+        /** How long an attach waits for the screen's first theme (it composes within a frame or two). */
+        const val DISPLAY_WAIT_MS = 500L
 
         private fun hex(argb: Int) = "#%06x".format(argb and 0xFFFFFF)
     }

@@ -254,12 +254,17 @@ class TerminalViewModel
                 // Always the size owner: opening a terminal fits it to this screen (ADR-0007); a
                 // desktop viewer snaps back when its user types there.
                 val mode = AttachMode.Owner
+                // Our colors with the attach, so a program's first color query gets this screen's.
+                val display = controller.awaitDisplayFacts()
                 val size = controller.preferredSize()
                 attachCount++
                 // Not cancellable: a stream returned after the screen closed must still be detached.
                 val result =
                     withContext(NonCancellable) {
-                        s.attach(address, AttachRequest(size.cols, size.rows, mode, historyLines = HISTORY_LINES))
+                        s.attach(
+                            address,
+                            AttachRequest(size.cols, size.rows, mode, historyLines = HISTORY_LINES, display = display),
+                        )
                     }
                 when (result) {
                     is AppResult.Success -> {
