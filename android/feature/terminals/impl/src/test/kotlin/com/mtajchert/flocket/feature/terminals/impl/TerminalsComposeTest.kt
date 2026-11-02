@@ -162,6 +162,30 @@ class TerminalsComposeTest {
     }
 
     @Test
+    fun `priority list shows Other terminals expanded when there are no agent rows`() {
+        val shellsOnly =
+            priorityState.copy(
+                groups =
+                    priorityState.groups.map { g ->
+                        g.copy(
+                            sections =
+                                g.sections.map { sec ->
+                                    sec.copy(priority = sec.priority.filter { it.bucket == PriorityBucket.NoStatus })
+                                },
+                        )
+                    },
+            )
+        val rows = hasContentDescription("Actions for", substring = true)
+        val shells = shellsOnly.groups.flatMap { g -> g.sections.flatMap { it.priority } }.sumOf { it.rows.size }
+        assertTrue(shells > 0)
+        show(shellsOnly)
+        assertEquals(shells, rule.onAllNodes(rows).fetchSemanticsNodes().size)
+        // The user's toggle wins over the default.
+        rule.onAllNodesWithText("Other terminals")[0].performClick()
+        assertEquals(0, rule.onAllNodes(rows).fetchSemanticsNodes().size)
+    }
+
+    @Test
     fun `priority host chips filter and status filter stays in the options menu`() {
         var chosen: TerminalFilter? = null
         show(priorityState, TerminalsActions(onFilter = { chosen = it }))

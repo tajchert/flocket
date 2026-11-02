@@ -818,7 +818,7 @@ private fun PriorityBucket.group(): StatusGroup =
         PriorityBucket.NoStatus -> StatusGroup.NoStatus
     }
 
-/** The cross-host priority list: Needs you, Done, Working, Idle, then Other terminals (collapsed). */
+/** The cross-host priority list: Needs you, Done, Working, Idle, then Other terminals (collapsed unless no agents). */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun PriorityList(
@@ -829,12 +829,18 @@ private fun PriorityList(
     dense: Boolean,
     hostFilter: HostId?,
 ) {
-    // Group keys the user flipped away from their default (Other terminals start collapsed, the rest expanded).
+    // Group keys the user flipped away from their default (Other terminals start collapsed when agents exist, the rest expanded).
     var flipped by rememberSaveable { mutableStateOf(emptySet<String>()) }
     var folded by rememberSaveable { mutableStateOf(emptySet<String>()) }
     val sections = remember(state.groups, hostFilter) { prioritySections(state.groups, hostFilter) }
     val shownGroups = state.groups.filter { hostFilter == null || it.hostId == hostFilter }
     val showHost = state.groups.size > 1 && hostFilter == null
+    // Other terminals start expanded when no agent row is listed, so a lone shell is not hidden behind a header.
+    val hasAgentRows =
+        sections.any {
+            it.bucket != PriorityBucket.NoStatus && it.bucket != PriorityBucket.Pinned &&
+                it.rows.isNotEmpty()
+        }
     PullToRefreshBox(isRefreshing = state.refreshing, onRefresh = actions.onRefresh) {
         LazyColumn(
             contentPadding = PaddingValues(top = 4.dp, bottom = 96.dp),
@@ -865,7 +871,7 @@ private fun PriorityList(
             }
             sections.forEach { section ->
                 val key = section.bucket.name
-                val expanded = (section.bucket != PriorityBucket.NoStatus) != (key in flipped)
+                val expanded = (section.bucket != PriorityBucket.NoStatus || !hasAgentRows) != (key in flipped)
                 item(key = "group:$key", contentType = "group") {
                     val group = section.bucket.group()
                     GroupHeader(
