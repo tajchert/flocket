@@ -21,6 +21,7 @@ import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Dns
 import androidx.compose.material.icons.outlined.FileOpen
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Key
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VisibilityOff
@@ -28,7 +29,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
@@ -366,10 +366,10 @@ private fun AboutSection(
 ) {
     SectionHeader(stringResource(R.string.section_about))
     ListItem(
+        leadingContent = { Icon(Icons.Outlined.Info, null) },
         headlineContent = { Text(stringResource(R.string.about_version)) },
         supportingContent = { Text(stringResource(R.string.about_version_value, info.versionName, info.versionCode)) },
     )
-    HorizontalDivider(Modifier.padding(horizontal = 16.dp))
     ListItem(
         modifier = Modifier.clickableItem(callbacks.onLicenses),
         leadingContent = { Icon(Icons.Outlined.Description, null) },
