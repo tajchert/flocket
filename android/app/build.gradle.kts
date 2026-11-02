@@ -96,6 +96,10 @@ dependencies {
 
     testImplementation(libs.junit)
 
+    // The whole multi-pane layout (rail, list card, terminal card) as the README shows it.
+    screenshotTestImplementation(projects.core.testing)
+    screenshotTestImplementation(projects.core.terminal)
+
     // Device journeys (src/androidTest/.../journey): the real app against a real hc over the throwaway sshd.
     // Every journey is skipped without its instrumentation arguments, so a plain connected run passes; run them
     // through the harness (`scripts/e2e-device.sh journey`), never with Gradle connected* tasks.

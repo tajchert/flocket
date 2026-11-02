@@ -34,6 +34,8 @@ Full-screen terminal: the terminal's ⋮ menu has "Hide top bar", which hides th
 
 Screen-level composables are covered by screenshot tests at phone (360x816), foldable (673x841) and tablet (1280x800) sizes; use `@PreviewFormFactors` from `:core:designsystem`. See [Screenshot testing](SCREENSHOT_TESTING.md).
 
+The whole multi-pane window (rail, list card, terminal card) is rendered from the real screens by `AppLayoutScreenshotTests` in `:app` (`app/src/screenshotTest/`), at tablet and unfolded-foldable sizes. It places the panes by hand because `FlocketNavHost` needs Hilt; keep its sidebar widths in step with `paneScaffoldDirective`. The README's tablet and foldable screenshots are downscaled from its references.
+
 ## Not yet adopted
 
 | API | Reason |

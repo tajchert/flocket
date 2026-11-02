@@ -35,8 +35,6 @@ import com.mtajchert.flocket.core.ui.component.AgentStatusChip
 import com.mtajchert.flocket.core.ui.nav.LocalPaneLayout
 import com.mtajchert.flocket.core.ui.nav.PaneLayout
 
-private const val E = "\u001b"
-
 @Preview(name = "Phone", showBackground = true, widthDp = 412, heightDp = 892, apiLevel = 36)
 private annotation class PreviewPhone
 
@@ -50,47 +48,13 @@ private annotation class PreviewPhone
 )
 private annotation class PreviewPhoneDark
 
-@Preview(
-    name = "Tablet two-pane",
-    showBackground = true,
-    widthDp = 1280,
-    heightDp = 800,
-    uiMode = Configuration.UI_MODE_NIGHT_YES,
-    apiLevel = 36,
-)
-private annotation class PreviewTablet
-
 private fun session(
     cols: Int,
     rows: Int,
     dark: Boolean,
     exited: Boolean = false,
 ) = FakeTerminalEngine(cols, rows, TerminalThemes.forDarkMode(dark)).run {
-    val s = StringBuilder()
-    s.append("$E[1;38;5;75m~/code/flocket$E[0m on $E[35m main$E[0m\r\n")
-    s.append("$E[32m❯$E[0m claude\r\n\r\n")
-    s.append("$E[38;5;208m╭──────────────────────────────────────────╮$E[0m\r\n")
-    s.append("$E[38;5;208m│$E[0m $E[1m✻ Welcome to Claude Code$E[0m                 $E[38;5;208m│$E[0m\r\n")
-    s.append("$E[38;5;208m│$E[0m   $E[2mcwd: ~/code/flocket$E[0m                    $E[38;5;208m│$E[0m\r\n")
-    s.append("$E[38;5;208m╰──────────────────────────────────────────╯$E[0m\r\n\r\n")
-    s.append("$E[1m>$E[0m Refactor the auth module to use the new\r\n  token store\r\n\r\n")
-    s.append("$E[32m●$E[0m I'll start by reading the current module.\r\n\r\n")
-    s.append("$E[32m●$E[0m $E[1mRead$E[0m(core/security/KeyVault.kt)\r\n")
-    s.append("  $E[2m⎿  Read 214 lines$E[0m\r\n\r\n")
-    s.append("$E[32m●$E[0m $E[1mUpdate$E[0m(core/data/AuthRepository.kt)\r\n")
-    s.append("  $E[2m⎿  Updated with 12 additions and 4 removals$E[0m\r\n")
-    s.append("     $E[48;5;22;38;5;255m+ private val store = TokenStore(vault)     $E[0m\r\n")
-    s.append("     $E[48;5;52;38;5;255m- private var token: String? = null        $E[0m\r\n\r\n")
-    if (exited) {
-        s.append("$E[32m●$E[0m Done. All 42 tests pass.\r\n\r\n")
-        s.append("$E[32m❯$E[0m exit\r\n")
-    } else {
-        s.append("$E[38;5;208m✻$E[0m Running tests… $E[2m(esc to interrupt)$E[0m\r\n\r\n")
-        s.append("$E[2m╭──────────────────────────────────────────╮$E[0m\r\n")
-        s.append("$E[2m│$E[0m >                                        $E[2m│$E[0m\r\n")
-        s.append("$E[2m╰──────────────────────────────────────────╯$E[0m$E[1A$E[5G")
-    }
-    feed(s.toString().encodeToByteArray())
+    feed(SampleData.claudeCodeTranscript(exited).encodeToByteArray())
     snapshot()
 }
 
@@ -202,47 +166,6 @@ private fun TerminalConnectingScreenshot() =
             connection = ConnectionState.Connecting(1),
         ),
     )
-
-@PreviewTest
-@PreviewTablet
-@Composable
-private fun TerminalTwoPaneScreenshot() {
-    FlocketTheme(darkTheme = true, dynamicColor = false) {
-        Row {
-            Surface(
-                color = MaterialTheme.colorScheme.surfaceContainerLow,
-                modifier = Modifier.width(360.dp).fillMaxHeight(),
-            ) {
-                Column {
-                    Text(
-                        "Agents",
-                        style = MaterialTheme.typography.headlineSmall,
-                        modifier = Modifier.padding(16.dp),
-                    )
-                    SampleData.terminals.take(5).forEachIndexed { i, t ->
-                        ListItem(
-                            headlineContent = { Text(t.name ?: t.agentLabel) },
-                            supportingContent = { Text("${t.agentLabel} · ${t.address}") },
-                            trailingContent = { AgentStatusChip(t.status) },
-                            colors =
-                                ListItemDefaults.colors(
-                                    containerColor =
-                                        if (i ==
-                                            0
-                                        ) {
-                                            MaterialTheme.colorScheme.secondaryContainer
-                                        } else {
-                                            MaterialTheme.colorScheme.surfaceContainerLow
-                                        },
-                                ),
-                        )
-                    }
-                }
-            }
-            Column(Modifier.weight(1f)) { Shot(live, cols = 110, rows = 40, extraKeys = false) }
-        }
-    }
-}
 
 private fun tabsOf(
     vararg names: String,

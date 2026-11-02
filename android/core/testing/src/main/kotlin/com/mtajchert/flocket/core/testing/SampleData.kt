@@ -199,4 +199,37 @@ object SampleData {
             HostOverview(hetzner, hetznerReconnecting),
             HostOverview(pi, piNeedsTrust),
         )
+
+    /**
+     * A Claude Code session in ~/code/flocket as terminal bytes (fits 50 columns): a diff and, unless [exited],
+     * "Running tests…" with the cursor in the input box.
+     */
+    fun claudeCodeTranscript(exited: Boolean = false): String {
+        val e = "\u001b"
+        val s = StringBuilder()
+        s.append("$e[1;38;5;75m~/code/flocket$e[0m on $e[35m main$e[0m\r\n")
+        s.append("$e[32m❯$e[0m claude\r\n\r\n")
+        s.append("$e[38;5;208m╭──────────────────────────────────────────╮$e[0m\r\n")
+        s.append("$e[38;5;208m│$e[0m $e[1m✻ Welcome to Claude Code$e[0m                 $e[38;5;208m│$e[0m\r\n")
+        s.append("$e[38;5;208m│$e[0m   $e[2mcwd: ~/code/flocket$e[0m                    $e[38;5;208m│$e[0m\r\n")
+        s.append("$e[38;5;208m╰──────────────────────────────────────────╯$e[0m\r\n\r\n")
+        s.append("$e[1m>$e[0m Refactor the auth module to use the new\r\n  token store\r\n\r\n")
+        s.append("$e[32m●$e[0m I'll start by reading the current module.\r\n\r\n")
+        s.append("$e[32m●$e[0m $e[1mRead$e[0m(core/security/KeyVault.kt)\r\n")
+        s.append("  $e[2m⎿  Read 214 lines$e[0m\r\n\r\n")
+        s.append("$e[32m●$e[0m $e[1mUpdate$e[0m(core/data/AuthRepository.kt)\r\n")
+        s.append("  $e[2m⎿  Updated with 12 additions and 4 removals$e[0m\r\n")
+        s.append("     $e[48;5;22;38;5;255m+ private val store = TokenStore(vault)     $e[0m\r\n")
+        s.append("     $e[48;5;52;38;5;255m- private var token: String? = null        $e[0m\r\n\r\n")
+        if (exited) {
+            s.append("$e[32m●$e[0m Done. All 42 tests pass.\r\n\r\n")
+            s.append("$e[32m❯$e[0m exit\r\n")
+        } else {
+            s.append("$e[38;5;208m✻$e[0m Running tests… $e[2m(esc to interrupt)$e[0m\r\n\r\n")
+            s.append("$e[2m╭──────────────────────────────────────────╮$e[0m\r\n")
+            s.append("$e[2m│$e[0m >                                        $e[2m│$e[0m\r\n")
+            s.append("$e[2m╰──────────────────────────────────────────╯$e[0m$e[1A$e[5G")
+        }
+        return s.toString()
+    }
 }

@@ -93,7 +93,7 @@ internal fun Project.addUnitTestDependencies() {
 
 /**
  * Compose compiler, BOM, bundles, debug tooling and Robolectric Compose test dependencies.
- * [screenshot] also enables Compose Preview Screenshot Testing for library modules.
+ * [screenshot] also enables Compose Preview Screenshot Testing.
  */
 internal fun Project.configureCompose(
     extension: CommonExtension,

@@ -145,16 +145,6 @@ fun FlocketNavHost(
         if (selectedRoot != TerminalsRoute) navigator.selectTopLevel(TerminalsRoute)
         onNewTerminal()
     }
-    val destinationIcon: @Composable (TopLevelDestination) -> Unit = { destination ->
-        val icon = if (destination.key == selectedRoot) destination.selectedIcon else destination.icon
-        if (destination.key == TerminalsRoute && needsYouCount > 0) {
-            BadgedBox(badge = { CountBadge(needsYouCount, color = MaterialTheme.colorScheme.error) }) {
-                Icon(icon, contentDescription = null)
-            }
-        } else {
-            Icon(icon, contentDescription = null)
-        }
-    }
 
     CompositionLocalProvider(
         LocalPaneLayout provides paneLayout,
@@ -169,23 +159,14 @@ fun FlocketNavHost(
             NavigationSuiteScaffoldLayout(
                 navigationSuite = {
                     if (railShowing) {
-                        NavigationRail(header = { NewTerminalRailButton(newTerminal) }) {
-                            TopLevelDestinations.forEach { destination ->
-                                NavigationRailItem(
-                                    selected = destination.key == selectedRoot,
-                                    onClick = { navigator.selectTopLevel(destination.key) },
-                                    icon = { destinationIcon(destination) },
-                                    label = { Text(stringResource(destination.label)) },
-                                )
-                            }
-                        }
+                        FlocketNavigationRail(selectedRoot, needsYouCount, navigator::selectTopLevel, newTerminal)
                     } else {
                         NavigationSuite(layoutType = layoutType) {
                             TopLevelDestinations.forEach { destination ->
                                 item(
                                     selected = destination.key == selectedRoot,
                                     onClick = { navigator.selectTopLevel(destination.key) },
-                                    icon = { destinationIcon(destination) },
+                                    icon = { DestinationIcon(destination, selectedRoot, needsYouCount) },
                                     label = { Text(stringResource(destination.label)) },
                                 )
                             }
@@ -218,6 +199,43 @@ fun FlocketNavHost(
                 }
             }
         }
+    }
+}
+
+/** The rail of multi-pane windows: the New terminal button as its header, then the top-level destinations. */
+@Composable
+internal fun FlocketNavigationRail(
+    selectedRoot: NavKey?,
+    needsYouCount: Int,
+    onSelect: (NavKey) -> Unit,
+    onNewTerminal: () -> Unit,
+) {
+    NavigationRail(header = { NewTerminalRailButton(onNewTerminal) }) {
+        TopLevelDestinations.forEach { destination ->
+            NavigationRailItem(
+                selected = destination.key == selectedRoot,
+                onClick = { onSelect(destination.key) },
+                icon = { DestinationIcon(destination, selectedRoot, needsYouCount) },
+                label = { Text(stringResource(destination.label)) },
+            )
+        }
+    }
+}
+
+/** A destination's icon, filled when selected; Terminals carries the needs-you count. */
+@Composable
+private fun DestinationIcon(
+    destination: TopLevelDestination,
+    selectedRoot: NavKey?,
+    needsYouCount: Int,
+) {
+    val icon = if (destination.key == selectedRoot) destination.selectedIcon else destination.icon
+    if (destination.key == TerminalsRoute && needsYouCount > 0) {
+        BadgedBox(badge = { CountBadge(needsYouCount, color = MaterialTheme.colorScheme.error) }) {
+            Icon(icon, contentDescription = null)
+        }
+    } else {
+        Icon(icon, contentDescription = null)
     }
 }
 
