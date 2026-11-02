@@ -15,7 +15,7 @@ shared by every platform. Read it first, then the guide for your platform:
 | `docs/ROADMAP.md` | Next milestones: scope, open decisions, and where to start in the code |
 | `docs/design/` | Milestone design documents |
 | `docs/reference/` | Background research (the herdr-core handoff). Context only, not rules. |
-| `docs/readme/` | README art (banner, divider, glyph, icon SVGs) and screenshots |
+| `docs/readme/` | README art (banner, divider, glyph, icon SVGs) and screenshots: downscaled copies of `android/**/screenshotTestDebug/reference` PNGs, refresh them when the UI changes |
 | `android/` | Native Android app (Kotlin, Compose). A self-contained Gradle project. |
 
 ## Product rules (all platforms)

@@ -21,14 +21,14 @@ inside [herdr-core](https://github.com/herdrdev/herdr-core), and Flocket is a na
 onto them. It's built for phones, foldables and tablets alike.
 
 <p align="center">
-  <img src="docs/readme/screenshots/terminals-phone-light.png" alt="Terminals list grouped by agent status, light theme" width="200">
-  <img src="docs/readme/screenshots/terminals-phone-dark.png" alt="Terminals list grouped by agent status, dark theme" width="200">
-  <img src="docs/readme/screenshots/terminal-live-phone.png" alt="A live terminal running a coding agent, with the extra-keys row" width="200">
-  <img src="docs/readme/screenshots/hosts-phone-light.png" alt="Hosts list" width="200">
+  <img src="docs/readme/screenshots/welcome-phone-light.png" alt="Welcome screen with the Flocket mark" width="200">
+  <img src="docs/readme/screenshots/terminals-phone-light.png" alt="Terminals grouped by agent status: needs you, working, done" width="200">
+  <img src="docs/readme/screenshots/terminals-phone-dark.png" alt="The same list in the dark theme" width="200">
+  <img src="docs/readme/screenshots/terminal-live-phone-dark.png" alt="A live terminal running a coding agent, with the extra-keys row" width="200">
 </p>
 <p align="center">
-  <img src="docs/readme/screenshots/terminals-tablet.png" alt="Terminals across hosts and federated machines on a tablet" width="560">
-  <img src="docs/readme/screenshots/terminals-foldable.png" alt="Terminals list on an unfolded foldable" width="280">
+  <img src="docs/readme/screenshots/terminal-two-pane-tablet.png" alt="Tablet: the terminals list and a live agent terminal side by side" width="560">
+  <img src="docs/readme/screenshots/terminals-foldable.png" alt="Unfolded foldable: terminals across hosts, folders and a federated machine" width="280">
 </p>
 
 <picture>
