@@ -1,10 +1,14 @@
 package com.mtajchert.flocket.feature.terminal.impl
 
+import com.mtajchert.flocket.core.model.AgentState
 import com.mtajchert.flocket.core.model.AgentStatus
 import com.mtajchert.flocket.core.model.BellMode
+import com.mtajchert.flocket.core.model.BlockKind
 import com.mtajchert.flocket.core.model.ConnectionState
 import com.mtajchert.flocket.core.model.LayoutRef
 import com.mtajchert.flocket.core.model.TerminalColorScheme
+import com.mtajchert.flocket.core.terminal.engine.Key
+import com.mtajchert.flocket.core.terminal.engine.KeyInput
 import com.mtajchert.flocket.core.ui.error.UiError
 import com.mtajchert.flocket.core.ui.error.UiText
 
@@ -111,4 +115,34 @@ sealed interface TerminalScreenEvent {
 
     /** Leave the screen (after Close / Remove). */
     data object Close : TerminalScreenEvent
+}
+
+/** A one-tap reply above the extra keys; sent like an extra key (at most once, never replayed). */
+enum class ReplyKey(
+    /** What the chip's badge shows. */
+    val badge: String,
+    val keyInput: KeyInput,
+) {
+    One("1", KeyInput(Key.Character, "1")),
+    Two("2", KeyInput(Key.Character, "2")),
+    Three("3", KeyInput(Key.Character, "3")),
+
+    /** Agents stop the current step on Esc. */
+    Escape("Esc", KeyInput(Key.Escape)),
+    ;
+
+    companion object {
+        /**
+         * Chips for a status: a blocked agent gets the first three menu numbers (its own menu says
+         * what each means), a working one Esc to interrupt. Sign-in prompts and other states get none.
+         */
+        fun forStatus(status: AgentStatus): List<ReplyKey> {
+            val reported = status as? AgentStatus.Reported ?: return emptyList()
+            return when (reported.state) {
+                AgentState.Blocked -> if (reported.kind == BlockKind.Auth) emptyList() else listOf(One, Two, Three)
+                AgentState.Working -> listOf(Escape)
+                else -> emptyList()
+            }
+        }
+    }
 }

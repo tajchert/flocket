@@ -126,3 +126,45 @@ private fun TerminalRecord.paneLabel(): String =
 
 private fun TerminalRecord.liveState(): AgentState? =
     if (liveness is Liveness.Finished) null else (status as? AgentStatus.Reported)?.state
+
+/**
+ * What the top bar knows about the open terminal's neighbours: its space and the other terminals of
+ * the host that need the user (blocked or error). Value equality, like [TabStripUi].
+ */
+@Immutable
+data class TerminalHeaderUi(
+    /** The space's display name; blank when unnamed (the bar then shows "Space [spaceNumber]"). */
+    val spaceName: String = "",
+    /** 1-based space number; 0 when the terminal is not in the workspace yet. */
+    val spaceNumber: Int = 0,
+    /** Other live terminals of this host that are blocked or failed, in workspace order. */
+    val otherNeedsYou: Int = 0,
+    /** The first of them, opened by the "next needs you" pill. */
+    val nextNeedsYou: String? = null,
+)
+
+fun buildHeader(
+    workspace: Workspace,
+    terminals: List<TerminalRecord>,
+    current: TerminalAddress,
+): TerminalHeaderUi {
+    val byAddress = terminals.associateBy { it.address }
+    val space = workspace.locate(current)?.first
+    val needing =
+        workspace.spaces
+            .asSequence()
+            .flatMap { s -> s.tabs.asSequence().flatMap { it.panes } }
+            .filter { it != current }
+            .filter { address -> byAddress[address]?.needsYou() == true }
+            .toList()
+    return TerminalHeaderUi(
+        spaceName = space?.name.orEmpty(),
+        spaceNumber = space?.number ?: 0,
+        otherNeedsYou = needing.size,
+        nextNeedsYou = needing.firstOrNull()?.value,
+    )
+}
+
+private fun TerminalRecord.needsYou(): Boolean =
+    liveness !is Liveness.Finished &&
+        (status as? AgentStatus.Reported)?.state.let { it == AgentState.Blocked || it == AgentState.Error }

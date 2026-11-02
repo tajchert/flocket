@@ -2,8 +2,11 @@
 
 package com.mtajchert.flocket.feature.terminal.impl
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
@@ -11,8 +14,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.isImeVisible
@@ -21,7 +26,9 @@ import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -40,10 +47,12 @@ import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.PowerSettingsNew
 import androidx.compose.material.icons.outlined.StopCircle
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -65,17 +74,32 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.progressBarRangeInfo
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.mtajchert.flocket.core.designsystem.theme.FlocketCorners
+import com.mtajchert.flocket.core.designsystem.theme.FlocketMono
+import com.mtajchert.flocket.core.designsystem.theme.flocketColors
+import com.mtajchert.flocket.core.model.AgentState
 import com.mtajchert.flocket.core.model.AgentStatus
 import com.mtajchert.flocket.core.model.ConnectionState
 import com.mtajchert.flocket.core.model.LayoutRef
 import com.mtajchert.flocket.core.ui.component.AgentStatusChip
 import com.mtajchert.flocket.core.ui.component.ConnectionStateBadge
+import com.mtajchert.flocket.core.ui.component.NeedYouPill
 import com.mtajchert.flocket.core.ui.component.RenameDialog
+import com.mtajchert.flocket.core.ui.component.agentStatusStyle
 import com.mtajchert.flocket.core.ui.error.asString
 import com.mtajchert.flocket.core.ui.nav.LocalPaneLayout
 import com.mtajchert.flocket.core.ui.nav.LocalSidebarToggle
@@ -106,6 +130,8 @@ data class TerminalActions(
     val onDismissFreshShell: () -> Unit = {},
     val onClipboardAnswer: (Boolean) -> Unit = {},
     val onClipboardAlways: () -> Unit = {},
+    /** A reply chip (same input path as the extra keys). */
+    val onReply: (ReplyKey) -> Unit = {},
 )
 
 /**
@@ -121,6 +147,7 @@ fun TerminalScreen(
     snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
     showBack: Boolean = true,
     tabStrip: TabStripUi? = null,
+    header: TerminalHeaderUi = TerminalHeaderUi(),
     extraKeys: @Composable () -> Unit = {},
     terminal: @Composable (Modifier) -> Unit,
 ) {
@@ -129,7 +156,7 @@ fun TerminalScreen(
     val stripVisible = tabStrip != null && tabStrip.isVisible && !(layout.compactHeight && WindowInsets.isImeVisible)
     Scaffold(
         modifier = modifier,
-        topBar = { TerminalTopBar(state, actions, showBack) },
+        topBar = { TerminalTopBar(state, header, actions, showBack) },
         snackbarHost = { SnackbarHost(snackbarHostState) },
         containerColor = MaterialTheme.colorScheme.surface,
         contentWindowInsets = ScaffoldDefaults.contentWindowInsets.only(paneInsetSides(layout)),
@@ -146,6 +173,7 @@ fun TerminalScreen(
             ) {
                 TerminalTabStrip(tabStrip, actions.onOpenTerminal, onRename = actions.onRenameTab)
             }
+            WorkProgressLine(state.status)
             if (state.freshShell) {
                 StateBanner(
                     icon = Icons.Outlined.Info,
@@ -182,8 +210,12 @@ fun TerminalScreen(
                 }
             }
             EndBanner(state, actions)
-            if (state.showExtraKeys && state.canInteract) extraKeys()
-            if (!state.showExtraKeys || !state.canInteract) Spacer(Modifier.navigationBarsPadding())
+            if (state.showExtraKeys && state.canInteract) {
+                ReplyBar(state.status, actions.onReply)
+                extraKeys()
+            } else {
+                Spacer(Modifier.navigationBarsPadding())
+            }
         }
     }
 
@@ -264,76 +296,120 @@ fun TerminalScreen(
 @Composable
 private fun TerminalTopBar(
     state: TerminalUiState,
+    header: TerminalHeaderUi,
     actions: TerminalActions,
     showBack: Boolean,
 ) {
     val layout = LocalPaneLayout.current
     val sidebar = LocalSidebarToggle.current
-    TopAppBar(
-        navigationIcon = {
-            if (layout.multiPane) {
-                // The sidebar is already beside the terminal: no back arrow, a hide/show toggle instead.
-                IconButton(
-                    onClick = { sidebar.setSidebarVisible(!layout.sidebarVisible) },
-                    modifier = Modifier.testTag("terminal_sidebar_toggle"),
-                ) {
-                    if (layout.sidebarVisible) {
-                        Icon(Icons.AutoMirrored.Outlined.MenuOpen, stringResource(R.string.terminal_sidebar_hide))
-                    } else {
-                        Icon(Icons.Outlined.Menu, stringResource(R.string.terminal_sidebar_show))
+    BoxWithConstraints {
+        // The status pill fits beside the title only in a wide pane (tablet, unfolded).
+        val wide = maxWidth >= WIDE_BAR
+        TopAppBar(
+            navigationIcon = {
+                if (layout.multiPane) {
+                    // The sidebar is already beside the terminal: no back arrow, a hide/show toggle instead.
+                    IconButton(
+                        onClick = { sidebar.setSidebarVisible(!layout.sidebarVisible) },
+                        modifier = Modifier.testTag("terminal_sidebar_toggle"),
+                    ) {
+                        if (layout.sidebarVisible) {
+                            Icon(Icons.AutoMirrored.Outlined.MenuOpen, stringResource(R.string.terminal_sidebar_hide))
+                        } else {
+                            Icon(Icons.Outlined.Menu, stringResource(R.string.terminal_sidebar_show))
+                        }
+                    }
+                } else if (showBack) {
+                    IconButton(onClick = actions.onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.terminal_back))
                     }
                 }
-            } else if (showBack) {
-                IconButton(onClick = actions.onBack) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.terminal_back))
+            },
+            title = { TitleBlock(state, header) },
+            actions = {
+                if (wide && state.isOnline && state.status != AgentStatus.Unknown) {
+                    AgentStatusChip(state.status, Modifier.padding(end = 8.dp))
                 }
-            }
-        },
-        title = {
-            Column {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Text(
-                        text = headline(state),
-                        style = MaterialTheme.typography.titleMedium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false),
+                val next = header.nextNeedsYou
+                if (header.otherNeedsYou > 0 && next != null) {
+                    val description =
+                        pluralStringResource(
+                            R.plurals.terminal_next_needs_you,
+                            header.otherNeedsYou,
+                            header.otherNeedsYou,
+                        )
+                    NeedYouPill(
+                        count = header.otherNeedsYou,
+                        label = header.otherNeedsYou.toString(),
+                        trailingArrow = true,
+                        onClick = { actions.onOpenTerminal(next) },
+                        modifier =
+                            Modifier.semantics { contentDescription = description }.testTag(
+                                "terminal_next_needs_you",
+                            ),
                     )
                 }
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Text(
-                        text = subtitle(state),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false),
-                    )
-                    if (state.connection !is ConnectionState.Online) {
-                        ConnectionStateBadge(state.connection)
-                    } else if (state.status != AgentStatus.Unknown) {
-                        AgentStatusChip(state.status)
+                // With the extra keys on, the keyboard toggle sits in their bar.
+                if (state.canInteract && !state.showExtraKeys) {
+                    IconButton(onClick = actions.onToggleKeyboard, modifier = Modifier.testTag("terminal_keyboard")) {
+                        Icon(Icons.Outlined.Keyboard, stringResource(R.string.terminal_action_keyboard))
                     }
                 }
+                OverflowMenu(state, actions)
+            },
+            colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+            windowInsets = TopAppBarDefaults.windowInsets.only(paneInsetSides(layout)),
+        )
+    }
+}
+
+/** Name and agent, then a status dot and "space · host" (or the connection state while not online). */
+@Composable
+private fun TitleBlock(
+    state: TerminalUiState,
+    header: TerminalHeaderUi,
+) {
+    val name = state.title.ifBlank { state.agentLabel }.ifBlank { state.address }
+    val agent = state.agentLabel.takeIf { it.isNotBlank() && it != name }
+    Column {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(
+                text = name,
+                style = MaterialTheme.typography.titleMedium.copy(fontSize = 17.sp, fontWeight = FontWeight.Medium),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false),
+            )
+            if (agent != null) {
+                Text(
+                    text = agent,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                )
             }
-        },
-        actions = {
-            if (state.canInteract) {
-                IconButton(onClick = actions.onToggleKeyboard, modifier = Modifier.testTag("terminal_keyboard")) {
-                    Icon(Icons.Outlined.Keyboard, stringResource(R.string.terminal_action_keyboard))
-                }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+            if (state.isOnline && state.status != AgentStatus.Unknown) {
+                val style = agentStatusStyle(state.status)
+                Box(
+                    Modifier
+                        .size(7.dp)
+                        .background(style.foreground, CircleShape)
+                        .semantics { contentDescription = style.label },
+                )
             }
-            OverflowMenu(state, actions)
-        },
-        colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
-        windowInsets = TopAppBarDefaults.windowInsets.only(paneInsetSides(layout)),
-    )
+            Text(
+                text = subtitle(state, header),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false),
+            )
+            if (state.connection !is ConnectionState.Online) ConnectionStateBadge(state.connection)
+        }
+    }
 }
 
 @Composable
@@ -388,22 +464,21 @@ private fun MenuItem(
     )
 }
 
+/** "space · host" (plus the federated machine); without a known space, "host · address" as before. */
 @Composable
-private fun headline(state: TerminalUiState): String =
-    listOf(state.agentLabel, state.title)
-        .filter {
-            it.isNotBlank()
-        }.distinct()
-        .joinToString(" · ")
-        .ifEmpty { state.address }
-
-@Composable
-private fun subtitle(state: TerminalUiState): String {
+private fun subtitle(
+    state: TerminalUiState,
+    header: TerminalHeaderUi,
+): String {
     val host = state.hostLabel.ifBlank { "…" }
-    return if (state.machine != null) {
-        stringResource(R.string.terminal_subtitle_machine, host, state.machine, state.address)
-    } else {
-        stringResource(R.string.terminal_subtitle_host, host, state.address)
+    val space =
+        header.spaceName.ifBlank {
+            if (header.spaceNumber > 0) stringResource(R.string.terminal_space_fallback, header.spaceNumber) else ""
+        }
+    return when {
+        space.isNotEmpty() -> listOfNotNull(space, host, state.machine).joinToString(" · ")
+        state.machine != null -> stringResource(R.string.terminal_subtitle_machine, host, state.machine, state.address)
+        else -> stringResource(R.string.terminal_subtitle_host, host, state.address)
     }
 }
 
@@ -437,6 +512,7 @@ private fun EndBanner(
 
         TerminalPhase.StreamEnded -> {
             StateBanner(
+                tone = BannerTone.Attention,
                 icon = Icons.Outlined.LinkOff,
                 text = stringResource(R.string.terminal_stream_ended),
                 actions =
@@ -457,7 +533,7 @@ private fun EndBanner(
                         p.error.message.asString(),
                     ),
                 actions = listOf(stringResource(R.string.terminal_retry) to actions.onReattach),
-                error = true,
+                tone = BannerTone.Error,
             )
         }
 
@@ -466,7 +542,7 @@ private fun EndBanner(
                 icon = Icons.Outlined.ErrorOutline,
                 text = stringResource(R.string.terminal_host_missing),
                 actions = listOf(stringResource(R.string.terminal_close) to actions.onClose),
-                error = true,
+                tone = BannerTone.Error,
             )
         }
 
@@ -476,32 +552,154 @@ private fun EndBanner(
     }
 }
 
+/** Neutral for information, amber when the user has to act, red only for errors. */
+private enum class BannerTone { Neutral, Attention, Error }
+
 @Composable
 private fun StateBanner(
     icon: ImageVector,
     text: String,
     actions: List<Pair<String, () -> Unit>> = emptyList(),
     progress: Boolean = false,
-    error: Boolean = false,
+    tone: BannerTone = BannerTone.Neutral,
 ) {
     val colors = MaterialTheme.colorScheme
+    val fixed = MaterialTheme.flocketColors
+    val (container, content) =
+        when (tone) {
+            BannerTone.Neutral -> colors.surfaceContainerHigh to colors.onSurface
+            BannerTone.Attention -> fixed.attentionContainer to fixed.onAttentionContainer
+            BannerTone.Error -> colors.errorContainer to colors.onErrorContainer
+        }
     Surface(
-        color = if (error) colors.errorContainer else colors.secondaryContainer,
-        contentColor = if (error) colors.onErrorContainer else colors.onSecondaryContainer,
-        modifier = Modifier.fillMaxWidth().testTag("terminal_banner"),
+        color = container,
+        contentColor = content,
+        shape = MaterialTheme.shapes.medium,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp).testTag("terminal_banner"),
     ) {
         Row(
-            Modifier.padding(start = 16.dp, end = 8.dp, top = 6.dp, bottom = 6.dp).heightIn(min = 40.dp),
+            Modifier.padding(start = 16.dp, end = 8.dp, top = 4.dp, bottom = 4.dp).heightIn(min = 40.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             if (progress) {
-                CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = content)
             } else {
                 Icon(icon, null, Modifier.size(20.dp))
             }
             Spacer(Modifier.width(12.dp))
             Text(text, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-            actions.forEach { (label, onClick) -> TextButton(onClick = onClick) { Text(label) } }
+            actions.forEach { (label, onClick) ->
+                TextButton(onClick = onClick, colors = ButtonDefaults.textButtonColors(contentColor = content)) {
+                    Text(label)
+                }
+            }
+        }
+    }
+}
+
+/** 3dp bar under the top chrome while the agent reports a Working percentage (never invented). */
+@Composable
+private fun WorkProgressLine(status: AgentStatus) {
+    val reported = status as? AgentStatus.Reported ?: return
+    val percent = reported.progress?.takeIf { reported.state == AgentState.Working } ?: return
+    val fraction = percent.coerceIn(0, 100) / 100f
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .height(3.dp)
+            .background(MaterialTheme.colorScheme.primaryContainer)
+            .semantics { progressBarRangeInfo = ProgressBarRangeInfo(fraction, 0f..1f) }
+            .testTag("terminal_progress"),
+    ) {
+        Box(Modifier.fillMaxWidth(fraction).fillMaxHeight().background(MaterialTheme.colorScheme.primary))
+    }
+}
+
+/**
+ * One-tap replies above the extra keys: menu numbers while the agent is blocked, Esc while it works.
+ * Shown only with the extra keys (live, writable stream), so a reply is never queued or replayed.
+ */
+@Composable
+private fun ReplyBar(
+    status: AgentStatus,
+    onReply: (ReplyKey) -> Unit,
+) {
+    val replies = ReplyKey.forStatus(status)
+    if (replies.isEmpty()) return
+    val colors = MaterialTheme.colorScheme
+    val working = replies == listOf(ReplyKey.Escape)
+    Column(Modifier.fillMaxWidth().background(colors.surfaceContainerLow)) {
+        HorizontalDivider(color = colors.outlineVariant)
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 12.dp)
+                    .testTag("terminal_replies"),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                text =
+                    stringResource(
+                        if (working) R.string.terminal_reply_send else R.string.terminal_reply_hint,
+                    ).uppercase(),
+                style =
+                    MaterialTheme.typography.labelSmall.copy(
+                        fontWeight = FontWeight.Medium,
+                        letterSpacing = 0.3.sp,
+                    ),
+                color = colors.onSurfaceVariant,
+            )
+            replies.forEach { reply -> ReplyChip(reply, onReply) }
+        }
+    }
+}
+
+@Composable
+private fun ReplyChip(
+    reply: ReplyKey,
+    onReply: (ReplyKey) -> Unit,
+) {
+    val haptics = LocalHapticFeedback.current
+    val interrupt = reply == ReplyKey.Escape
+    val description =
+        if (interrupt) {
+            stringResource(R.string.terminal_reply_interrupt_description)
+        } else {
+            stringResource(R.string.terminal_reply_option, reply.badge)
+        }
+    Surface(
+        onClick = {
+            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+            onReply(reply)
+        },
+        shape = CircleShape,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        modifier = Modifier.semantics { contentDescription = description }.testTag("terminal_reply"),
+    ) {
+        if (interrupt) {
+            Row(
+                Modifier.height(34.dp).padding(start = 5.dp, end = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(7.dp),
+            ) {
+                Box(
+                    Modifier
+                        .heightIn(min = 24.dp)
+                        .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f), CircleShape)
+                        .padding(horizontal = 6.dp),
+                    contentAlignment = Alignment.Center,
+                ) { Text(reply.badge, style = FlocketMono.label) }
+                Text(stringResource(R.string.terminal_reply_interrupt), style = MaterialTheme.typography.labelLarge)
+            }
+        } else {
+            // A menu number: the agent's own menu on screen says what it means.
+            Box(Modifier.height(34.dp).widthIn(min = 48.dp), contentAlignment = Alignment.Center) {
+                Text(reply.badge, style = FlocketMono.body.copy(fontWeight = FontWeight.SemiBold))
+            }
         }
     }
 }
@@ -538,13 +736,13 @@ private fun SizeTakenChip(
     Surface(
         onClick = onFit,
         modifier = modifier.testTag("terminal_size_taken"),
-        shape = MaterialTheme.shapes.medium,
-        color = MaterialTheme.colorScheme.secondaryContainer,
-        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+        shape = FlocketCorners.HostPill,
+        color = MaterialTheme.flocketColors.attentionContainer,
+        contentColor = MaterialTheme.flocketColors.onAttentionContainer,
         shadowElevation = 2.dp,
     ) {
         Row(
-            Modifier.padding(start = 12.dp, end = 8.dp, top = 4.dp, bottom = 4.dp),
+            Modifier.padding(start = 12.dp, end = 10.dp, top = 6.dp, bottom = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(stringResource(R.string.terminal_size_taken), style = MaterialTheme.typography.labelMedium)
@@ -553,33 +751,32 @@ private fun SizeTakenChip(
             Spacer(Modifier.width(4.dp))
             Text(
                 stringResource(R.string.terminal_action_fit),
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.primary,
+                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
             )
         }
     }
 }
 
+/** A neutral pill (dot + word, like the host pill): the link is coming back on its own. */
 @Composable
 private fun ReconnectingChip(modifier: Modifier = Modifier) {
     Surface(
         modifier = modifier,
-        shape = MaterialTheme.shapes.medium,
-        color = MaterialTheme.colorScheme.tertiaryContainer,
-        contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+        shape = FlocketCorners.HostPill,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        contentColor = MaterialTheme.colorScheme.onSurface,
         shadowElevation = 2.dp,
     ) {
         Row(Modifier.padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-            CircularProgressIndicator(
-                Modifier.size(14.dp),
-                strokeWidth = 2.dp,
-                color = MaterialTheme.colorScheme.onTertiaryContainer,
-            )
-            Spacer(Modifier.width(8.dp))
+            Box(Modifier.size(7.dp).background(MaterialTheme.colorScheme.outline, CircleShape))
+            Spacer(Modifier.width(6.dp))
             Text(stringResource(R.string.terminal_reconnecting), style = MaterialTheme.typography.labelMedium)
         }
     }
 }
+
+/** From this bar width the agent's status pill shows beside the title. */
+private val WIDE_BAR = 560.dp
 
 private const val CLIPBOARD_PREVIEW_CHARS = 2_000
 

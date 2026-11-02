@@ -17,6 +17,7 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.mtajchert.flocket.core.designsystem.theme.FlocketTheme
 import com.mtajchert.flocket.core.model.AgentState
+import com.mtajchert.flocket.core.model.AgentStatus
 import com.mtajchert.flocket.core.model.ConnectionState
 import com.mtajchert.flocket.core.model.LayoutRef
 import com.mtajchert.flocket.core.testing.SampleData
@@ -65,6 +66,7 @@ class TerminalScreenTest {
             onRenameChange = { clicks += "text:$it" },
             onRenameSave = { clicks += "save" },
             onRenameDismiss = { clicks += "cancelRename" },
+            onReply = { clicks += "reply:${it.badge}" },
         )
 
     private fun show(state: TerminalUiState) =
@@ -74,7 +76,8 @@ class TerminalScreenTest {
 
     @Test
     fun `toolbar actions call through`() {
-        show(live.copy(isOwner = true))
+        // With the extra keys off the keyboard toggle lives in the top bar.
+        show(live.copy(isOwner = true, showExtraKeys = false))
         compose.onNodeWithContentDescription("Show or hide keyboard").performClick()
         listOf("Paste", "Copy screen text", "Interrupt", "Kill").forEach { item ->
             compose.onNodeWithContentDescription("More actions").performClick()
@@ -255,6 +258,46 @@ class TerminalScreenTest {
     fun `no strip when there is nothing to switch between`() {
         showMulti(sidebarVisible = true, tabStrip = null)
         compose.onAllNodes(hasTestTag("terminal_tab_strip")).assertCountEquals(0)
+    }
+
+    @Test
+    fun `a blocked agent gets number replies`() {
+        show(live.copy(status = AgentStatus.Reported(AgentState.Blocked, "blocked")))
+        compose.onAllNodes(hasTestTag("terminal_reply")).assertCountEquals(3)
+        compose.onNodeWithContentDescription("Send 2").performClick()
+        assertEquals(listOf("reply:2"), clicks)
+    }
+
+    @Test
+    fun `a working agent gets Esc and its progress line`() {
+        show(live.copy(status = AgentStatus.Reported(AgentState.Working, "working", progress = 40)))
+        compose.onNodeWithContentDescription("Send Esc to interrupt").performClick()
+        compose.onNodeWithTag("terminal_progress").assertExists()
+        assertEquals(listOf("reply:Esc"), clicks)
+    }
+
+    @Test
+    fun `no replies while reconnecting`() {
+        show(live.copy(status = AgentStatus.Reported(AgentState.Blocked, "blocked"), streamConnected = false))
+        compose.onAllNodes(hasTestTag("terminal_reply")).assertCountEquals(0)
+    }
+
+    @Test
+    fun `no replies with the extra keys off`() {
+        show(live.copy(status = AgentStatus.Reported(AgentState.Blocked, "blocked"), showExtraKeys = false))
+        compose.onAllNodes(hasTestTag("terminal_reply")).assertCountEquals(0)
+    }
+
+    @Test
+    fun `the next needs you pill opens the next blocked terminal`() {
+        compose.setContent {
+            FlocketTheme(dynamicColor = false) {
+                TerminalScreen(live, actions, header = TerminalHeaderUi("api", 1, 2, "t4")) { Box(it) }
+            }
+        }
+        compose.onNodeWithText("api · Studio Mac").assertExists()
+        compose.onNodeWithTag("terminal_next_needs_you").performClick()
+        assertEquals(listOf("open:t4"), clicks)
     }
 
     private fun androidx.compose.ui.test.junit4.ComposeContentTestRule.onAllNodesWithContentDescriptionCount(
