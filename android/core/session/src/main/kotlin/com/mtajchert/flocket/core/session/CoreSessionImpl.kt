@@ -8,6 +8,7 @@ import com.mtajchert.flocket.core.model.ConnectionState
 import com.mtajchert.flocket.core.model.CoreEndpoint
 import com.mtajchert.flocket.core.model.CoreInfo
 import com.mtajchert.flocket.core.model.DesktopLayout
+import com.mtajchert.flocket.core.model.HerdrLabels
 import com.mtajchert.flocket.core.model.LayoutRef
 import com.mtajchert.flocket.core.model.Liveness
 import com.mtajchert.flocket.core.model.MachineInfo
@@ -33,6 +34,7 @@ import com.mtajchert.flocket.core.protocol.rpc.RpcException
 import com.mtajchert.flocket.core.protocol.templatesList
 import com.mtajchert.flocket.core.protocol.terminalInterrupt
 import com.mtajchert.flocket.core.protocol.terminalKill
+import com.mtajchert.flocket.core.protocol.terminalLabel
 import com.mtajchert.flocket.core.protocol.terminalRead
 import com.mtajchert.flocket.core.protocol.terminalRm
 import com.mtajchert.flocket.core.protocol.terminalRun
@@ -846,7 +848,7 @@ class CoreSessionImpl(
                         cwd = cwd,
                         on = request.machine,
                         env = RUN_ENV,
-                        labels = request.labels,
+                        labels = mapOf(HerdrLabels.SEEN to "0") + request.labels,
                         keep = request.keep,
                     ),
                     config.runTimeout,
@@ -883,6 +885,14 @@ class CoreSessionImpl(
                 "still_working" -> InterruptOutcome.StillWorking
                 else -> InterruptOutcome.Unknown
             }
+        }
+
+    override suspend fun setLabels(
+        address: TerminalAddress,
+        labels: Map<String, String>,
+    ): AppResult<TerminalRecord> =
+        mutate("terminal.label", CoreInfo.TERMINAL_LABEL) {
+            it.terminalLabel(address.value, labels, config.readTimeout).toRecord(endpoint)
         }
 
     override suspend fun templates(): AppResult<List<TerminalTemplate>> =

@@ -2,6 +2,7 @@ package com.mtajchert.flocket.core.testing
 
 import com.mtajchert.flocket.core.common.error.AppError
 import com.mtajchert.flocket.core.common.result.AppResult
+import com.mtajchert.flocket.core.data.AgentMarks
 import com.mtajchert.flocket.core.data.ConnectionManager
 import com.mtajchert.flocket.core.data.HostOverview
 import com.mtajchert.flocket.core.data.HostRepository
@@ -11,6 +12,7 @@ import com.mtajchert.flocket.core.model.HostId
 import com.mtajchert.flocket.core.model.LayoutRef
 import com.mtajchert.flocket.core.model.TerminalAddress
 import com.mtajchert.flocket.core.model.TerminalRecord
+import com.mtajchert.flocket.core.model.TerminalRef
 import com.mtajchert.flocket.core.model.TerminalTemplate
 import com.mtajchert.flocket.core.session.AttachRequest
 import com.mtajchert.flocket.core.session.CoreSession
@@ -80,6 +82,14 @@ class FakeCoreSession(
     var homeHandler: suspend (String?) -> AppResult<String> = { AppResult.Success("/home/user") }
     var attachHandler: suspend (TerminalAddress, AttachRequest) -> AppResult<TerminalStream> = { _, _ -> unsupported() }
     var renameHandler: suspend (LayoutRef, String) -> AppResult<Unit> = { _, _ -> unsupported() }
+    var labelsHandler: suspend (
+        TerminalAddress,
+        Map<String, String>,
+    ) -> AppResult<TerminalRecord> = { _, _ -> unsupported() }
+
+    /** Every `setLabels` call, in order. */
+    val labelWrites: MutableList<Pair<TerminalAddress, Map<String, String>>> =
+        java.util.Collections.synchronizedList(mutableListOf())
     val calls: MutableList<String> = java.util.Collections.synchronizedList(mutableListOf())
 
     override suspend fun run(request: RunRequest): AppResult<TerminalRecord> {
@@ -109,6 +119,14 @@ class FakeCoreSession(
     override suspend fun interrupt(address: TerminalAddress): AppResult<InterruptOutcome> {
         calls += "interrupt:${address.value}"
         return interruptHandler(address)
+    }
+
+    override suspend fun setLabels(
+        address: TerminalAddress,
+        labels: Map<String, String>,
+    ): AppResult<TerminalRecord> {
+        labelWrites += address to labels
+        return labelsHandler(address, labels)
     }
 
     override suspend fun templates(): AppResult<List<TerminalTemplate>> = templatesHandler()
@@ -197,4 +215,34 @@ class FakeConnectionManager(
     override fun holdTerminal(token: Any) = held.update { it + token }
 
     override fun releaseTerminal(token: Any) = held.update { it - token }
+}
+
+/** [AgentMarks] that records calls; results are scripted with [result]. */
+class FakeAgentMarks(
+    var supported: Boolean = true,
+) : AgentMarks {
+    var result: AppResult<Unit> = AppResult.Success(Unit)
+    val seen: MutableList<TerminalRef> = java.util.Collections.synchronizedList(mutableListOf())
+    val unread: MutableList<TerminalRef> = java.util.Collections.synchronizedList(mutableListOf())
+    val pinned: MutableList<Pair<TerminalRef, Boolean>> = java.util.Collections.synchronizedList(mutableListOf())
+
+    override fun supportsLabels(hostId: HostId): Boolean = supported
+
+    override suspend fun markSeen(ref: TerminalRef): AppResult<Unit> {
+        seen += ref
+        return result
+    }
+
+    override suspend fun markUnread(ref: TerminalRef): AppResult<Unit> {
+        unread += ref
+        return result
+    }
+
+    override suspend fun setPinned(
+        ref: TerminalRef,
+        pinned: Boolean,
+    ): AppResult<Unit> {
+        this.pinned += ref to pinned
+        return result
+    }
 }

@@ -382,6 +382,9 @@ Required in schema: `address, labels, argv, cwd, state, created_ms, screen, cols
 Labels are opaque `key=value` strings. Conventions observed (not enforced by core):
 - `where`: human-readable place, e.g. `"herdr-core / review"`; `hc ls` shows it instead of the folder [S: cli/output.rs].
 - `herdr.space`, `herdr.tab`: desktop app (herdr-app) grouping ids, matching ids in the `herdr-app` document [S: herdr-ios; I for semantics].
+- `herdr.seen=<turn>`: the last `turn` a person looked at an agent terminal (desktop and clients share it). Shown status for a Reported agent: `working` stays working; `blocked`/`error` need attention; any other word is **done** when `turn > seen` and idle otherwise; with the label missing or unparsable, the raw word decides (`done` stays done; a missing label is not 0). Write rule: while a person is looking at the terminal, set `herdr.seen=<turn>` only if the label is missing or lower, once per turn. Mark unread = `herdr.seen=<turn-1>` (not offered at turn 0). Terminals Flocket starts get `herdr.seen=0`.
+- `herdr.pinned`: pinned when present and non-empty. Pin writes `herdr.pinned=1`; unpin writes `""` (removes it).
+- Both are written with `terminal.label` (§4.8), which is capability-gated; writes are idempotent.
 - For our own grouping, use a namespaced prefix (e.g. `flocket.group`) and/or our own document (§9). Never remove labels we don't own.
 
 ### 6.5 Keep / loss / restart
