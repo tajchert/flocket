@@ -31,7 +31,9 @@ import androidx.compose.material3.adaptive.navigationsuite.NavigationSuite
 import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffold
 import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffoldDefaults
 import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffoldLayout
+import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffoldValue
 import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteType
+import androidx.compose.material3.adaptive.navigationsuite.rememberNavigationSuiteScaffoldState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -107,14 +109,24 @@ fun FlocketNavHost(
         if (shouldResetFocus(multiPane, onTerminal)) focusRequested = false
     }
     val directive = if (focusMode) baseDirective.copy(maxHorizontalPartitions = 1) else baseDirective
-    val listDetailStrategy = rememberListDetailSceneStrategy<NavKey>(directive = directive)
+    // On a multi-pane window the list-detail scene also lays out a single pane, so focus mode is a change of
+    // the scaffold's value (the list slides away, the terminal widens) rather than a swap to another scene.
+    val listDetailStrategy =
+        rememberListDetailSceneStrategy<NavKey>(shouldHandleSinglePaneLayout = multiPane, directive = directive)
 
+    // Full-screen routes drop the navigation suite at once; focus mode slides the rail away (suiteState).
     val layoutType =
-        if (current.isFullScreen(singlePane = !multiPane, focusMode = focusMode, compactHeight = compactHeight)) {
+        if (current.isFullScreen(singlePane = !multiPane, compactHeight = compactHeight)) {
             NavigationSuiteType.None
         } else {
             navigationSuiteType(adaptiveInfo, multiPane = multiPane, compactHeight = compactHeight)
         }
+    val suiteState =
+        rememberNavigationSuiteScaffoldState(
+            if (focusMode) NavigationSuiteScaffoldValue.Hidden else NavigationSuiteScaffoldValue.Visible,
+        )
+    LaunchedEffect(focusMode) { if (focusMode) suiteState.hide() else suiteState.show() }
+    // Still true while the rail slides away in focus mode, so neither the rail nor the list swaps its New button.
     val railShowing = layoutType == NavigationSuiteType.NavigationRail
 
     val paneLayout =
@@ -181,8 +193,11 @@ fun FlocketNavHost(
                     }
                 },
                 layoutType = layoutType,
+                state = suiteState,
             ) {
-                Box(Modifier.consumeWindowInsets(navigationSuiteInsets(layoutType))) {
+                Box(
+                    Modifier.consumeWindowInsets(if (focusMode) WindowInsets(0) else navigationSuiteInsets(layoutType)),
+                ) {
                     NavDisplay(
                         backStack = backStack,
                         // Back leaves focus mode (restores the sidebar) before it pops anything.

@@ -15,9 +15,9 @@ import com.mtajchert.flocket.core.ui.nav.PaneRole
 
 /**
  * Draws the panes of the list-detail scene as rounded cards (design v2 tablet layout, [PaneCard]) while
- * [com.mtajchert.flocket.core.ui.nav.PaneLayout.paneCards] holds, for entries that declare a [PaneRole]. Entries shown alone (phones, focus mode,
- * compact height, non-list-detail routes) render unchanged: only the list-detail scene provides
- * [LocalListDetailSceneScope].
+ * [com.mtajchert.flocket.core.ui.nav.PaneLayout.paneCards] holds, for entries that declare a [PaneRole]. Entries outside the
+ * list-detail scene (phones, non-list-detail routes) render unchanged: only that scene provides [LocalListDetailSceneScope].
+ * In focus mode and on compact height the scene is still there but cards are off, so the card eases away.
  */
 @OptIn(ExperimentalMaterial3AdaptiveApi::class)
 @Composable
