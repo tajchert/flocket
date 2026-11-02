@@ -18,7 +18,18 @@ data class PaneLayout(
     val sidebarVisible: Boolean = true,
     /** Compact window height, e.g. a phone in landscape: chrome should be minimal. */
     val compactHeight: Boolean = false,
-)
+    /**
+     * The navigation rail is showing. It carries the app's "New terminal" button, so lists drop their own
+     * New action while it is up.
+     */
+    val navigationRail: Boolean = false,
+) {
+    /**
+     * List and detail are drawn as rounded cards on the window background (`PaneCard`): a two-pane window
+     * with the sidebar up. Not on compact-height windows, where every row counts.
+     */
+    val paneCards: Boolean get() = multiPane && sidebarVisible && !compactHeight
+}
 
 val LocalPaneLayout = staticCompositionLocalOf { PaneLayout() }
 

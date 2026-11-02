@@ -1,29 +1,24 @@
 package com.mtajchert.flocket.feature.hosts.impl
 
 import android.content.Intent
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
 import androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi
 import androidx.compose.material3.adaptive.navigation3.ListDetailSceneStrategy
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation3.runtime.NavKey
 import com.mtajchert.flocket.core.model.HostId
 import com.mtajchert.flocket.core.ui.component.ImportKeyDialog
 import com.mtajchert.flocket.core.ui.component.rememberKeyFilePicker
+import com.mtajchert.flocket.core.ui.nav.DetailPanePlaceholder
 import com.mtajchert.flocket.core.ui.nav.EntryProviderInstaller
 import com.mtajchert.flocket.core.ui.nav.Navigator
+import com.mtajchert.flocket.core.ui.nav.PaneRole
 import com.mtajchert.flocket.core.ui.terminalsettings.TerminalSettingsCallbacks
 import com.mtajchert.flocket.feature.hosts.api.HostDetailRoute
 import com.mtajchert.flocket.feature.hosts.api.HostEditRoute
@@ -60,13 +55,13 @@ object HostsNavigationModule {
                 metadata =
                     ListDetailSceneStrategy.listPane(
                         detailPlaceholder = {
-                            Box(Modifier.fillMaxSize(), Alignment.Center) {
-                                Text(stringResource(R.string.hosts_select_placeholder), Modifier.padding(24.dp))
-                            }
+                            DetailPanePlaceholder(stringResource(R.string.hosts_select_placeholder))
                         },
-                    ),
+                    ) + PaneRole.List.metadata(),
             ) { HostsRoute(navigator) }
-            scope.entry<HostDetailRoute>(metadata = ListDetailSceneStrategy.detailPane()) { key ->
+            scope.entry<HostDetailRoute>(
+                metadata = ListDetailSceneStrategy.detailPane() + PaneRole.Detail.metadata(),
+            ) { key ->
                 HostDetailRoute(key.hostId, navigator)
             }
             scope.entry<HostEditRoute> { key -> HostEditRoute(key.hostId, navigator) }

@@ -130,8 +130,11 @@ fun TerminalsScreen(
     nowMs: Long = rememberNowMs(intervalMs = 30_000L),
     snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
 ) {
-    val dense = LocalPaneLayout.current.multiPane
+    val paneLayout = LocalPaneLayout.current
+    val dense = paneLayout.multiPane
     val canAdd = state.emptyKind != EmptyKind.NoHosts && state.loaded
+    // The navigation rail carries the New terminal button; the list shows its own only without the rail.
+    val showAdd = canAdd && !paneLayout.navigationRail
     val inbox = state.sort == TerminalSort.Inbox
     // The host chip selection; a host that has gone away counts as "All".
     var hostFilterValue by rememberSaveable { mutableStateOf<String?>(null) }
@@ -148,8 +151,9 @@ fun TerminalsScreen(
                     )
                 },
                 // Beside a terminal both top bars share one container so the status bar strip is uniform.
+                // As a pane card (the status bar sits above the cards) the bar is the card itself.
                 colors =
-                    if (dense) {
+                    if (dense && !paneLayout.paneCards) {
                         TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
                     } else {
                         TopAppBarDefaults.topAppBarColors()
@@ -158,7 +162,7 @@ fun TerminalsScreen(
                     if (dense && state.loaded && state.emptyKind != EmptyKind.NoHosts) {
                         FilterMenu(state.filter, actions.onFilter)
                     }
-                    if (dense && canAdd) {
+                    if (dense && showAdd) {
                         IconButton(onClick = actions.onNewTerminal) {
                             Icon(Icons.Outlined.Add, contentDescription = stringResource(R.string.new_terminal))
                         }
@@ -169,7 +173,7 @@ fun TerminalsScreen(
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
         floatingActionButton = {
-            if (canAdd && !dense) {
+            if (showAdd && !dense) {
                 val label = stringResource(R.string.new_terminal)
                 ExtendedFloatingActionButton(
                     onClick = actions.onNewTerminal,

@@ -22,7 +22,10 @@ import com.mtajchert.flocket.core.model.WorkspaceSpace
 import com.mtajchert.flocket.core.model.WorkspaceTab
 import com.mtajchert.flocket.core.testing.SampleData
 import com.mtajchert.flocket.core.ui.nav.LocalPaneLayout
+import com.mtajchert.flocket.core.ui.nav.PaneCard
 import com.mtajchert.flocket.core.ui.nav.PaneLayout
+import com.mtajchert.flocket.core.ui.nav.PanePosition
+import com.mtajchert.flocket.core.ui.nav.PaneRole
 import com.mtajchert.flocket.feature.terminal.api.TerminalRoute
 
 private const val NOW = SampleData.NOW_MS
@@ -43,6 +46,16 @@ private annotation class PreviewPhone
 /** The 300dp sidebar pane next to a terminal. */
 @Preview(name = "Sidebar", showBackground = true, widthDp = 300, heightDp = 800, apiLevel = 36)
 private annotation class PreviewSidebar
+
+@Preview(
+    name = "Sidebar dark",
+    showBackground = true,
+    widthDp = 300,
+    heightDp = 800,
+    uiMode = Configuration.UI_MODE_NIGHT_YES,
+    apiLevel = 36,
+)
+private annotation class PreviewSidebarDark
 
 @Composable
 private fun Shot(
@@ -157,9 +170,12 @@ private fun stateFor(
     controls: ListControls = grouped,
 ) = buildUiState(listOf(SampleData.overview.first()), controls, refreshing = false) { workspace }
 
+/** The list pane as `:app` draws it beside the navigation rail: a card that holds no New button of its own. */
 @Composable
 private fun Dense(content: @Composable () -> Unit) =
-    CompositionLocalProvider(LocalPaneLayout provides PaneLayout(multiPane = true), content = content)
+    CompositionLocalProvider(LocalPaneLayout provides PaneLayout(multiPane = true, navigationRail = true)) {
+        PaneCard(PanePosition.Leading, PaneRole.List, content = content)
+    }
 
 @PreviewTest
 @PreviewFormFactors
@@ -331,6 +347,7 @@ private fun TerminalsInboxScreenshot() = Shot { TerminalsScreen(inbox, Terminals
 
 @PreviewTest
 @PreviewSidebar
+@PreviewSidebarDark
 @Composable
 private fun TerminalsDenseInboxScreenshot() =
     Shot {

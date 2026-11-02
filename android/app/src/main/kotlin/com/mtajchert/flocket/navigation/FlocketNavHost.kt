@@ -1,17 +1,35 @@
 package com.mtajchert.flocket.navigation
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.BadgedBox
+import androidx.compose.material3.DrawerDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBarDefaults
+import androidx.compose.material3.NavigationRail
+import androidx.compose.material3.NavigationRailDefaults
+import androidx.compose.material3.NavigationRailItem
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi
 import androidx.compose.material3.adaptive.WindowAdaptiveInfo
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfoV2
 import androidx.compose.material3.adaptive.layout.calculatePaneScaffoldDirective
 import androidx.compose.material3.adaptive.navigation3.rememberListDetailSceneStrategy
+import androidx.compose.material3.adaptive.navigationsuite.NavigationSuite
 import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffold
 import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffoldDefaults
+import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffoldLayout
 import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteType
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -33,6 +51,7 @@ import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import androidx.navigation3.ui.NavDisplay
 import androidx.window.core.layout.WindowSizeClass
 import com.mtajchert.flocket.R
+import com.mtajchert.flocket.core.designsystem.theme.FlocketCorners
 import com.mtajchert.flocket.core.ui.component.CountBadge
 import com.mtajchert.flocket.core.ui.nav.EntryProviderInstaller
 import com.mtajchert.flocket.core.ui.nav.LocalPaneLayout
@@ -51,6 +70,8 @@ import com.mtajchert.flocket.feature.terminals.api.TerminalsRoute
  * The root of the back stack is the selected top-level destination; switching tabs replaces the stack.
  * [NavigationSuiteScaffold] shows a bottom bar on compact windows and a rail on wider ones, and hides
  * itself on full-screen routes (see [isFullScreen]), including the terminal on single-pane windows.
+ * The rail also carries the New terminal button ([onNewTerminal]); list-detail panes are drawn as cards
+ * ([rememberPaneCardEntryDecorator]).
  */
 @OptIn(ExperimentalMaterial3AdaptiveApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -60,6 +81,8 @@ fun FlocketNavHost(
     modifier: Modifier = Modifier,
     /** Terminals needing the user across all hosts; shown as a badge on the Terminals item. */
     needsYouCount: Int = 0,
+    /** Opens the terminals list's New terminal sheet (the rail's button), after Terminals is shown. */
+    onNewTerminal: () -> Unit = {},
     backStack: NavBackStack<NavKey> = rememberNavBackStack(if (showOnboarding) OnboardingRoute else TerminalsRoute),
 ) {
     val navigator = remember(backStack) { BackStackNavigator(backStack) }
@@ -94,66 +117,127 @@ fun FlocketNavHost(
     val directive = if (focusMode) baseDirective.copy(maxHorizontalPartitions = 1) else baseDirective
     val listDetailStrategy = rememberListDetailSceneStrategy<NavKey>(directive = directive)
 
-    val paneLayout =
-        remember(multiPane, focusMode, compactHeight) {
-            PaneLayout(multiPane = multiPane, sidebarVisible = !focusMode, compactHeight = compactHeight)
-        }
-    val sidebarToggle = remember { SidebarToggle { visible -> focusRequested = !visible } }
-
     val layoutType =
         if (current.isFullScreen(singlePane = !multiPane, focusMode = focusMode, compactHeight = compactHeight)) {
             NavigationSuiteType.None
         } else {
             navigationSuiteType(adaptiveInfo, multiPane = multiPane, compactHeight = compactHeight)
         }
+    val railShowing = layoutType == NavigationSuiteType.NavigationRail
+
+    val paneLayout =
+        remember(multiPane, focusMode, compactHeight, railShowing) {
+            PaneLayout(
+                multiPane = multiPane,
+                sidebarVisible = !focusMode,
+                compactHeight = compactHeight,
+                navigationRail = railShowing,
+            )
+        }
+    val sidebarToggle = remember { SidebarToggle { visible -> focusRequested = !visible } }
+
+    // The rail's New terminal button opens the list's sheet; it keeps a terminal open beside the list.
+    val newTerminal = {
+        if (selectedRoot != TerminalsRoute) navigator.selectTopLevel(TerminalsRoute)
+        onNewTerminal()
+    }
+    val destinationIcon: @Composable (TopLevelDestination) -> Unit = { destination ->
+        val icon = if (destination.key == selectedRoot) destination.selectedIcon else destination.icon
+        if (destination.key == TerminalsRoute && needsYouCount > 0) {
+            BadgedBox(badge = { CountBadge(needsYouCount, color = MaterialTheme.colorScheme.error) }) {
+                Icon(icon, contentDescription = null)
+            }
+        } else {
+            Icon(icon, contentDescription = null)
+        }
+    }
 
     CompositionLocalProvider(
         LocalPaneLayout provides paneLayout,
         LocalSidebarToggle provides sidebarToggle,
     ) {
-        NavigationSuiteScaffold(
+        // NavigationSuiteScaffold, unrolled so the rail can carry the New terminal button as its header.
+        Surface(
             modifier = modifier,
-            layoutType = layoutType,
-            navigationSuiteItems = {
-                TopLevelDestinations.forEach { destination ->
-                    item(
-                        selected = destination.key == selectedRoot,
-                        onClick = { navigator.selectTopLevel(destination.key) },
-                        icon = {
-                            val selected = destination.key == selectedRoot
-                            val icon = if (selected) destination.selectedIcon else destination.icon
-                            if (destination.key == TerminalsRoute && needsYouCount > 0) {
-                                BadgedBox(
-                                    badge = { CountBadge(needsYouCount, color = MaterialTheme.colorScheme.error) },
-                                ) { Icon(icon, contentDescription = null) }
-                            } else {
-                                Icon(icon, contentDescription = null)
+            color = NavigationSuiteScaffoldDefaults.containerColor,
+            contentColor = NavigationSuiteScaffoldDefaults.contentColor,
+        ) {
+            NavigationSuiteScaffoldLayout(
+                navigationSuite = {
+                    if (railShowing) {
+                        NavigationRail(header = { NewTerminalRailButton(newTerminal) }) {
+                            TopLevelDestinations.forEach { destination ->
+                                NavigationRailItem(
+                                    selected = destination.key == selectedRoot,
+                                    onClick = { navigator.selectTopLevel(destination.key) },
+                                    icon = { destinationIcon(destination) },
+                                    label = { Text(stringResource(destination.label)) },
+                                )
                             }
-                        },
-                        label = { Text(stringResource(destination.label)) },
+                        }
+                    } else {
+                        NavigationSuite(layoutType = layoutType) {
+                            TopLevelDestinations.forEach { destination ->
+                                item(
+                                    selected = destination.key == selectedRoot,
+                                    onClick = { navigator.selectTopLevel(destination.key) },
+                                    icon = { destinationIcon(destination) },
+                                    label = { Text(stringResource(destination.label)) },
+                                )
+                            }
+                        }
+                    }
+                },
+                layoutType = layoutType,
+            ) {
+                Box(Modifier.consumeWindowInsets(navigationSuiteInsets(layoutType))) {
+                    NavDisplay(
+                        backStack = backStack,
+                        // Back leaves focus mode (restores the sidebar) before it pops anything.
+                        onBack = { if (backLeavesFocus(focusRequested)) focusRequested = false else navigator.back() },
+                        sceneStrategies = listOf(listDetailStrategy),
+                        // Overriding the decorators replaces the defaults, so the saveable-state one is listed too.
+                        entryDecorators =
+                            listOf(
+                                rememberSaveableStateHolderNavEntryDecorator(),
+                                rememberViewModelStoreNavEntryDecorator(),
+                                rememberPaneCardEntryDecorator(),
+                            ),
+                        entryProvider =
+                            entryProvider {
+                                installers.forEach { it.install(this, navigator) }
+                            },
                     )
                 }
-            },
-        ) {
-            NavDisplay(
-                backStack = backStack,
-                // Back leaves focus mode (restores the sidebar) before it pops anything.
-                onBack = { if (backLeavesFocus(focusRequested)) focusRequested = false else navigator.back() },
-                sceneStrategies = listOf(listDetailStrategy),
-                // Overriding the decorators replaces the defaults, so the saveable-state one is listed too.
-                entryDecorators =
-                    listOf(
-                        rememberSaveableStateHolderNavEntryDecorator(),
-                        rememberViewModelStoreNavEntryDecorator(),
-                    ),
-                entryProvider =
-                    entryProvider {
-                        installers.forEach { it.install(this, navigator) }
-                    },
-            )
+            }
         }
     }
 }
+
+/** The design's rail FAB: 56dp, 16dp corners, flat on the rail. */
+@Composable
+private fun NewTerminalRailButton(onClick: () -> Unit) {
+    FloatingActionButton(
+        onClick = onClick,
+        modifier = Modifier.padding(top = 8.dp, bottom = 12.dp),
+        shape = FlocketCorners.Fab,
+        containerColor = MaterialTheme.colorScheme.primaryContainer,
+        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+        elevation = FloatingActionButtonDefaults.bottomAppBarFabElevation(),
+    ) {
+        Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.nav_new_terminal))
+    }
+}
+
+/** The window insets the navigation suite pads for, which the content must not pad for again. */
+@Composable
+private fun navigationSuiteInsets(layoutType: NavigationSuiteType): WindowInsets =
+    when (layoutType) {
+        NavigationSuiteType.NavigationBar -> NavigationBarDefaults.windowInsets.only(WindowInsetsSides.Bottom)
+        NavigationSuiteType.NavigationRail -> NavigationRailDefaults.windowInsets.only(WindowInsetsSides.Start)
+        NavigationSuiteType.NavigationDrawer -> DrawerDefaults.windowInsets.only(WindowInsetsSides.Start)
+        else -> WindowInsets(0)
+    }
 
 /**
  * The default picks a bottom bar for compact-height windows, which on a landscape phone eats a quarter
