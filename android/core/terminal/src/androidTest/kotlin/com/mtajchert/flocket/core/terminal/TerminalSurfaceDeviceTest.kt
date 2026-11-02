@@ -229,29 +229,24 @@ class TerminalSurfaceDeviceTest {
             vm.stream.size.value = TerminalSize(200, 50) // the desktop took the size
             waitFor(state = { vm.sizeState() }) { !vm.controller.isOwner.value }
 
-            // An injected tap fails while another window (launch transition, system dialog) has focus.
-            var focused = false
-            waitFor(state = { "window not focused" }) {
-                scenario.onActivity { focused = it.hasWindowFocus() }
-                focused
-            }
-            var x = 0f
-            var y = 0f
+            // The tap goes through the activity's own view tree (Compose host, AndroidView, TerminalView's gesture
+            // detector), not the system input dispatcher: on the CI emulator another window (a launcher relaunch,
+            // a system dialog) kept window focus for over 5 s and injected taps never arrived.
             scenario.onActivity { a ->
-                val view = findTerminal(a.window.decorView)!!
-                val loc = IntArray(2).also { view.getLocationOnScreen(it) }
-                x = loc[0] + view.width / 2f
-                y = loc[1] + view.height / 2f
-            }
-            val now = android.os.SystemClock.uptimeMillis()
-            val instrumentation = InstrumentationRegistry.getInstrumentation()
-            for ((action, t) in listOf(
-                android.view.MotionEvent.ACTION_DOWN to now,
-                android.view.MotionEvent.ACTION_UP to now + 50,
-            )) {
-                val e = android.view.MotionEvent.obtain(now, t, action, x, y, 0)
-                instrumentation.sendPointerSync(e)
-                e.recycle()
+                val root = a.window.decorView
+                val view = findTerminal(root)!!
+                val loc = IntArray(2).also { view.getLocationInWindow(it) }
+                val x = loc[0] + view.width / 2f
+                val y = loc[1] + view.height / 2f
+                val now = android.os.SystemClock.uptimeMillis()
+                for ((action, t) in listOf(
+                    android.view.MotionEvent.ACTION_DOWN to now,
+                    android.view.MotionEvent.ACTION_UP to now + 50,
+                )) {
+                    val e = android.view.MotionEvent.obtain(now, t, action, x, y, 0)
+                    root.dispatchTouchEvent(e)
+                    e.recycle()
+                }
             }
             waitFor(state = { vm.sizeState() }) {
                 vm.controller.isOwner.value && vm.stream.size.value == vm.controller.preferredSize()
