@@ -97,6 +97,10 @@ internal val DarkInversePrimary = Color(0xFF006A60)
  * @property terminalDim dimmed terminal preview text (`tdim`).
  * @property key extra-key cap background (`key`).
  * @property keyboardBar background of the extra-keys / keyboard bar (`kbd`).
+ * @property brand brand orange: the terminal cursor and the flock mark cursor (`brand`).
+ * @property flockTrail trailing chevrons of the flock mark (`flock2`).
+ * @property brandTeal fixed brand teal for the flock mark (`pri`), unaffected by dynamic color.
+ * @property brandTile tile behind the flock mark (`bg`), unaffected by dynamic color.
  */
 @Immutable
 data class FlocketColors(
@@ -113,6 +117,10 @@ data class FlocketColors(
     val terminalDim: Color,
     val key: Color,
     val keyboardBar: Color,
+    val brand: Color,
+    val flockTrail: Color,
+    val brandTeal: Color,
+    val brandTile: Color,
 )
 
 internal val LightFlocketColors =
@@ -130,6 +138,10 @@ internal val LightFlocketColors =
         terminalDim = Color(0xFF6B7572),
         key = Color(0xFFFFFFFF),
         keyboardBar = Color(0xFFE2E8E5),
+        brand = Color(0xFFE0560F),
+        flockTrail = Color(0xFF86C4BB),
+        brandTeal = Color(0xFF006A60),
+        brandTile = Color(0xFFF6FAF8),
     )
 
 internal val DarkFlocketColors =
@@ -147,6 +159,10 @@ internal val DarkFlocketColors =
         terminalDim = Color(0xFF7F8A87),
         key = Color(0xFF343C3A),
         keyboardBar = Color(0xFF1A201F),
+        brand = Color(0xFFFF7A3D),
+        flockTrail = Color(0xFF3F7D74),
+        brandTeal = Color(0xFF82D5C8),
+        brandTile = Color(0xFF0F1514),
     )
 
 internal val LocalFlocketColors = staticCompositionLocalOf { LightFlocketColors }
