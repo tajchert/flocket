@@ -2,6 +2,7 @@ package com.mtajchert.flocket.core.designsystem.theme
 
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Shapes
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 /**
@@ -42,3 +43,30 @@ val FlocketShapes =
         // Extra large - for large dialogs, full-screen modals
         extraLarge = RoundedCornerShape(28.dp),
     )
+
+/** Named corner shapes from the design (design v2 shape decisions). */
+object FlocketCorners {
+    /** Filter chips, reply chips, extra keys. */
+    val Chip = RoundedCornerShape(8.dp)
+
+    /** Agent status pill. */
+    val StatusPill = RoundedCornerShape(6.dp)
+
+    /** Host status pill (dot + label). */
+    val HostPill = RoundedCornerShape(12.dp)
+
+    /** List cards. */
+    val Card = RoundedCornerShape(16.dp)
+
+    /** Large cards, terminal previews. */
+    val CardLarge = RoundedCornerShape(20.dp)
+
+    /** Bottom sheets (top corners only). */
+    val Sheet = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
+
+    /** Floating action buttons. */
+    val Fab = RoundedCornerShape(16.dp)
+
+    /** Corner radius of an agent tile of the given size (about 28%). */
+    fun tileRadius(size: Dp) = size * 0.28f
+}
