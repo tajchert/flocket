@@ -466,6 +466,7 @@ private fun ChildRow(
     val scheme = MaterialTheme.colorScheme
     Row(
         modifier
+            .fillMaxWidth()
             .padding(horizontal = 8.dp)
             .clip(MaterialTheme.shapes.medium)
             .background(if (selected) scheme.secondaryContainer else Color.Transparent)
@@ -496,7 +497,7 @@ private fun StatusGlyph(shown: ShownStatus?) {
     val fixed = MaterialTheme.flocketColors
     when (shown) {
         ShownStatus.Working -> {
-            CircularProgressIndicator(Modifier.size(12.dp), color = scheme.primary, strokeWidth = 1.5.dp)
+            CircularProgressIndicator(Modifier.size(14.dp), color = scheme.primary, strokeWidth = 2.dp)
         }
 
         ShownStatus.NeedsYou -> {
