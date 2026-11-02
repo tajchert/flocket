@@ -19,7 +19,7 @@
     <!-- Keys -->
     <string name="section_connection">Connection</string>
     <string name="keep_connected">Keep connected in background</string>
-    <string name="keep_connected_hint">Keeps an open terminal connected for a few minutes after you leave Flocket. Shows a notification while active.</string>
+    <string name="keep_connected_hint">Keeps an open agent connected for a few minutes after you leave Flocket. Shows a notification while active.</string>
     <string name="section_keys">Device keys</string>
     <string name="keys_intro">Keys sign you in to your hosts over SSH. The private half never leaves this device.</string>
     <string name="keys_empty">No keys yet. Generate one, then add its public key to your host.</string>

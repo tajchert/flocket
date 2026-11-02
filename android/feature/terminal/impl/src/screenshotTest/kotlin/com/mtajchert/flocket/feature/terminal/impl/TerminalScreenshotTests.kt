@@ -215,7 +215,7 @@ private fun TerminalTwoPaneScreenshot() {
             ) {
                 Column {
                     Text(
-                        "Terminals",
+                        "Agents",
                         style = MaterialTheme.typography.headlineSmall,
                         modifier = Modifier.padding(16.dp),
                     )

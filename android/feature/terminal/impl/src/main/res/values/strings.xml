@@ -2,7 +2,7 @@
 <resources>
     <!-- Top bar -->
     <string name="terminal_back">Back</string>
-    <string name="terminal_sidebar_show">Show terminal list</string>
+    <string name="terminal_sidebar_show">Show agent list</string>
     <string name="terminal_tab_format">%1$s, %2$s</string>
     <string name="terminal_tab_state_idle">idle</string>
     <string name="terminal_tab_state_working">working</string>
@@ -24,8 +24,8 @@
     <string name="terminal_action_show_top_bar">Show top bar</string>
     <string name="terminal_space_fallback">Space %1$d</string>
     <plurals name="terminal_next_needs_you">
-        <item quantity="one">%1$d other terminal needs you. Open it</item>
-        <item quantity="other">%1$d other terminals need you. Open the next one</item>
+        <item quantity="one">%1$d other agent needs you. Open it</item>
+        <item quantity="other">%1$d other agents need you. Open the next one</item>
     </plurals>
 
     <!-- Reply chips above the extra keys -->
@@ -43,7 +43,7 @@
     <string name="terminal_exited_signal">Ended by signal %1$d</string>
     <string name="terminal_killed">Killed</string>
     <string name="terminal_notifications_title">Allow notifications?</string>
-    <string name="terminal_notifications_message">Flocket uses a notification to show while it keeps your terminal connected in the background for a few minutes. Without it, the terminal still stays connected; you just won\'t see the notice.</string>
+    <string name="terminal_notifications_message">Flocket uses a notification to show while it keeps your agent connected in the background for a few minutes. Without it, the agent still stays connected; you just won\'t see the notice.</string>
     <string name="terminal_notifications_allow">Continue</string>
     <string name="terminal_notifications_not_now">Not now</string>
     <string name="terminal_exited">Exited</string>
@@ -68,7 +68,7 @@
     <string name="terminal_error_format">%1$s: %2$s</string>
 
     <!-- Dialogs -->
-    <string name="terminal_kill_title">Kill this terminal?</string>
+    <string name="terminal_kill_title">Kill this agent?</string>
     <string name="terminal_kill_message">The program in %1$s is stopped on the host. This cannot be undone.</string>
     <string name="terminal_kill_confirm">Kill</string>
     <string name="terminal_cancel">Cancel</string>

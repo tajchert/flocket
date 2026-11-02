@@ -59,9 +59,9 @@ revoke it with `adb -s <serial> shell pm revoke com.mtajchert.flocket.debug andr
    from the UI dump into `dev-sshd.sh authorize`. Add host: name, `10.0.2.2`, username `id -un`,
    device key, Advanced: port 2222, hc session `flocket-e2e`, hc path empty. Save and connect.
    Expected: trust dialog with the same SHA-256 fingerprint as `ssh-keygen -lf`; Trust → the
-   Terminals list with the host **Online**.
+   Agents list with the host **Online**.
 3. `hc run --bg --no-parent --name macsh --cwd /tmp sh` on the machine: the row appears live. New
-   terminal (FAB) → Default shell, cwd `~` → Start: the terminal screen opens as owner (the core
+   agent (FAB) → Default shell, cwd `~` → Start: the terminal screen opens as owner (the core
    size becomes the phone grid, e.g. 52x39).
 4. Type `echo hello-flocket` + Enter; `hc read <t>` shows it. `top` redraws; sticky Ctrl + `c`
    from the extra keys stops it.

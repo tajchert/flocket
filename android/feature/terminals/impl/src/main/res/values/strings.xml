@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="terminals_title">Terminals</string>
-    <string name="terminals_select_placeholder">Select a terminal to open it</string>
+    <string name="terminals_title">Agents</string>
+    <string name="terminals_select_placeholder">Select an agent to open it</string>
 
     <!-- Filters and list options -->
     <string name="filter_all">All</string>
     <string name="filter_attention">Needs attention</string>
     <string name="filter_working">Working</string>
-    <string name="terminals_collapse">Hide terminal list</string>
+    <string name="terminals_collapse">Hide agent list</string>
     <string name="menu_options_filtered">List options, filter on</string>
     <string name="menu_options">List options</string>
     <string name="menu_sort_title">Sort</string>
@@ -26,11 +26,11 @@
 
     <!-- Headers -->
     <plurals name="host_terminal_count">
-        <item quantity="one">%d terminal</item>
-        <item quantity="other">%d terminals</item>
+        <item quantity="one">%d agent</item>
+        <item quantity="other">%d agents</item>
     </plurals>
     <string name="host_terminal_count_filtered">%1$d shown · %2$d total</string>
-    <string name="host_no_terminals">No terminals on this host yet.</string>
+    <string name="host_no_terminals">No agents on this host yet.</string>
     <string name="host_no_matches">Nothing matches this filter on this host.</string>
     <string name="space_expand">Expand %1$s</string>
     <string name="space_collapse">Collapse %1$s</string>
@@ -79,16 +79,16 @@
 
     <!-- Empty states -->
     <string name="empty_no_hosts_title">No hosts yet</string>
-    <string name="empty_no_hosts_message">Add a machine running herdr-core to watch and control its terminals from here.</string>
+    <string name="empty_no_hosts_message">Add a machine running herdr-core to watch and control its agents from here.</string>
     <string name="empty_no_hosts_action">Add a host</string>
-    <string name="empty_no_terminals_title">No terminals yet</string>
-    <string name="empty_no_terminals_message">Nothing is running on your hosts. Start a terminal and it shows up here, on every device.</string>
-    <string name="empty_no_terminals_action">Start a terminal</string>
+    <string name="empty_no_terminals_title">No agents yet</string>
+    <string name="empty_no_terminals_message">Nothing is running on your hosts. Start an agent and it shows up here, on every device.</string>
+    <string name="empty_no_terminals_action">Start an agent</string>
     <string name="empty_offline_title">No host is online</string>
     <string name="empty_offline_message">Flocket can’t reach any of your hosts right now. Saved data is read-only until one reconnects.</string>
     <string name="empty_offline_action">Try again</string>
     <string name="empty_no_matches_title">Nothing to show</string>
-    <string name="empty_no_matches_message">No terminals match this filter.</string>
+    <string name="empty_no_matches_message">No agents match this filter.</string>
     <string name="empty_no_matches_action">Show everything</string>
 
     <!-- Snackbars -->
@@ -97,13 +97,13 @@
     <string name="msg_interrupt_exited">Stop key sent. The program exited.</string>
     <string name="msg_interrupt_still_working">Stop key sent, but the program is still working.</string>
     <string name="msg_interrupt_sent">Stop key sent.</string>
-    <string name="msg_read_only">This host is offline, so its terminals are read-only.</string>
+    <string name="msg_read_only">This host is offline, so its agents are read-only.</string>
     <string name="msg_outcome_unknown">May not have been delivered. Check the terminal before trying again.</string>
     <string name="msg_error_format">%1$s. %2$s</string>
     <string name="snackbar_dismiss">Dismiss</string>
 
     <!-- Kill dialog -->
-    <string name="kill_title">Kill this terminal?</string>
+    <string name="kill_title">Kill this agent?</string>
     <string name="kill_message">This stops %1$s and everything running in it. Unsaved work in the program is lost.</string>
     <string name="kill_confirm">Kill</string>
 
@@ -122,9 +122,9 @@
     <string name="send_close">Close</string>
 
     <!-- New terminal -->
-    <string name="new_terminal">New terminal</string>
+    <string name="new_terminal">New agent</string>
     <string name="new_terminal_start">Start</string>
-    <string name="new_terminal_no_hosts">No host is online. Connect to a host to start a terminal.</string>
+    <string name="new_terminal_no_hosts">No host is online. Connect to a host to start an agent.</string>
     <string name="new_terminal_host">Host</string>
     <string name="new_terminal_machine">Machine</string>
     <string name="new_terminal_machine_local">This machine</string>

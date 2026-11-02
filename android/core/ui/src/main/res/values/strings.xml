@@ -186,8 +186,8 @@
     <string name="ts_bell_off">Off</string>
     <string name="ts_auto_connect">Connect on launch</string>
     <string name="ts_auto_connect_hint">Connect when Flocket opens. Off: only when you open the host.</string>
-    <string name="ts_working_directory">New terminal folder</string>
-    <string name="ts_working_directory_hint">The folder new terminals start in. ~ is the home folder.</string>
+    <string name="ts_working_directory">New agent folder</string>
+    <string name="ts_working_directory_hint">The folder new agents start in. ~ is the home folder.</string>
     <string name="ts_use_app_default">Use app default (%1$s)</string>
     <string name="ts_on">on</string>
     <string name="ts_off">off</string>

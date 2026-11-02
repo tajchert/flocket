@@ -77,19 +77,19 @@ class TerminalsComposeTest {
     @Test
     fun `without the navigation rail the list shows its New terminal button`() {
         show()
-        rule.onAllNodesWithContentDescription("New terminal").assertCountEquals(1)
+        rule.onAllNodesWithContentDescription("New agent").assertCountEquals(1)
     }
 
     @Test
     fun `beside the navigation rail the list drops its own New terminal buttons`() {
         show(layout = PaneLayout(navigationRail = true))
-        rule.onAllNodesWithContentDescription("New terminal").assertCountEquals(0)
+        rule.onAllNodesWithContentDescription("New agent").assertCountEquals(0)
     }
 
     @Test
     fun `a sidebar without the rail keeps the top bar New terminal button`() {
         show(layout = PaneLayout(multiPane = true, compactHeight = true))
-        rule.onAllNodesWithContentDescription("New terminal").assertCountEquals(1)
+        rule.onAllNodesWithContentDescription("New agent").assertCountEquals(1)
     }
 
     @Test
@@ -97,14 +97,14 @@ class TerminalsComposeTest {
         val visible = mutableListOf<Boolean>()
         val open = TerminalRoute("studio", "t1")
         show(layout = PaneLayout(multiPane = true), selected = open, sidebar = SidebarToggle { visible += it })
-        rule.onNodeWithContentDescription("Hide terminal list").performClick()
+        rule.onNodeWithContentDescription("Hide agent list").performClick()
         assertEquals(listOf(false), visible)
     }
 
     @Test
     fun `no collapse button without an open terminal or on a phone`() {
         show(layout = PaneLayout(multiPane = true))
-        rule.onAllNodesWithContentDescription("Hide terminal list").assertCountEquals(0)
+        rule.onAllNodesWithContentDescription("Hide agent list").assertCountEquals(0)
     }
 
     @Test
@@ -329,7 +329,7 @@ class TerminalsComposeTest {
         rule.setContent {
             FlocketTheme { KillConfirmDialog(item, onConfirm = { confirmed = true }, onDismiss = { dismissed = true }) }
         }
-        rule.onNodeWithText("Kill this terminal?").assertIsDisplayed()
+        rule.onNodeWithText("Kill this agent?").assertIsDisplayed()
         rule.onNodeWithText("Cancel").performClick()
         assertTrue(dismissed)
         assertFalse(confirmed)
@@ -370,8 +370,8 @@ class TerminalsComposeTest {
                     true
             }),
         )
-        rule.onNodeWithText("No terminals yet").assertIsDisplayed()
-        rule.onNodeWithText("Start a terminal").performClick()
+        rule.onNodeWithText("No agents yet").assertIsDisplayed()
+        rule.onNodeWithText("Start an agent").performClick()
         assertTrue(started)
     }
 

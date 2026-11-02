@@ -1,16 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name" translatable="false">Flocket</string>
-    <string name="nav_terminals">Terminals</string>
+    <string name="nav_terminals">Agents</string>
     <string name="nav_hosts">Hosts</string>
     <string name="nav_settings">Settings</string>
-    <string name="nav_new_terminal">New terminal</string>
+    <string name="nav_new_terminal">New agent</string>
     <!-- Keep-alive foreground service (ADR-0006) -->
     <string name="keep_alive_channel">Connection</string>
-    <string name="keep_alive_channel_description">Shown while Flocket keeps your open terminals connected in the background for a few minutes.</string>
+    <string name="keep_alive_channel_description">Shown while Flocket keeps your open agents connected in the background for a few minutes.</string>
     <plurals name="keep_alive_title">
-        <item quantity="one">Flocket connected · %d terminal</item>
-        <item quantity="other">Flocket connected · %d terminals</item>
+        <item quantity="one">Flocket connected · %d agent</item>
+        <item quantity="other">Flocket connected · %d agents</item>
     </plurals>
-    <string name="keep_alive_text">Keeping your terminal connected for a few minutes. Tap to return.</string>
+    <string name="keep_alive_text">Keeping your agent connected for a few minutes. Tap to return.</string>
 </resources>

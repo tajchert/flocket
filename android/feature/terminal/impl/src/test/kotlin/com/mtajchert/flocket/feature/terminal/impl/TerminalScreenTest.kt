@@ -121,7 +121,7 @@ class TerminalScreenTest {
     @Test
     fun `kill asks for confirmation`() {
         show(live.copy(confirmKill = true))
-        compose.onNodeWithText("Kill this terminal?").assertExists()
+        compose.onNodeWithText("Kill this agent?").assertExists()
         compose.onNodeWithText("Cancel").performClick()
         compose.onNodeWithText("Kill").performClick()
         assertEquals(listOf("dismissKill", "confirmKill"), clicks)
@@ -235,7 +235,7 @@ class TerminalScreenTest {
     @Test
     fun `focus mode offers to show the list again`() {
         showMulti(sidebarVisible = false)
-        compose.onNodeWithContentDescription("Show terminal list").performClick()
+        compose.onNodeWithContentDescription("Show agent list").performClick()
         assertEquals(listOf("sidebar:true"), clicks)
     }
 
@@ -243,7 +243,7 @@ class TerminalScreenTest {
     fun `single-pane keeps the back arrow`() {
         show(live)
         compose.onNodeWithContentDescription("Back").performClick()
-        compose.onAllNodesWithContentDescription("Show terminal list").assertCountEquals(0)
+        compose.onAllNodesWithContentDescription("Show agent list").assertCountEquals(0)
         assertEquals(listOf("close"), clicks)
     }
 
