@@ -16,6 +16,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.mtajchert.flocket.core.model.HostId
 import com.mtajchert.flocket.core.ui.component.RenameDialog
 import com.mtajchert.flocket.core.ui.error.UiErrorAction
 import com.mtajchert.flocket.core.ui.nav.DetailPanePlaceholder
@@ -132,6 +133,10 @@ private fun TerminalsRoute(
         }
     }
 
+    val openRoute = navigator.current as? TerminalRoute
+    LaunchedEffect(viewModel, openRoute?.hostId, openRoute?.address) {
+        viewModel.setOpenTerminal(openRoute?.hostId?.let(::HostId), openRoute?.address)
+    }
     val actions =
         remember(viewModel, navigator) {
             TerminalsActions(
@@ -141,6 +146,9 @@ private fun TerminalsRoute(
                 onRefresh = viewModel::refresh,
                 onOpen = { navigator.navigate(TerminalRoute(it.hostId.value, it.address)) },
                 onKill = viewModel::requestKill,
+                onOpenChild = { navigator.navigate(TerminalRoute(it.hostId.value, it.address)) },
+                onPin = viewModel::setPinned,
+                onMarkUnread = viewModel::markUnread,
                 onInterrupt = viewModel::interrupt,
                 onSendText = viewModel::requestSend,
                 onRename = viewModel::requestRename,

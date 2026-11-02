@@ -10,13 +10,18 @@ import com.mtajchert.flocket.core.model.ConnectionState
 import com.mtajchert.flocket.core.model.HostId
 import com.mtajchert.flocket.core.model.Liveness
 import com.mtajchert.flocket.core.model.MachineState
+import com.mtajchert.flocket.core.model.ShownStatus
 import com.mtajchert.flocket.core.model.TerminalAddress
 import com.mtajchert.flocket.core.model.TerminalRecord
 import com.mtajchert.flocket.core.model.TerminalSort
 import com.mtajchert.flocket.core.model.Workspace
 import com.mtajchert.flocket.core.model.WorkspaceSpace
 import com.mtajchert.flocket.core.model.buildWorkspace
+import com.mtajchert.flocket.core.model.childShownStatus
 import com.mtajchert.flocket.core.model.folderName
+import com.mtajchert.flocket.core.model.isAgent
+import com.mtajchert.flocket.core.model.isPinned
+import com.mtajchert.flocket.core.model.shownStatus
 import com.mtajchert.flocket.core.session.SessionState
 import com.mtajchert.flocket.core.ui.error.toUiError
 
@@ -68,7 +73,12 @@ internal fun rowDetail(
     item: TerminalItem,
 ): String? = tabName.takeIf { it.isNotBlank() } ?: item.liveTitle ?: item.name?.takeIf { it.isNotBlank() }
 
-internal fun TerminalRecord.toItem(writable: Boolean): TerminalItem {
+internal fun TerminalRecord.toItem(
+    writable: Boolean,
+    supportsLabels: Boolean = false,
+    /** The hold rule keeps a Done -> Idle terminal at Done rank (see [HoldRule]). */
+    held: Boolean = false,
+): TerminalItem {
     val finished = liveness as? Liveness.Finished
     val kind =
         when (liveness) {
@@ -78,6 +88,8 @@ internal fun TerminalRecord.toItem(writable: Boolean): TerminalItem {
         }
     val endpoint = ref.endpoint
     val agent = AgentCatalog.of(this)
+    val own = shownStatus()
+    val rank = if (held && own == ShownStatus.Idle) ShownStatus.Done.rank else own?.rank
     return TerminalItem(
         ref = ref,
         key = "${endpoint.hostId.value}/${endpoint.session.orEmpty()}/${address.value}",
@@ -91,7 +103,11 @@ internal fun TerminalRecord.toItem(writable: Boolean): TerminalItem {
         liveness = kind,
         exitCode = finished?.exitCode,
         signal = finished?.signal,
-        urgency = urgencyOf(status, finished != null),
+        urgency = if (finished != null) -2 else rank ?: -1,
+        shown = own,
+        pinned = isPinned,
+        canMarkUnread = isAgent && turn > 0 && own != ShownStatus.Done,
+        supportsLabels = supportsLabels,
         writable = writable,
         liveTitle = tellingTitle(title, agent, agentLabel),
     )
@@ -185,7 +201,7 @@ internal fun buildSections(
             if (tabs.isEmpty()) {
                 null
             } else {
-                val ordered = tabs.sortedByDescending { it.first.topState.rank() }.map { it.second }
+                val ordered = tabs.map { it.second }.sortedByDescending { t -> t.items.maxOf { it.urgency } }
                 space.machine to
                     SpaceSection(
                         space.key,
@@ -201,7 +217,7 @@ internal fun buildSections(
                     )
             }
         }
-    val ordered = spaces.sortedByDescending { it.second.topState.rank() }
+    val ordered = spaces.sortedByDescending { (_, space) -> space.items.maxOf { it.urgency } }
     return ordered
         .groupBy({ it.first }, { it.second })
         .entries
@@ -237,16 +253,14 @@ private fun withDetails(
     }
 }
 
-private fun AgentState?.rank(): Int = this?.priorityRank ?: -1
-
-/** The desktop section a row belongs to. A reported but unrecognised state counts as no status. */
+/** The desktop section a row belongs to, by its urgency (own shown status or a sub-agent's, whichever is higher). */
 internal fun TerminalItem.bucket(): PriorityBucket =
-    when ((status as? AgentStatus.Reported)?.state) {
-        AgentState.Blocked, AgentState.Error -> PriorityBucket.NeedsYou
-        AgentState.Done -> PriorityBucket.Done
-        AgentState.Working -> PriorityBucket.Working
-        AgentState.Idle -> PriorityBucket.Idle
-        AgentState.Other, null -> PriorityBucket.NoStatus
+    when (urgency) {
+        ShownStatus.NeedsYou.rank -> PriorityBucket.NeedsYou
+        ShownStatus.Done.rank -> PriorityBucket.Done
+        ShownStatus.Working.rank -> PriorityBucket.Working
+        ShownStatus.Idle.rank -> PriorityBucket.Idle
+        else -> PriorityBucket.NoStatus
     }
 
 private fun Workspace.rowPlaces(canRename: (String?) -> Boolean): Map<TerminalAddress, RowPlace> {
@@ -284,6 +298,8 @@ internal fun buildUiState(
     overview: List<HostOverview>,
     controls: ListControls,
     refreshing: Boolean,
+    /** The open terminal the hold rule keeps at Done rank, if any. */
+    held: OpenTerminal? = null,
     /** How a host's terminals are grouped; tests and previews inject fixed workspaces. */
     workspaceOf: (SessionState) -> Workspace = { buildWorkspace(it.terminals, it.desktopLayout, it.machineLayouts) },
 ): TerminalsUiState {
@@ -293,8 +309,13 @@ internal fun buildUiState(
             val online = session.connection is ConnectionState.Online
             // Finished terminals are never listed (the desktop's Agents panel hides them too).
             val items =
-                session.terminals.filter { it.liveness !is Liveness.Finished }.map { it.toItem(writable = online) }
-            totalTerminals += items.size
+                itemsWithChildren(
+                    session.terminals.filter { it.liveness !is Liveness.Finished },
+                    online,
+                    session.supportsLabels,
+                    held?.takeIf { it.hostId == host.id },
+                )
+            totalTerminals += items.sumOf { 1 + it.children.size }
             val shown = items.filter { it.matches(controls) }
             val sections =
                 buildSections(shown, workspaceOf(session), session, controls)
@@ -307,7 +328,7 @@ internal fun buildUiState(
                 confirmedAtMs = session.confirmedAtMs,
                 error = (session.connection as? ConnectionState.NeedsAttention)?.error?.toUiError(),
                 sections = sections,
-                total = items.size,
+                total = items.sumOf { 1 + it.children.size },
             )
         }
     val anyOnline = overview.any { it.session.connection is ConnectionState.Online }
@@ -356,7 +377,11 @@ internal data class PriorityListSection(
     val rows: List<PriorityListRow>,
 )
 
-/** The Priority list: the hosts' status sections flattened into one list across hosts, optionally for a single host. */
+/**
+ * The Priority list: the hosts' rows merged into one list, ordered like the desktop: urgency desc, then the
+ * time the state last changed (newest first), then the original order (hosts, machines, core order).
+ * Pinned rows come first as their own section, in that same order, and are not repeated below.
+ */
 internal fun prioritySections(
     groups: List<HostGroup>,
     hostFilter: HostId? = null,
@@ -367,20 +392,110 @@ internal fun prioritySections(
             .flatMap { group ->
                 group.sections.flatMap { section ->
                     section.priority.flatMap { prio ->
-                        prio.rows.map { prio.bucket to PriorityListRow(it, group.hostId, group.label) }
+                        prio.rows.map { PriorityListRow(it, group.hostId, group.label) }
                     }
                 }
-            }
-    // PriorityBucket declares the desktop order: Needs you, Done, Working, Idle, no status.
-    return PriorityBucket.entries.mapNotNull { bucket ->
-        rows.filter { it.first == bucket }.map { it.second }.takeIf { it.isNotEmpty() }?.let {
-            PriorityListSection(
-                bucket,
-                it,
+            }.sortedWith(
+                compareByDescending<PriorityListRow> { it.row.item.urgency }.thenByDescending {
+                    it.row.item.sinceMs
+                        ?: 0L
+                },
             )
-        }
+
+    // PriorityBucket declares the section order: Pinned, Needs you, Done, Working, Idle, no status.
+    fun PriorityListRow.bucket() = if (row.item.pinned) PriorityBucket.Pinned else row.item.bucket()
+    return PriorityBucket.entries.mapNotNull { bucket ->
+        rows.filter { it.bucket() == bucket }.takeIf { it.isNotEmpty() }?.let { PriorityListSection(bucket, it) }
     }
 }
 
 /** Needs-you terminals on one host. */
 internal fun HostGroup.needsYouCount(): Int = sections.sumOf { s -> s.items.count { it.needsAttention() } }
+
+/** The open terminal in two-pane (what the hold rule watches). */
+@Immutable
+internal data class OpenTerminal(
+    val hostId: HostId,
+    val address: String,
+)
+
+/**
+ * The desktop's hold rule: looking at a Done agent makes it Idle, but it stays in Done until it is no longer
+ * the open one, rather than dropping away under the reader. Any other change moves it at once.
+ * Feed it every update with the open terminal and that terminal's own shown status.
+ */
+internal class HoldRule {
+    private var open: OpenTerminal? = null
+    private var shownThen: ShownStatus? = null
+
+    /** The terminal to keep at Done rank now, or null. */
+    fun update(
+        current: OpenTerminal?,
+        shown: ShownStatus?,
+    ): OpenTerminal? {
+        val cur = current.takeIf { shown != null }
+        // Arriving, or any change but Done turning Idle, sets what it was.
+        if (cur != open || shown != ShownStatus.Idle) {
+            open = cur
+            shownThen = shown.takeIf { cur != null }
+        }
+        return cur.takeIf { it != null && shownThen == ShownStatus.Done && shown == ShownStatus.Idle }
+    }
+}
+
+/**
+ * Turns one host's live terminals into rows. A terminal whose `parent` is another live terminal of the host
+ * (every terminal is placed in some space by folder, so "the parent is listed" is the only test for a sub-agent)
+ * becomes a [ChildItem] of its top-most listed ancestor and gets no row of its own. A parent cycle leaves the
+ * terminals involved as ordinary rows. A row's urgency is the highest of its own and its sub-agents' ranks.
+ */
+internal fun itemsWithChildren(
+    live: List<TerminalRecord>,
+    writable: Boolean,
+    supportsLabels: Boolean,
+    held: OpenTerminal?,
+): List<TerminalItem> {
+    val byAddress = live.associateBy { it.address.value }
+
+    fun parentOf(t: TerminalRecord): TerminalRecord? {
+        val p = t.parent?.takeIf { it.isNotBlank() } ?: return null
+        val machine = t.address.machine
+        val found = (machine?.takeIf { '/' !in p }?.let { byAddress["$it/$p"] }) ?: byAddress[p]
+        return found?.takeIf { it.address != t.address }
+    }
+
+    fun rootOf(t: TerminalRecord): TerminalRecord? {
+        val seen = hashSetOf(t.address)
+        var cur = parentOf(t) ?: return null
+        while (true) {
+            if (!seen.add(cur.address)) return null
+            cur = parentOf(cur) ?: return cur
+        }
+    }
+    val roots = live.associateWith { rootOf(it) }
+    val kids = live.filter { roots[it] != null }.groupBy { roots.getValue(it)!!.address }
+    return live.filter { roots[it] == null }.map { t ->
+        val isHeld = held != null && held.address == t.address.value
+        val base = t.toItem(writable, supportsLabels, isHeld)
+        val children =
+            kids[t.address].orEmpty().map { k ->
+                ChildItem(
+                    ref = k.ref,
+                    key = "${k.ref.endpoint.hostId.value}/${k.ref.endpoint.session.orEmpty()}/${k.address.value}",
+                    title =
+                        k.name?.takeIf { it.isNotBlank() } ?: k.template?.takeIf { it.isNotBlank() }
+                            ?: k.agentLabel.ifBlank { k.address.value },
+                    agentId = AgentCatalog.of(k)?.id,
+                    shown = k.childShownStatus(),
+                )
+            }
+        if (children.isEmpty()) {
+            base
+        } else {
+            base.copy(
+                children = children,
+                urgency = maxOf(base.urgency, children.maxOf { it.shown?.rank ?: 0 }),
+            )
+        }
+    }
+}

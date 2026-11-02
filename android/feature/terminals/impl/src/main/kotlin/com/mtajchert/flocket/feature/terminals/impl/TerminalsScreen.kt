@@ -109,6 +109,10 @@ class TerminalsActions(
     val onRefresh: () -> Unit = {},
     val onOpen: (TerminalItem) -> Unit = {},
     val onKill: (TerminalItem) -> Unit = {},
+    /** Pin (true) or unpin (false) a terminal. */
+    val onPin: (TerminalItem, Boolean) -> Unit = { _, _ -> },
+    val onMarkUnread: (TerminalItem) -> Unit = {},
+    val onOpenChild: (ChildItem) -> Unit = {},
     val onInterrupt: (TerminalItem) -> Unit = {},
     val onSendText: (TerminalItem) -> Unit = {},
     /** Rename a desktop space or tab: host, target, current given name, automatic name. */
@@ -356,6 +360,8 @@ private fun TerminalList(
 ) {
     // Keys of collapsed spaces ("host/space"); saved across rotation and process death.
     var collapsed by rememberSaveable { mutableStateOf(emptySet<String>()) }
+    // Keys of parents whose sub-agents are folded away.
+    var folded by rememberSaveable { mutableStateOf(emptySet<String>()) }
     PullToRefreshBox(isRefreshing = state.refreshing, onRefresh = actions.onRefresh) {
         LazyColumn(
             contentPadding = PaddingValues(top = 4.dp, bottom = 96.dp),
@@ -449,16 +455,19 @@ private fun TerminalList(
                                 }
                                 items(tab.items.size, key = { tab.items[it].key }, contentType = { "row" }) { index ->
                                     val item = tab.items[index]
-                                    TerminalRow(
+                                    TerminalRowTree(
                                         item = item,
-                                        selected =
-                                            selected != null && selected.hostId == item.hostId.value &&
-                                                selected.address == item.address,
+                                        selected = selected,
                                         nowMs = nowMs,
                                         actions = actions,
-                                        modifier = Modifier.padding(start = 12.dp),
+                                        indent = 12.dp,
                                         dense = dense,
                                         names = groupedNames(item, space),
+                                        folded = item.key in folded,
+                                        onToggleFold = {
+                                            folded =
+                                                if (item.key in folded) folded - item.key else folded + item.key
+                                        },
                                     )
                                 }
                             }
@@ -759,6 +768,7 @@ private fun PriorityHeader(
 private fun PriorityBucket.group(): StatusGroup =
     when (this) {
         PriorityBucket.NeedsYou -> StatusGroup.NeedsYou
+        PriorityBucket.Pinned -> StatusGroup.NoStatus
         PriorityBucket.Working -> StatusGroup.Working
         PriorityBucket.Done -> StatusGroup.Done
         PriorityBucket.Idle -> StatusGroup.Idle
@@ -778,6 +788,7 @@ private fun PriorityList(
 ) {
     // Group keys the user flipped away from their default (Other terminals start collapsed, the rest expanded).
     var flipped by rememberSaveable { mutableStateOf(emptySet<String>()) }
+    var folded by rememberSaveable { mutableStateOf(emptySet<String>()) }
     val sections = remember(state.groups, hostFilter) { prioritySections(state.groups, hostFilter) }
     val shownGroups = state.groups.filter { hostFilter == null || it.hostId == hostFilter }
     val showHost = state.groups.size > 1 && hostFilter == null
@@ -818,6 +829,8 @@ private fun PriorityList(
                         title =
                             if (section.bucket == PriorityBucket.NoStatus) {
                                 stringResource(R.string.priority_other_terminals)
+                            } else if (section.bucket == PriorityBucket.Pinned) {
+                                stringResource(R.string.priority_pinned)
                             } else {
                                 group.title()
                             },
@@ -838,11 +851,20 @@ private fun PriorityList(
                     ) { index ->
                         val listRow = section.rows[index]
                         val item = listRow.row.item
-                        TerminalRow(
+                        TerminalRowTree(
                             item = item,
-                            selected =
-                                selected != null && selected.hostId == item.hostId.value &&
-                                    selected.address == item.address,
+                            selected = selected,
+                            folded = item.key in folded,
+                            onToggleFold = {
+                                folded =
+                                    if (item.key in
+                                        folded
+                                    ) {
+                                        folded - item.key
+                                    } else {
+                                        folded + item.key
+                                    }
+                            },
                             nowMs = nowMs,
                             actions = actions,
                             dense = dense,

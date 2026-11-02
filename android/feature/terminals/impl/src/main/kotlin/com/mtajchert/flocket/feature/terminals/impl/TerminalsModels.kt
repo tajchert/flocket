@@ -7,6 +7,7 @@ import com.mtajchert.flocket.core.model.ConnectionState
 import com.mtajchert.flocket.core.model.HostId
 import com.mtajchert.flocket.core.model.LayoutRef
 import com.mtajchert.flocket.core.model.MachineState
+import com.mtajchert.flocket.core.model.ShownStatus
 import com.mtajchert.flocket.core.model.TerminalRef
 import com.mtajchert.flocket.core.model.TerminalSort
 import com.mtajchert.flocket.core.model.TerminalTemplate
@@ -37,6 +38,10 @@ data class TerminalItem(
     val liveness: LivenessKind,
     val exitCode: Int?,
     val signal: Int?,
+    /**
+     * Desktop urgency rank: the highest of the row's own [ShownStatus.rank] (after the hold rule) and its
+     * sub-agents', 0 for an agent-less parent, -1 no status (not an agent), -2 finished.
+     */
     val urgency: Int,
     /** False while the host is not online: all write actions are disabled. */
     val writable: Boolean,
@@ -44,10 +49,34 @@ data class TerminalItem(
     val liveTitle: String? = null,
     /** What the row says after its project ("flocket · QA"); set by [buildSections], see [rowDetail]. */
     val detail: String? = null,
+    /** The agent's own shown status (what the glyph shows); null = not an agent. */
+    val shown: ShownStatus? = null,
+    val pinned: Boolean = false,
+    /** Mark as unread is offered: an agent past turn 0 that is not already Done. */
+    val canMarkUnread: Boolean = false,
+    /** The host takes label writes, so pin and unread are offered (also needs [writable]). */
+    val supportsLabels: Boolean = false,
+    /** Live sub-agents of this terminal that no space of their own shows; see [attachChildren]. */
+    val children: List<ChildItem> = emptyList(),
 ) {
     val hostId: HostId get() = ref.endpoint.hostId
     val address: String get() = ref.address.value
     val isFinished: Boolean get() = liveness == LivenessKind.Finished
+}
+
+/** A sub-agent shown indented under its parent, like the desktop's tree rows. */
+@Immutable
+data class ChildItem(
+    val ref: TerminalRef,
+    val key: String,
+    /** Name, else template, else agent label, else address (the desktop's sub-row title). */
+    val title: String,
+    val agentId: String?,
+    /** Sub-agent status ([com.mtajchert.flocket.core.model.childShownStatus]); null = no reported status. */
+    val shown: ShownStatus?,
+) {
+    val hostId: HostId get() = ref.endpoint.hostId
+    val address: String get() = ref.address.value
 }
 
 @Immutable
@@ -68,7 +97,7 @@ data class MachineSection(
 }
 
 /** The desktop Agents panel's sections, in display order. */
-enum class PriorityBucket { NeedsYou, Done, Working, Idle, NoStatus }
+enum class PriorityBucket { Pinned, NeedsYou, Done, Working, Idle, NoStatus }
 
 /** Where a row lives, shown under it in Priority mode. */
 @Immutable
@@ -290,19 +319,7 @@ data class NewTerminalForm(
     }
 }
 
-/** Desktop rank of a row: [AgentState.priorityRank], no status -1, finished -2. */
-internal fun urgencyOf(
-    status: AgentStatus,
-    finished: Boolean,
-): Int =
-    when {
-        finished -> -2
-        status is AgentStatus.Reported -> status.state.priorityRank
-        else -> -1
-    }
-
-internal fun TerminalItem.needsAttention(): Boolean =
-    !isFinished && (status as? AgentStatus.Reported)?.state.let { it == AgentState.Blocked || it == AgentState.Error }
+internal fun TerminalItem.needsAttention(): Boolean = !isFinished && urgency == ShownStatus.NeedsYou.rank
 
 internal fun TerminalItem.isWorking(): Boolean =
-    !isFinished && (status as? AgentStatus.Reported)?.state == AgentState.Working
+    !isFinished && (shown == ShownStatus.Working || children.any { it.shown == ShownStatus.Working })
