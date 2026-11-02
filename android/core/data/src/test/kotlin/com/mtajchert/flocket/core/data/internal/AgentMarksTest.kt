@@ -11,6 +11,8 @@ import com.mtajchert.flocket.core.model.CoreEndpoint
 import com.mtajchert.flocket.core.model.CoreInfo
 import com.mtajchert.flocket.core.model.HostId
 import com.mtajchert.flocket.core.model.Liveness
+import com.mtajchert.flocket.core.model.MachineInfo
+import com.mtajchert.flocket.core.model.MachineState
 import com.mtajchert.flocket.core.model.TerminalAddress
 import com.mtajchert.flocket.core.model.TerminalRecord
 import com.mtajchert.flocket.core.model.TerminalRef
@@ -186,4 +188,35 @@ class AgentMarksTest {
         assertTrue(marks.supportsLabels(hostId))
         assertFalse(AgentMarksImpl(Manager(null)).supportsLabels(hostId))
     }
+
+    @Test
+    fun `a federated terminal is written only while its machine is connected`() =
+        runTest {
+            val fedRef = TerminalRef(endpoint, TerminalAddress("rohan/t7"))
+            val rec = record(3).copy(ref = fedRef)
+
+            fun fed(machines: List<MachineInfo>): Pair<AgentMarksImpl, FakeCoreSession> {
+                val session =
+                    FakeCoreSession(
+                        endpoint,
+                        SessionState(endpoint, ConnectionState.Online(info()), info(), listOf(rec), machines = machines),
+                    )
+                session.labelsHandler = { _, _ -> AppResult.Success(rec) }
+                return AgentMarksImpl(Manager(session)) to session
+            }
+            for (state in listOf(MachineState.Unreachable, MachineState.Connecting)) {
+                val (marks, session) = fed(listOf(MachineInfo("rohan", state, state.name)))
+                assertEquals(AppError.ConnectionLost, (marks.markSeen(fedRef) as AppResult.Failure).error)
+                assertTrue(marks.markUnread(fedRef) is AppResult.Failure)
+                assertTrue(marks.setPinned(fedRef, true) is AppResult.Failure)
+                assertTrue(session.labelWrites.isEmpty())
+            }
+            val (gone, goneSession) = fed(emptyList())
+            assertTrue(gone.setPinned(fedRef, true) is AppResult.Failure)
+            assertTrue(goneSession.labelWrites.isEmpty())
+
+            val (ok, okSession) = fed(listOf(MachineInfo("rohan", MachineState.Connected, "connected")))
+            assertTrue(ok.setPinned(fedRef, true) is AppResult.Success)
+            assertEquals(1, okSession.labelWrites.size)
+        }
 }
