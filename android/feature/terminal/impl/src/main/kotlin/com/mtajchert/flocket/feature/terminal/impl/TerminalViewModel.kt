@@ -370,7 +370,8 @@ class TerminalViewModel
         /**
          * While looking, marks the agent seen once when the visit starts and again for each new turn.
          * The turn handled is remembered per visit, so a mark-unread done elsewhere (two-pane list)
-         * is not overwritten; a new visit starts fresh. Failures are ignored: the write is idempotent.
+         * is not overwritten; a new visit starts fresh. A transient failure is retried when the state next emits
+         * (e.g. after a reconnect); the write is idempotent.
          */
         private suspend fun markSeenWhileLooking() {
             looking.collectLatest { isLooking ->
@@ -389,8 +390,15 @@ class TerminalViewModel
                     }.distinctUntilChanged { a, b -> a?.turn == b?.turn }
                     .collect { record ->
                         if (record == null || record.turn == handled) return@collect
-                        handled = record.turn
-                        agentMarks.markSeen(record.ref)
+                        // Only a written (or permanently unwritable) turn counts as handled, so a failed
+                        // write is tried again after a reconnect.
+                        when (val r = agentMarks.markSeen(record.ref)) {
+                            is AppResult.Success -> handled = record.turn
+                            is AppResult.Failure ->
+                                if (r.error is AppError.Unsupported || r.error is AppError.InvalidInput) {
+                                    handled = record.turn
+                                }
+                        }
                     }
             }
         }
