@@ -34,7 +34,6 @@ import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.Terminal
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -106,12 +105,10 @@ import com.mtajchert.flocket.core.ui.R as CoreUiR
 class TerminalsActions(
     val onFilter: (TerminalFilter) -> Unit = {},
     val onSort: (TerminalSort) -> Unit = {},
-    val onShowFinished: (Boolean) -> Unit = {},
     val onClearFilters: () -> Unit = {},
     val onRefresh: () -> Unit = {},
     val onOpen: (TerminalItem) -> Unit = {},
     val onKill: (TerminalItem) -> Unit = {},
-    val onRemove: (TerminalItem) -> Unit = {},
     val onInterrupt: (TerminalItem) -> Unit = {},
     val onSendText: (TerminalItem) -> Unit = {},
     /** Rename a desktop space or tab: host, target, current given name, automatic name. */
@@ -308,12 +305,6 @@ private fun OptionsMenu(
                 leadingIcon = { RadioButton(selected = state.sort == sort, onClick = null) },
             )
         }
-        HorizontalDivider()
-        DropdownMenuItem(
-            text = { Text(stringResource(R.string.menu_show_finished)) },
-            onClick = { actions.onShowFinished(!state.showFinished) },
-            trailingIcon = { Checkbox(checked = state.showFinished, onCheckedChange = null) },
-        )
     }
 }
 
@@ -322,7 +313,6 @@ private fun TerminalFilter.label() =
         TerminalFilter.All -> R.string.filter_all
         TerminalFilter.NeedsAttention -> R.string.filter_attention
         TerminalFilter.Working -> R.string.filter_working
-        TerminalFilter.Finished -> R.string.filter_finished
     }
 
 @Composable
@@ -429,7 +419,7 @@ private fun TerminalList(
                                 actions = actions,
                                 modifier = Modifier.padding(start = 12.dp),
                                 dense = dense,
-                                place = placeText(row.place),
+                                names = row.place.names(row.item),
                                 placeInfo = row.place,
                             )
                         }
@@ -484,6 +474,7 @@ private fun TerminalList(
                                         actions = actions,
                                         modifier = Modifier.padding(start = 12.dp),
                                         dense = dense,
+                                        names = groupedNames(item, space),
                                     )
                                 }
                             }
@@ -491,23 +482,8 @@ private fun TerminalList(
                     }
                 }
             }
-            if (state.hiddenFinished > 0) {
-                item(key = "hidden-finished", contentType = "footer") {
-                    HiddenFinishedFooter(state.hiddenFinished, actions.onShowFinished)
-                }
-            }
         }
     }
-}
-
-/** "Space · Tab", or just the space when it has a single tab; null for a terminal without a place. */
-@Composable
-private fun placeText(place: RowPlace): String? {
-    if (place.spaceNumber == 0) return null
-    val space = place.spaceName.ifBlank { stringResource(R.string.workspace_space_fallback, place.spaceNumber) }
-    if (!place.showTab) return space
-    val tab = place.tabName.ifBlank { stringResource(R.string.workspace_tab_fallback, place.tabNumber) }
-    return stringResource(R.string.row_place, space, tab)
 }
 
 @Composable
@@ -520,7 +496,6 @@ private fun PriorityHeader(section: PrioritySection) {
             PriorityBucket.Working -> R.string.priority_working to statusColor(AgentState.Working, scheme)
             PriorityBucket.Idle -> R.string.priority_idle to statusColor(AgentState.Idle, scheme)
             PriorityBucket.NoStatus -> R.string.priority_no_status to statusColor(null, scheme)
-            PriorityBucket.Finished -> R.string.priority_finished to statusColor(null, scheme)
         }
     Row(
         Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 4.dp),
@@ -744,25 +719,6 @@ private fun OfflineNotice(onRetry: () -> Unit) {
     }
 }
 
-@Composable
-private fun HiddenFinishedFooter(
-    count: Int,
-    onShow: (Boolean) -> Unit,
-) {
-    Row(
-        Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            pluralStringResource(R.plurals.finished_hidden, count, count),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.weight(1f),
-        )
-        TextButton(onClick = { onShow(true) }) { Text(stringResource(R.string.finished_hidden_show)) }
-    }
-}
-
 /** Summary line and host chips above the inbox. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -848,10 +804,10 @@ private fun PriorityBucket.group(): StatusGroup =
         PriorityBucket.Working -> StatusGroup.Working
         PriorityBucket.Done -> StatusGroup.Done
         PriorityBucket.Idle -> StatusGroup.Idle
-        PriorityBucket.NoStatus, PriorityBucket.Finished -> StatusGroup.NoStatus
+        PriorityBucket.NoStatus -> StatusGroup.NoStatus
     }
 
-/** The status-grouped inbox: Needs you, Working, Done, Idle (collapsed), then no status and finished. */
+/** The status-grouped inbox: Needs you, Working, Done, Idle (collapsed), then no status. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun InboxList(
@@ -901,12 +857,7 @@ private fun InboxList(
                 item(key = "group:$key", contentType = "group") {
                     val group = section.bucket.group()
                     GroupHeader(
-                        title =
-                            if (section.bucket == PriorityBucket.Finished) {
-                                stringResource(R.string.priority_finished)
-                            } else {
-                                group.title()
-                            },
+                        title = group.title(),
                         count = section.rows.size,
                         color = group.color(),
                         expanded = expanded,
@@ -932,7 +883,7 @@ private fun InboxList(
                             nowMs = nowMs,
                             actions = actions,
                             dense = dense,
-                            place = placeText(inboxRow.row.place),
+                            names = inboxRow.row.place.names(item),
                             placeInfo = inboxRow.row.place,
                             hostLabel =
                                 listOfNotNull(inboxRow.hostLabel.takeIf { showHost }, item.ref.address.machine)
@@ -940,11 +891,6 @@ private fun InboxList(
                                     .ifEmpty { null },
                         )
                     }
-                }
-            }
-            if (state.hiddenFinished > 0) {
-                item(key = "hidden-finished", contentType = "footer") {
-                    HiddenFinishedFooter(state.hiddenFinished, actions.onShowFinished)
                 }
             }
         }

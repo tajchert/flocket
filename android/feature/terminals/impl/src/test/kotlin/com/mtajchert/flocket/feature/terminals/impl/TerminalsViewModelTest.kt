@@ -101,7 +101,6 @@ class TerminalsViewModelTest {
                     .last()
                     .machineState,
             )
-            assertEquals(1, state.hiddenFinished)
         }
 
     private fun grouped() = FakePreferencesRepository(UserPreferences(terminalSort = TerminalSort.Grouped))
@@ -151,12 +150,7 @@ class TerminalsViewModelTest {
             state = vm.uiState.value
             assertEquals(listOf("t1"), state.addresses(studio))
             vm.setFilter(TerminalFilter.All)
-            assertFalse("t6" in vm.uiState.value.addresses(studio))
-            vm.setShowFinished(true)
-            assertTrue("t6" in vm.uiState.value.addresses(studio))
-            vm.setShowFinished(false)
-            vm.setFilter(TerminalFilter.Finished)
-            assertEquals(listOf("t6"), vm.uiState.value.addresses(studio))
+            assertFalse("t6" in vm.uiState.value.addresses(studio)) // finished terminals are never listed
         }
 
     @Test

@@ -7,7 +7,6 @@
     <string name="filter_all">All</string>
     <string name="filter_attention">Needs attention</string>
     <string name="filter_working">Working</string>
-    <string name="filter_finished">Finished</string>
     <string name="terminals_collapse">Hide terminal list</string>
     <string name="menu_options_filtered">List options, filter on</string>
     <string name="menu_options">List options</string>
@@ -29,14 +28,6 @@
     <string name="priority_working">Working</string>
     <string name="priority_idle">Idle</string>
     <string name="priority_no_status">No status</string>
-    <string name="priority_finished">Finished</string>
-    <string name="row_place">%1$s · %2$s</string>
-    <string name="menu_show_finished">Show finished</string>
-    <plurals name="finished_hidden">
-        <item quantity="one">%d finished terminal hidden</item>
-        <item quantity="other">%d finished terminals hidden</item>
-    </plurals>
-    <string name="finished_hidden_show">Show</string>
 
     <!-- Headers -->
     <plurals name="host_terminal_count">
@@ -82,7 +73,6 @@
     <string name="action_interrupt">Interrupt (stop key)</string>
     <string name="action_send_text">Send text…</string>
     <string name="action_kill">Kill…</string>
-    <string name="action_remove">Remove finished</string>
     <string name="action_open">Open</string>
 
     <!-- Empty states -->
@@ -101,7 +91,6 @@
 
     <!-- Snackbars -->
     <string name="msg_killed">Killed %1$s</string>
-    <string name="msg_removed">Removed %1$s</string>
     <string name="msg_interrupt_stopped">Stop key sent. The program stopped.</string>
     <string name="msg_interrupt_exited">Stop key sent. The program exited.</string>
     <string name="msg_interrupt_still_working">Stop key sent, but the program is still working.</string>

@@ -1,7 +1,9 @@
 package com.mtajchert.flocket.feature.terminals.impl
 
+import com.mtajchert.flocket.core.model.AgentCatalog
 import com.mtajchert.flocket.core.model.AgentState
 import com.mtajchert.flocket.core.model.AgentStatus
+import com.mtajchert.flocket.core.model.Liveness
 import com.mtajchert.flocket.core.model.SpaceSource
 import com.mtajchert.flocket.core.model.TerminalAddress
 import com.mtajchert.flocket.core.model.TerminalSort
@@ -132,7 +134,7 @@ class TerminalsLogicTest {
 
     @Test
     fun `priority mode puts rows into desktop sections in order`() {
-        val sections = state(ListControls(showFinished = true)).local().priority
+        val sections = state(ListControls()).local().priority
         assertEquals(
             listOf(
                 PriorityBucket.NeedsYou,
@@ -140,12 +142,11 @@ class TerminalsLogicTest {
                 PriorityBucket.Working,
                 PriorityBucket.Idle,
                 PriorityBucket.NoStatus,
-                PriorityBucket.Finished,
             ),
             sections.map { it.bucket },
         )
         assertEquals(
-            listOf("t2", "t3", "t1", "t4", "t5", "t6"),
+            listOf("t2", "t3", "t1", "t4", "t5"),
             sections.map {
                 it.rows
                     .single()
@@ -213,7 +214,7 @@ class TerminalsLogicTest {
     fun `priority row place names space and tab, tab only when the space has several`() {
         val rows =
             state(
-                ListControls(showFinished = true),
+                ListControls(),
             ).local().priority.flatMap { it.rows }.associateBy { it.item.address }
         val t1 = rows.getValue("t1").place // Flocket has two tabs
         assertEquals("Flocket", t1.spaceName)
@@ -231,7 +232,7 @@ class TerminalsLogicTest {
     fun `a space's automatic name is its folder's name, via the model's folderName`() {
         val rows =
             state(
-                ListControls(showFinished = true),
+                ListControls(),
             ).local().priority.flatMap { it.rows }.associateBy { it.item.address }
         assertEquals("flocket", rows.getValue("t1").place.spaceAutoName)
         assertEquals("docs", rows.getValue("t3").place.spaceAutoName)
@@ -240,7 +241,6 @@ class TerminalsLogicTest {
     @Test
     fun `empty priority sections are hidden`() {
         val sections = state(ListControls()).local().priority
-        assertFalse(PriorityBucket.Finished in sections.map { it.bucket })
         val session =
             SampleData.overview
                 .first()
@@ -266,7 +266,8 @@ class TerminalsLogicTest {
         assertEquals(
             SampleData.overview
                 .first()
-                .session.terminals.size,
+                .session.terminals
+                .count { it.liveness !is Liveness.Finished },
             host.total,
         )
         assertEquals(1, host.visibleCount)
@@ -296,16 +297,12 @@ class TerminalsLogicTest {
     }
 
     @Test
-    fun `finished rows appear when asked for and count stays honest`() {
-        val local = state(ListControls(showFinished = true, sort = TerminalSort.Grouped)).local()
-        assertTrue(
-            "t6" in
-                local.spaces[0]
-                    .tabs[1]
-                    .items
-                    .map { it.address },
-        )
-        assertEquals(5, local.spaces[0].count)
+    fun `finished terminals are never listed and do not count`() {
+        val s = state(ListControls(sort = TerminalSort.Grouped))
+        val local = s.local()
+        assertFalse("t6" in local.items.map { it.address })
+        assertEquals(4, local.spaces[0].count)
+        assertFalse("t6" in state().local().items.map { it.address })
     }
 
     @Test
@@ -352,5 +349,67 @@ class TerminalsLogicTest {
                 .single()
                 .cwd,
         )
+    }
+
+    @Test
+    fun `a telling title drops the spinner glyph and ignores paths, prompts and the agent's own name`() {
+        val claude = AgentCatalog.of(SampleData.terminal(address = "t1", name = null, argv = listOf("claude")))
+        assertEquals("QA", tellingTitle("\u2733 QA", claude, "claude-code"))
+        assertEquals("Collapse button", tellingTitle("\u280b Collapse button", claude, "claude-code"))
+        assertNull(tellingTitle("~/code/flocket", claude, "claude-code"))
+        assertNull(tellingTitle("/usr/bin", null, "zsh"))
+        assertNull(tellingTitle("me@studio: ~", null, "zsh"))
+        assertNull(tellingTitle("\u2733 Claude Code", claude, "claude-code"))
+        assertNull(tellingTitle("claude-code", claude, "claude-code"))
+        assertNull(tellingTitle("  ", null, "zsh"))
+    }
+
+    @Test
+    fun `row detail is a named tab, else the program's title, else the terminal's name`() {
+        val item =
+            SampleData
+                .terminal(
+                    address = "t1",
+                    name = "refactor-auth",
+                    argv = listOf("claude"),
+                ).toItem(writable = true)
+        assertEquals("agents", rowDetail("agents", item.copy(liveTitle = "QA")))
+        assertEquals("QA", rowDetail("", item.copy(liveTitle = "QA")))
+        assertEquals("refactor-auth", rowDetail("", item))
+        assertNull(rowDetail("", item.copy(name = null)))
+    }
+
+    @Test
+    fun `rows of one space with nothing else to tell them apart get their tab numbers`() {
+        val unnamed =
+            SampleData.overview.first().session.let { s ->
+                s.copy(terminals = s.terminals.map { it.copy(name = null) })
+            }
+        val ws =
+            Workspace(
+                listOf(
+                    WorkspaceSpace(
+                        "desktop:a",
+                        "Flocket",
+                        null,
+                        SpaceSource.Desktop,
+                        null,
+                        listOf(
+                            WorkspaceTab("1", "", listOf(TerminalAddress("t1")), null, null, 1),
+                            WorkspaceTab("2", "", listOf(TerminalAddress("t2")), null, null, 2),
+                            WorkspaceTab("3", "review", listOf(TerminalAddress("t3")), null, null, 3),
+                        ),
+                        null,
+                        1,
+                    ),
+                    space("desktop:b", "Docs", null, null, tab("1", "", "t4")),
+                ),
+            )
+        val s = buildUiState(listOf(SampleData.overview.first().copy(session = unnamed)), ListControls(), false) { ws }
+        val details = s.local().items.associate { it.address to it.detail }
+        assertEquals("1", details["t1"])
+        assertEquals("2", details["t2"])
+        assertEquals("review", details["t3"])
+        assertNull(details["t4"]) // alone in its space: the project says enough
     }
 }

@@ -102,9 +102,7 @@ class TerminalsViewModel
             viewModelScope.launch { preferences.update { it.copy(terminalSort = sort) } }
         }
 
-        fun setShowFinished(value: Boolean) = controls.update { it.copy(showFinished = value) }
-
-        fun clearFilters() = controls.update { it.copy(filter = TerminalFilter.All, showFinished = true) }
+        fun clearFilters() = controls.update { it.copy(filter = TerminalFilter.All) }
 
         /** Pull-to-refresh: asks every host that is not online to retry now. Online hosts push their own updates. */
         fun refresh() {
@@ -152,17 +150,6 @@ class TerminalsViewModel
                 report(
                     session.kill(TerminalAddress(item.address)),
                     UiText.Res(R.string.msg_killed, listOf(item.address)),
-                )
-            }
-        }
-
-        fun remove(item: TerminalItem) {
-            if (!guardWritable(item)) return
-            viewModelScope.launch {
-                val session = sessionFor(item) ?: return@launch
-                report(
-                    session.remove(TerminalAddress(item.address)),
-                    UiText.Res(R.string.msg_removed, listOf(item.address)),
                 )
             }
         }

@@ -137,12 +137,10 @@ private fun TerminalsRoute(
             TerminalsActions(
                 onFilter = viewModel::setFilter,
                 onSort = viewModel::setSort,
-                onShowFinished = viewModel::setShowFinished,
                 onClearFilters = viewModel::clearFilters,
                 onRefresh = viewModel::refresh,
                 onOpen = { navigator.navigate(TerminalRoute(it.hostId.value, it.address)) },
                 onKill = viewModel::requestKill,
-                onRemove = viewModel::remove,
                 onInterrupt = viewModel::interrupt,
                 onSendText = viewModel::requestSend,
                 onRename = viewModel::requestRename,
