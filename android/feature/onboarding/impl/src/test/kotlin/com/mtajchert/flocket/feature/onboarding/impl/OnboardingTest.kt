@@ -215,12 +215,12 @@ class OnboardingTest {
                 )
             }
         }
-        rule.onNodeWithText("Your herd of terminals, in your pocket").assertIsDisplayed()
+        rule.onNodeWithText("Your herd of agents, in your pocket").assertIsDisplayed()
         rule.onNodeWithText("Get started").performClick()
         rule.onNodeWithText("What you’ll need").assertIsDisplayed()
         rule.onNodeWithText("I have one").performClick()
         rule.onNodeWithText("Generate key").performClick()
-        rule.onNodeWithText("Your device key").assertIsDisplayed()
+        rule.onNodeWithText("Device key fingerprint").assertExists()
         rule.onNodeWithText("Continue").performClick()
         rule.onNodeWithText("Add your machine").assertIsDisplayed()
     }

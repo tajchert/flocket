@@ -2,12 +2,12 @@
     <string name="onboarding_step_of">Step %1$d of %2$d</string>
     <string name="onboarding_back">Back</string>
 
-    <string name="welcome_title">Flocket</string>
-    <string name="welcome_tagline">Your herd of terminals, in your pocket</string>
-    <string name="welcome_point_overview_title">Every terminal at a glance</string>
-    <string name="welcome_point_overview_body">See the agents running on your machines, what they are doing, and which ones need you.</string>
-    <string name="welcome_point_answer_title">Answer from anywhere</string>
-    <string name="welcome_point_answer_body">Approve a permission or reply to an agent from your phone, then get on with your day.</string>
+    <string name="welcome_tagline">Your herd of agents, in your pocket</string>
+    <string name="welcome_subtitle">Watch every coding agent on your machines and step in the moment one needs you.</string>
+    <string name="welcome_point_overview_title">Know who needs you</string>
+    <string name="welcome_point_overview_body">Agents waiting on a permission or a question rise to the top.</string>
+    <string name="welcome_point_answer_title">Answer in one tap</string>
+    <string name="welcome_point_answer_body">Approve, deny or reply straight into the terminal.</string>
     <string name="welcome_point_private_title">Private by design</string>
     <string name="welcome_point_private_body">Everything travels over SSH to your own machines. No account, no cloud relay.</string>
     <string name="welcome_get_started">Get started</string>
@@ -43,7 +43,7 @@
 
     <string name="connect_title">Connecting to %1$s</string>
     <string name="connect_progress">Opening a secure connection and looking for herdr-core…</string>
-    <string name="connect_success_title">Connected</string>
+    <string name="connect_success_title_host">Connected to %1$s</string>
     <string name="connect_success_body">Found herdr-core on %1$s. Taking you to your terminals.</string>
     <string name="connect_success_body_unnamed">Found herdr-core. Taking you to your terminals.</string>
     <string name="connect_edit_host">Edit host</string>

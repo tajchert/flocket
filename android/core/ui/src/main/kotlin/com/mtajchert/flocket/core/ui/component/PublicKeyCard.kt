@@ -6,8 +6,10 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Done
@@ -17,7 +19,6 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -31,8 +32,9 @@ import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.mtajchert.flocket.core.designsystem.theme.FlocketMono
 import com.mtajchert.flocket.core.model.DeviceKey
 import com.mtajchert.flocket.core.ui.R
 import kotlinx.coroutines.launch
@@ -41,11 +43,15 @@ import kotlinx.coroutines.launch
 fun authorizedKeysCommand(publicKey: String): String =
     "echo '${publicKey.trim().replace("'", "'\\''")}' >> ~/.ssh/authorized_keys"
 
-/** Shows a device public key with copy, share and the `authorized_keys` one-liner. */
+/**
+ * Shows a device public key with copy, share and the `authorized_keys` one-liner in a terminal block.
+ * Pass [showTitle] = false when the surrounding page already carries the heading.
+ */
 @Composable
 fun PublicKeyCard(
     key: DeviceKey,
     modifier: Modifier = Modifier,
+    showTitle: Boolean = true,
 ) {
     val clipboard = LocalClipboard.current
     val context = LocalContext.current
@@ -64,66 +70,68 @@ fun PublicKeyCard(
     }
 
     val chooserTitle = stringResource(R.string.pubkey_share_chooser)
-    OutlinedCard(modifier = modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text(stringResource(R.string.pubkey_title), style = MaterialTheme.typography.titleMedium)
-            Text(
-                stringResource(R.string.pubkey_summary, key.keyType, key.fingerprint),
-                style = MaterialTheme.typography.bodySmall,
-                fontFamily = FontFamily.Monospace,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Text(stringResource(R.string.pubkey_instruction), style = MaterialTheme.typography.bodyMedium)
-            Surface(shape = MaterialTheme.shapes.small, color = MaterialTheme.colorScheme.surfaceContainerHighest) {
+    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        if (showTitle) Text(stringResource(R.string.pubkey_title), style = MaterialTheme.typography.titleMedium)
+        Text(
+            stringResource(R.string.pubkey_instruction),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        TerminalCommandBlock(command, Modifier.fillMaxWidth())
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Button(onClick = { copy("command", command) }, modifier = Modifier.heightIn(min = 40.dp)) {
+                CopyIcon(copied == "command")
                 Text(
-                    command,
-                    style = MaterialTheme.typography.bodySmall,
-                    fontFamily = FontFamily.Monospace,
-                    modifier = Modifier.padding(12.dp),
+                    stringResource(if (copied == "command") R.string.pubkey_copied else R.string.pubkey_copy_command),
+                    modifier = Modifier.padding(start = 8.dp),
                 )
             }
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+            OutlinedButton(onClick = { copy("key", key.publicKeyOpenSsh) }, modifier = Modifier.heightIn(min = 40.dp)) {
+                CopyIcon(copied == "key")
+                Text(
+                    stringResource(if (copied == "key") R.string.pubkey_copied else R.string.pubkey_copy_key),
+                    modifier = Modifier.padding(start = 8.dp),
+                )
+            }
+            OutlinedButton(
+                onClick = {
+                    val send =
+                        Intent(Intent.ACTION_SEND)
+                            .setType("text/plain")
+                            .putExtra(Intent.EXTRA_TEXT, key.publicKeyOpenSsh)
+                    context.startActivity(Intent.createChooser(send, chooserTitle))
+                },
+                modifier = Modifier.heightIn(min = 40.dp),
             ) {
-                Button(onClick = { copy("command", command) }) {
-                    CopyIcon(copied == "command")
-                    Text(
-                        stringResource(
-                            if (copied ==
-                                "command"
-                            ) {
-                                R.string.pubkey_copied
-                            } else {
-                                R.string.pubkey_copy_command
-                            },
-                        ),
-                        modifier = Modifier.padding(start = 8.dp),
-                    )
-                }
-                OutlinedButton(onClick = { copy("key", key.publicKeyOpenSsh) }) {
-                    CopyIcon(copied == "key")
-                    Text(
-                        stringResource(if (copied == "key") R.string.pubkey_copied else R.string.pubkey_copy_key),
-                        modifier = Modifier.padding(start = 8.dp),
-                    )
-                }
-                OutlinedButton(
-                    onClick = {
-                        val send =
-                            Intent(Intent.ACTION_SEND)
-                                .setType("text/plain")
-                                .putExtra(Intent.EXTRA_TEXT, key.publicKeyOpenSsh)
-                        context.startActivity(Intent.createChooser(send, chooserTitle))
-                    },
-                ) {
-                    Icon(
-                        Icons.Outlined.Share,
-                        contentDescription = null,
-                        modifier = Modifier.size(ButtonDefaults.IconSize),
-                    )
-                    Text(stringResource(R.string.pubkey_share), modifier = Modifier.padding(start = 8.dp))
-                }
+                Icon(
+                    Icons.Outlined.Share,
+                    contentDescription = null,
+                    modifier = Modifier.size(ButtonDefaults.IconSize),
+                )
+                Text(stringResource(R.string.pubkey_share), modifier = Modifier.padding(start = 8.dp))
+            }
+        }
+        Surface(
+            shape = RoundedCornerShape(14.dp),
+            color = MaterialTheme.colorScheme.surfaceContainerLow,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Column(
+                Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text(
+                    stringResource(R.string.pubkey_fingerprint_label),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    stringResource(R.string.pubkey_summary, key.keyType, key.fingerprint),
+                    style = FlocketMono.small.copy(lineHeight = 18.sp),
+                )
             }
         }
     }
