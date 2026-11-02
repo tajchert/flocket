@@ -132,6 +132,22 @@ class TerminalViewModelTest {
         }
 
     @Test
+    fun `attach carries the screen's colors once its theme is set`() =
+        runTest {
+            val requests = mutableListOf<AttachRequest>()
+            val vm =
+                viewModel(attach = { a, r ->
+                    requests += r
+                    AppResult.Success(FakeTerminalStream(a).also { streams += it })
+                })
+            vm.controller.setTheme(FakeTerminalEngine.DEFAULT_THEME.copy(background = 0xFFFBFCFB.toInt()))
+            goOnline()
+            advanceUntilIdle()
+
+            assertEquals("#fbfcfb", requests.single().display?.background)
+        }
+
+    @Test
     fun `a re-attach after the stream ended is the size owner too`() =
         runTest {
             goOnline()

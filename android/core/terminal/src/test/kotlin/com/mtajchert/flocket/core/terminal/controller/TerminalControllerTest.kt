@@ -32,6 +32,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.util.Collections
@@ -225,6 +226,20 @@ class TerminalControllerTest {
             assertEquals(emptyList<String>(), s.calls.toList())
             assertEquals(TerminalSize(120, 40), c.gridSize.value)
             assertFalse(c.isOwner.value)
+            c.close()
+        }
+
+    @Test
+    fun `display facts for the attach wait for the screen's theme`() =
+        runTest {
+            val c = controller()
+            assertNull("the constructor's theme is a placeholder", c.awaitDisplayFacts(timeoutMs = 100))
+            c.setTheme(
+                FakeTerminalEngine.DEFAULT_THEME.copy(foreground = 0xFF1B1F1E.toInt(), background = 0xFFFBFCFB.toInt()),
+            )
+            val facts = c.awaitDisplayFacts(timeoutMs = 100)
+            assertEquals("#1b1f1e", facts?.foreground)
+            assertEquals("#fbfcfb", facts?.background)
             c.close()
         }
 
