@@ -94,11 +94,11 @@ internal fun TerminalRow(
             Modifier
                 .clip(MaterialTheme.shapes.large)
                 .combinedClickable(onClick = { actions.onOpen(item) }, onLongClick = { menuOpen = true })
-                .heightIn(min = if (dense) 56.dp else 72.dp)
+                .heightIn(min = if (dense) 56.dp else 64.dp)
                 .padding(
                     start = 8.dp,
-                    top = if (dense) 6.dp else 10.dp,
-                    bottom = if (dense) 6.dp else 10.dp,
+                    top = if (dense) 6.dp else 8.dp,
+                    bottom = if (dense) 6.dp else 8.dp,
                     end = 0.dp,
                 ),
             verticalAlignment = Alignment.Top,

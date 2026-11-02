@@ -49,7 +49,7 @@ internal fun TerminalRecord.toItem(writable: Boolean): TerminalItem {
         agentId = AgentCatalog.of(this)?.id,
         name = name,
         status = status,
-        headline = title.ifBlank { where.orEmpty() },
+        headline = statusLine() ?: title.ifBlank { where.orEmpty() },
         cwd = shortenPath(displayCwd),
         sinceMs = if (finished != null) finished.finishedAtMs ?: statusChangedAtMs else statusChangedAtMs,
         liveness = kind,
@@ -58,6 +58,12 @@ internal fun TerminalRecord.toItem(writable: Boolean): TerminalItem {
         urgency = urgencyOf(status, finished != null),
         writable = writable,
     )
+}
+
+/** What the program says about its current state (OSC 7501 `msg`, else `title`), if it said anything. */
+private fun TerminalRecord.statusLine(): String? {
+    val reported = status as? AgentStatus.Reported ?: return null
+    return reported.message?.takeIf { it.isNotBlank() } ?: reported.title?.takeIf { it.isNotBlank() }
 }
 
 internal data class ListControls(

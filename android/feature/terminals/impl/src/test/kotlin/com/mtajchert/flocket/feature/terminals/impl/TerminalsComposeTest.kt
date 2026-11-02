@@ -72,7 +72,7 @@ class TerminalsComposeTest {
         show()
         rule.onNodeWithText("Studio Mac").assertExists()
         rule.onNodeWithText("Machine rohan").assertExists()
-        rule.onAllNodesWithText("Needs permission")[0].assertExists()
+        rule.onAllNodesWithText("Allow running `npm test`?")[0].assertExists()
         rule.onNodeWithText("Review host key").assertExists()
     }
 
