@@ -16,6 +16,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mtajchert.flocket.core.data.ThemePreference
 import com.mtajchert.flocket.core.designsystem.theme.FlocketTheme
 import com.mtajchert.flocket.core.ui.nav.EntryProviderInstaller
+import com.mtajchert.flocket.feature.terminals.api.NewTerminalLauncher
 import com.mtajchert.flocket.navigation.AppViewModel
 import com.mtajchert.flocket.navigation.FlocketNavHost
 import dagger.hilt.android.AndroidEntryPoint
@@ -26,6 +27,9 @@ import javax.inject.Inject
 class MainActivity : ComponentActivity() {
     @Inject
     lateinit var installers: Set<@JvmSuppressWildcards EntryProviderInstaller>
+
+    @Inject
+    lateinit var newTerminalLauncher: NewTerminalLauncher
 
     override fun onCreate(savedInstanceState: Bundle?) {
         // The splash screen must be installed before super.onCreate().
@@ -58,6 +62,7 @@ class MainActivity : ComponentActivity() {
                             installers = installers,
                             showOnboarding = it,
                             needsYouCount = needsYou,
+                            onNewTerminal = newTerminalLauncher::requestNewTerminal,
                         )
                     }
                 }

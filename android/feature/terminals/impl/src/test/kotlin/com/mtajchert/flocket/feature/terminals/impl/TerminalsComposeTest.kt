@@ -4,6 +4,7 @@ package com.mtajchert.flocket.feature.terminals.impl
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.requiredSize
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
@@ -33,6 +34,8 @@ import com.mtajchert.flocket.core.model.Workspace
 import com.mtajchert.flocket.core.model.WorkspaceSpace
 import com.mtajchert.flocket.core.model.WorkspaceTab
 import com.mtajchert.flocket.core.testing.SampleData
+import com.mtajchert.flocket.core.ui.nav.LocalPaneLayout
+import com.mtajchert.flocket.core.ui.nav.PaneLayout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -50,10 +53,33 @@ class TerminalsComposeTest {
     private fun show(
         state: TerminalsUiState = this.state,
         actions: TerminalsActions = TerminalsActions(),
+        layout: PaneLayout = PaneLayout(),
     ) = rule.setContent {
         FlocketTheme(dynamicColor = false) {
-            Box(Modifier.requiredSize(600.dp, 4000.dp)) { TerminalsScreen(state, actions, nowMs = SampleData.NOW_MS) }
+            CompositionLocalProvider(LocalPaneLayout provides layout) {
+                Box(
+                    Modifier.requiredSize(600.dp, 4000.dp),
+                ) { TerminalsScreen(state, actions, nowMs = SampleData.NOW_MS) }
+            }
         }
+    }
+
+    @Test
+    fun `without the navigation rail the list shows its New terminal button`() {
+        show()
+        rule.onAllNodesWithContentDescription("New terminal").assertCountEquals(1)
+    }
+
+    @Test
+    fun `beside the navigation rail the list drops its own New terminal buttons`() {
+        show(layout = PaneLayout(navigationRail = true))
+        rule.onAllNodesWithContentDescription("New terminal").assertCountEquals(0)
+    }
+
+    @Test
+    fun `a sidebar without the rail keeps the top bar New terminal button`() {
+        show(layout = PaneLayout(multiPane = true, compactHeight = true))
+        rule.onAllNodesWithContentDescription("New terminal").assertCountEquals(1)
     }
 
     @Test

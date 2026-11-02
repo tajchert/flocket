@@ -3,41 +3,38 @@
 package com.mtajchert.flocket.feature.terminals.impl
 
 import android.annotation.SuppressLint
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Text
 import androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi
 import androidx.compose.material3.adaptive.navigation3.ListDetailSceneStrategy
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mtajchert.flocket.core.ui.component.RenameDialog
 import com.mtajchert.flocket.core.ui.error.UiErrorAction
+import com.mtajchert.flocket.core.ui.nav.DetailPanePlaceholder
 import com.mtajchert.flocket.core.ui.nav.EntryProviderInstaller
 import com.mtajchert.flocket.core.ui.nav.Navigator
+import com.mtajchert.flocket.core.ui.nav.PaneRole
 import com.mtajchert.flocket.feature.hosts.api.HostDetailRoute
 import com.mtajchert.flocket.feature.hosts.api.HostEditRoute
 import com.mtajchert.flocket.feature.hosts.api.HostsRoute
 import com.mtajchert.flocket.feature.onboarding.api.OnboardingRoute
 import com.mtajchert.flocket.feature.terminal.api.TerminalRoute
+import com.mtajchert.flocket.feature.terminals.api.NewTerminalLauncher
 import com.mtajchert.flocket.feature.terminals.api.TerminalsRoute
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import dagger.multibindings.IntoSet
+import kotlinx.coroutines.flow.first
 
 /** Contributes the terminals home. On wide windows it is the list pane; [TerminalRoute] is the detail pane. */
 @Module
@@ -46,19 +43,20 @@ object TerminalsNavigationModule {
     @Provides
     @IntoSet
     @OptIn(ExperimentalMaterial3AdaptiveApi::class)
-    fun terminalsEntries(): EntryProviderInstaller =
+    fun terminalsEntries(requests: NewTerminalRequests): EntryProviderInstaller =
         EntryProviderInstaller { scope, navigator ->
             scope.entry<TerminalsRoute>(
                 metadata =
                     ListDetailSceneStrategy.listPane(
                         detailPlaceholder = {
-                            Box(Modifier.fillMaxSize(), Alignment.Center) {
-                                Text(stringResource(R.string.terminals_select_placeholder), Modifier.padding(24.dp))
-                            }
+                            DetailPanePlaceholder(stringResource(R.string.terminals_select_placeholder))
                         },
-                    ),
-            ) { TerminalsRoute(navigator) }
+                    ) + PaneRole.List.metadata(),
+            ) { TerminalsRoute(navigator, requests) }
         }
+
+    @Provides
+    fun newTerminalLauncher(requests: NewTerminalRequests): NewTerminalLauncher = requests
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -66,12 +64,27 @@ object TerminalsNavigationModule {
 @Composable
 private fun TerminalsRoute(
     navigator: Navigator,
+    newTerminalRequests: NewTerminalRequests,
     viewModel: TerminalsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val dialog by viewModel.dialog.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     val context = LocalContext.current
+
+    // The rail's New terminal button: the same sheet as the list's own button, or Add host when there is none.
+    LaunchedEffect(viewModel, newTerminalRequests) {
+        newTerminalRequests.requests.collect {
+            val loaded = viewModel.uiState.first { it.loaded }
+            if (loaded.emptyKind ==
+                EmptyKind.NoHosts
+            ) {
+                navigator.navigate(HostEditRoute(null))
+            } else {
+                viewModel.openNewTerminal()
+            }
+        }
+    }
 
     LaunchedEffect(viewModel) {
         viewModel.events.collect { event ->

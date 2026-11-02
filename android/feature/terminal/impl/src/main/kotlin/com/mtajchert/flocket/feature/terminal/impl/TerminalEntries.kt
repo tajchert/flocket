@@ -48,6 +48,7 @@ import com.mtajchert.flocket.core.terminal.ui.TerminalSurfaceState
 import com.mtajchert.flocket.core.terminal.ui.TerminalThemes
 import com.mtajchert.flocket.core.ui.nav.EntryProviderInstaller
 import com.mtajchert.flocket.core.ui.nav.Navigator
+import com.mtajchert.flocket.core.ui.nav.PaneRole
 import com.mtajchert.flocket.feature.terminal.api.TerminalRoute
 import dagger.Module
 import dagger.Provides
@@ -64,7 +65,9 @@ object TerminalNavigationModule {
     @OptIn(ExperimentalMaterial3AdaptiveApi::class)
     fun terminalEntries(): EntryProviderInstaller =
         EntryProviderInstaller { scope, navigator ->
-            scope.entry<TerminalRoute>(metadata = ListDetailSceneStrategy.detailPane()) { key ->
+            scope.entry<TerminalRoute>(
+                metadata = ListDetailSceneStrategy.detailPane() + PaneRole.Detail.metadata(),
+            ) { key ->
                 TerminalRouteEntry(key, navigator)
             }
         }
