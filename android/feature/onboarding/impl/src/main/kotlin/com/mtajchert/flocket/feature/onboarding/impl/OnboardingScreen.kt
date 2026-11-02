@@ -73,6 +73,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
@@ -248,20 +249,39 @@ private fun Footer(
 
                     OnboardingStep.DeviceKey -> {
                         val ready = state.selectedKey != null
-                        TextButton(onClick = actions.onUsePassword) { Text(stringResource(R.string.key_use_password)) }
-                        PrimaryButton(
-                            text =
-                                stringResource(
-                                    when {
-                                        ready -> R.string.key_continue
-                                        state.generatingKey -> R.string.key_generating
-                                        else -> R.string.key_generate
-                                    },
-                                ),
-                            onClick = if (ready) actions.onNext else actions.onGenerateKey,
-                            enabled = !state.generatingKey,
-                            modifier = Modifier.weight(1f),
-                        )
+                        val label =
+                            stringResource(
+                                when {
+                                    ready -> R.string.key_continue
+                                    state.generatingKey -> R.string.key_generating
+                                    else -> R.string.key_generate
+                                },
+                            )
+                        val onPrimary = if (ready) actions.onNext else actions.onGenerateKey
+                        if (LocalDensity.current.fontScale >= LARGE_FONT_SCALE) {
+                            // Side by side, "Use a password instead" squeezes the primary label into
+                            // a broken word at large font sizes, so stack the two.
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Button(
+                                    onClick = onPrimary,
+                                    enabled = !state.generatingKey,
+                                    modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
+                                ) { Text(label, style = MaterialTheme.typography.labelLarge.copy(fontSize = 16.sp)) }
+                                TextButton(onClick = actions.onUsePassword, modifier = Modifier.fillMaxWidth()) {
+                                    Text(stringResource(R.string.key_use_password))
+                                }
+                            }
+                        } else {
+                            TextButton(
+                                onClick = actions.onUsePassword,
+                            ) { Text(stringResource(R.string.key_use_password)) }
+                            PrimaryButton(
+                                text = label,
+                                onClick = onPrimary,
+                                enabled = !state.generatingKey,
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
                     }
 
                     OnboardingStep.AddHost -> {
@@ -283,6 +303,9 @@ private fun Footer(
         }
     }
 }
+
+/** Font scale at which the device-key footer stacks its two buttons. */
+private const val LARGE_FONT_SCALE = 1.3f
 
 /** The design's full-width 56dp pill. In a [Row] pass `Modifier.weight(1f)` to fill the rest. */
 @Composable
