@@ -22,6 +22,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.android.tools.screenshot.PreviewTest
 import com.mtajchert.flocket.core.designsystem.preview.PreviewFormFactors
+import com.mtajchert.flocket.core.designsystem.preview.PreviewLargeFont
 import com.mtajchert.flocket.core.designsystem.theme.FlocketTheme
 import com.mtajchert.flocket.core.model.AgentState
 import com.mtajchert.flocket.core.model.ConnectionState
@@ -114,14 +115,18 @@ private fun Shot(
     extraKeys: Boolean = true,
     exited: Boolean = false,
     tabStrip: TabStripUi? = null,
+    header: TerminalHeaderUi = TerminalHeaderUi("flocket", 1, 3, "t2"),
 ) {
     val dark = isSystemInDarkTheme()
     FlocketTheme(darkTheme = dark, dynamicColor = false) {
         TerminalScreen(
             state = state,
             tabStrip = tabStrip,
+            header = header,
             actions = TerminalActions(),
-            extraKeys = { if (extraKeys) ExtraKeysRow(ctrlActive = false, altActive = false, onKey = {}) },
+            extraKeys = {
+                if (extraKeys) ExtraKeysRow(ctrlActive = false, altActive = false, onKey = {}, onToggleKeyboard = {})
+            },
         ) { modifier ->
             TerminalSnapshot(
                 session(cols, rows, dark, exited),
@@ -138,6 +143,15 @@ private fun Shot(
 @PreviewPhoneDark
 @Composable
 private fun TerminalLiveScreenshot() = Shot(live)
+
+// Blocked: number replies above the extra keys, nothing else needs the user.
+@PreviewTest
+@PreviewPhone
+@PreviewPhoneDark
+@PreviewLargeFont
+@Composable
+private fun TerminalBlockedScreenshot() =
+    Shot(live.copy(status = SampleData.terminals[1].status), header = TerminalHeaderUi("flocket", 1))
 
 @PreviewTest
 @PreviewPhone

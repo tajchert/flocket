@@ -176,4 +176,53 @@ class TerminalTabStripModelTest {
         val strip = buildTabStrip(ws, records, addr("t1"))!!
         assertEquals(listOf(1, 3), strip.tabs.map { it.number })
     }
+
+    @Test
+    fun `the header names the space and points at the first other terminal that needs the user`() {
+        val ws = workspace(tab("a", "t1"), tab("b", "t2", "t3"), tab("c", "t4", "t5"))
+        val terminals =
+            listOf(
+                record("t1", reported(AgentState.Blocked)),
+                record("t2", reported(AgentState.Working)),
+                record("t3", reported(AgentState.Error)),
+                record("t4", reported(AgentState.Blocked), liveness = finished),
+                record("t5", reported(AgentState.Blocked)),
+            )
+        val header = buildHeader(ws, terminals, addr("t1"))
+
+        assertEquals("api", header.spaceName)
+        assertEquals(1, header.spaceNumber)
+        // The open one and finished ones never count.
+        assertEquals(2, header.otherNeedsYou)
+        assertEquals("t3", header.nextNeedsYou)
+    }
+
+    @Test
+    fun `nothing else blocked means no next target`() {
+        val ws = workspace(tab("a", "t1"), tab("b", "t2"))
+        val header = buildHeader(ws, listOf(record("t1"), record("t2", reported(AgentState.Done))), addr("t1"))
+        assertEquals(0, header.otherNeedsYou)
+        assertNull(header.nextNeedsYou)
+    }
+
+    @Test
+    fun `reply chips follow the status`() {
+        assertEquals(
+            listOf(ReplyKey.One, ReplyKey.Two, ReplyKey.Three),
+            ReplyKey.forStatus(reported(AgentState.Blocked)),
+        )
+        assertEquals(listOf(ReplyKey.Escape), ReplyKey.forStatus(reported(AgentState.Working)))
+        assertEquals(
+            emptyList<ReplyKey>(),
+            ReplyKey.forStatus(
+                AgentStatus.Reported(
+                    AgentState.Blocked,
+                    "blocked",
+                    kind = com.mtajchert.flocket.core.model.BlockKind.Auth,
+                ),
+            ),
+        )
+        assertEquals(emptyList<ReplyKey>(), ReplyKey.forStatus(AgentStatus.Unknown))
+        assertEquals(emptyList<ReplyKey>(), ReplyKey.forStatus(reported(AgentState.Done)))
+    }
 }

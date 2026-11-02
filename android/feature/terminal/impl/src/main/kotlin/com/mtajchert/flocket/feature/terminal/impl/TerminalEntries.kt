@@ -107,6 +107,7 @@ fun TerminalRouteContent(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val tabStrip by viewModel.tabStrip.collectAsStateWithLifecycle()
+    val header by viewModel.header.collectAsStateWithLifecycle()
     val openTerminal by rememberUpdatedState(onOpenTerminal)
     val snackbar = remember { SnackbarHostState() }
     val context = LocalContext.current
@@ -204,21 +205,23 @@ fun TerminalRouteContent(
                 onDismissFreshShell = viewModel::dismissFreshShell,
                 onClipboardAnswer = viewModel::answerClipboardRequest,
                 onClipboardAlways = viewModel::alwaysAllowClipboard,
+                onReply = viewModel::sendReply,
             )
         }
     if (state.offerNotificationPermission) {
         NotificationPermissionPrompt(onAnswer = viewModel::onNotificationPermissionAsked)
     }
+    val toggleKeyboard = { if (imeVisible) surfaceState.hideKeyboard() else surfaceState.showKeyboard() }
     TerminalScreen(
         modifier = modifier,
         state = state,
-        actions =
-            actions.copy(
-                onToggleKeyboard = { if (imeVisible) surfaceState.hideKeyboard() else surfaceState.showKeyboard() },
-            ),
+        actions = actions.copy(onToggleKeyboard = toggleKeyboard),
         snackbarHostState = snackbar,
         tabStrip = tabStrip,
-        extraKeys = { TerminalExtraKeys(viewModel.controller) },
+        header = header,
+        extraKeys = {
+            TerminalExtraKeys(viewModel.controller, keyboardVisible = imeVisible, onToggleKeyboard = toggleKeyboard)
+        },
     ) { modifier ->
         TerminalSurface(
             controller = viewModel.controller,

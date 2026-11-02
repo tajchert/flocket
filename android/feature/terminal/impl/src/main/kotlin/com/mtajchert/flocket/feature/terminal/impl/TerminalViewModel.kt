@@ -15,6 +15,7 @@ import com.mtajchert.flocket.core.model.LayoutRef
 import com.mtajchert.flocket.core.model.Liveness
 import com.mtajchert.flocket.core.model.MachineState
 import com.mtajchert.flocket.core.model.TerminalAddress
+import com.mtajchert.flocket.core.model.buildWorkspace
 import com.mtajchert.flocket.core.session.AttachMode
 import com.mtajchert.flocket.core.session.AttachRequest
 import com.mtajchert.flocket.core.session.CoreSession
@@ -49,6 +50,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -164,19 +166,30 @@ class TerminalViewModel
          * [uiState], deduplicated on the built value, so status ticks and foreground polls on other
          * terminals never recompose the terminal itself.
          */
-        val tabStrip: StateFlow<TabStripUi?> =
-            sessionState
-                .map { st ->
-                    st?.let {
-                        buildTabStrip(
-                            it.terminals,
-                            it.desktopLayout,
-                            address,
-                            it.machineLayouts,
-                        )?.renameable(it)
-                    }
-                }.distinctUntilChanged()
-                .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+        val tabStrip: StateFlow<TabStripUi?>
+
+        /** The top bar's space name and "next needs you" target; deduplicated like [tabStrip]. */
+        val header: StateFlow<TerminalHeaderUi>
+
+        init {
+            // One workspace build per session update feeds both flows.
+            val workspace =
+                sessionState
+                    .map { st -> st?.let { it to buildWorkspace(it.terminals, it.desktopLayout, it.machineLayouts) } }
+                    .shareIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), replay = 1)
+            tabStrip =
+                workspace
+                    .map { pair -> pair?.let { (st, ws) -> buildTabStrip(ws, st.terminals, address)?.renameable(st) } }
+                    .distinctUntilChanged()
+                    .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+            header =
+                workspace
+                    .map { pair ->
+                        pair?.let { (st, ws) -> buildHeader(ws, st.terminals, address) }
+                            ?: TerminalHeaderUi()
+                    }.distinctUntilChanged()
+                    .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), TerminalHeaderUi())
+        }
 
         init {
             viewModelScope.launch { run() }
@@ -358,6 +371,14 @@ class TerminalViewModel
                 send(TerminalScreenEvent.CopyToClipboard(text))
                 send(TerminalScreenEvent.Message(UiText.Res(R.string.terminal_copied)))
             }
+        }
+
+        /**
+         * A reply chip: the same path as the extra keys ([TerminalController.sendKey], sticky modifiers
+         * apply), so it is written at most once and fails fast while the link is down.
+         */
+        fun sendReply(reply: ReplyKey) {
+            controller.sendKey(reply.keyInput)
         }
 
         fun interrupt() {

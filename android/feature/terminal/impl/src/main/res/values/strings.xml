@@ -21,6 +21,18 @@
     <string name="terminal_action_kill">Kill</string>
     <string name="terminal_action_keyboard">Show or hide keyboard</string>
     <string name="terminal_action_more">More actions</string>
+    <string name="terminal_space_fallback">Space %1$d</string>
+    <plurals name="terminal_next_needs_you">
+        <item quantity="one">%1$d other terminal needs you. Open it</item>
+        <item quantity="other">%1$d other terminals need you. Open the next one</item>
+    </plurals>
+
+    <!-- Reply chips above the extra keys -->
+    <string name="terminal_reply_hint">Reply</string>
+    <string name="terminal_reply_send">Send</string>
+    <string name="terminal_reply_option">Send %1$s</string>
+    <string name="terminal_reply_interrupt">Interrupt</string>
+    <string name="terminal_reply_interrupt_description">Send Esc to interrupt</string>
 
     <!-- States -->
     <string name="terminal_connecting">Connecting…</string>

@@ -1,5 +1,6 @@
 package com.mtajchert.flocket.feature.terminal.impl
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
@@ -35,11 +36,15 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.mtajchert.flocket.core.designsystem.theme.FlocketCorners
+import com.mtajchert.flocket.core.designsystem.theme.flocketColors
 import com.mtajchert.flocket.core.model.AgentState
+import com.mtajchert.flocket.core.model.AgentStatus
 import com.mtajchert.flocket.core.model.LayoutRef
-import com.mtajchert.flocket.core.ui.component.AgentIcon
+import com.mtajchert.flocket.core.ui.component.AgentTile
 import com.mtajchert.flocket.core.ui.R as CoreUiR
 
 /** The whole strip is this tall, so it costs one text row on a landscape phone. */
@@ -64,7 +69,7 @@ fun TerminalTabStrip(
                 .fillMaxWidth()
                 .height(StripHeight)
                 .background(MaterialTheme.colorScheme.surfaceContainer)
-                .padding(horizontal = 8.dp)
+                .padding(horizontal = 12.dp)
                 .testTag("terminal_tab_strip"),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -77,7 +82,7 @@ fun TerminalTabStrip(
             LazyRow(
                 modifier = Modifier.weight(1f),
                 state = listState,
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 items(strip.tabs, key = { it.key }) { tab ->
@@ -100,7 +105,7 @@ fun TerminalTabStrip(
             if (strip.tabs.size >= 2) VerticalDivider(Modifier.padding(horizontal = 8.dp).height(20.dp))
             Row(
                 modifier = Modifier.widthIn(max = 300.dp).horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 strip.panes.forEachIndexed { index, pane ->
@@ -147,25 +152,29 @@ private fun StripChip(
         contentAlignment = Alignment.Center,
     ) {
         Surface(
-            shape = MaterialTheme.shapes.small,
+            shape = FlocketCorners.Chip,
             color = if (selected) scheme.secondaryContainer else Color.Transparent,
-            contentColor = if (selected) scheme.onSecondaryContainer else scheme.onSurfaceVariant,
+            contentColor = if (selected) scheme.onSecondaryContainer else scheme.onSurface,
+            border = if (selected) null else BorderStroke(1.dp, scheme.outlineVariant),
             modifier = Modifier.height(ChipHeight),
         ) {
             Row(
-                modifier = Modifier.padding(horizontal = 12.dp),
+                modifier = Modifier.padding(start = if (showIcon) 6.dp else 12.dp, end = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(7.dp),
             ) {
-                if (showIcon) AgentIcon(agentId, size = 16.dp, contentDescription = null)
-                if (state != null) StatusDot(state)
+                if (showIcon) AgentTile(agentId, AgentStatus.Unknown, size = 20.dp, showBadge = false)
                 Text(
                     text = text,
-                    style = MaterialTheme.typography.labelLarge,
+                    style =
+                        MaterialTheme.typography.labelLarge.copy(
+                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                        ),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.widthIn(max = 160.dp),
                 )
+                if (state != null) StatusDot(state)
             }
         }
     }
@@ -176,13 +185,13 @@ private fun StatusDot(state: AgentState) {
     val scheme = MaterialTheme.colorScheme
     val color =
         when (state) {
-            AgentState.Working -> scheme.secondary
-            AgentState.Done -> scheme.primary
-            AgentState.Blocked -> scheme.tertiary
+            AgentState.Working -> scheme.primary
+            AgentState.Done -> MaterialTheme.flocketColors.done
+            AgentState.Blocked -> MaterialTheme.flocketColors.attention
             AgentState.Error -> scheme.error
             AgentState.Idle, AgentState.Other -> scheme.outline
         }
-    Box(Modifier.size(8.dp).background(color, CircleShape))
+    Box(Modifier.size(7.dp).background(color, CircleShape))
 }
 
 @Composable
