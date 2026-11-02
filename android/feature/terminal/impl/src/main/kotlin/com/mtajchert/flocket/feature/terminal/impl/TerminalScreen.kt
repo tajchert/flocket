@@ -37,6 +37,8 @@ import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.ContentPaste
 import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.FitScreen
+import androidx.compose.material.icons.outlined.Fullscreen
+import androidx.compose.material.icons.outlined.FullscreenExit
 import androidx.compose.material.icons.outlined.HourglassEmpty
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Keyboard
@@ -131,6 +133,8 @@ data class TerminalActions(
     val onClipboardAlways: () -> Unit = {},
     /** A reply chip (same input path as the extra keys). */
     val onReply: (ReplyKey) -> Unit = {},
+    /** Full-screen mode: hide (true) or bring back (false) the top bar and tab strip. */
+    val onTopBarHidden: (Boolean) -> Unit = {},
 )
 
 /**
@@ -151,11 +155,13 @@ fun TerminalScreen(
     terminal: @Composable (Modifier) -> Unit,
 ) {
     val layout = LocalPaneLayout.current
+    val fullScreen = state.topBarHidden
     // A landscape phone has no room for the strip above the IME.
-    val stripVisible = tabStrip != null && tabStrip.isVisible && !(layout.compactHeight && WindowInsets.isImeVisible)
+    val stripVisible =
+        tabStrip != null && tabStrip.isVisible && !fullScreen && !(layout.compactHeight && WindowInsets.isImeVisible)
     Scaffold(
         modifier = modifier,
-        topBar = { TerminalTopBar(state, header, actions, showBack) },
+        topBar = { if (!fullScreen) TerminalTopBar(state, header, actions, showBack) },
         snackbarHost = { SnackbarHost(snackbarHostState) },
         containerColor = MaterialTheme.colorScheme.surface,
         contentWindowInsets = ScaffoldDefaults.contentWindowInsets.only(paneInsetSides(layout)),
@@ -201,11 +207,14 @@ fun TerminalScreen(
                         Unit
                     }
                 }
-                if (state.phase == TerminalPhase.Live && !state.streamConnected) {
-                    ReconnectingChip(Modifier.align(Alignment.TopEnd).padding(8.dp))
-                }
-                if (state.sizeTakenByOther) {
-                    SizeTakenChip(actions.onFit, Modifier.align(Alignment.TopEnd).padding(8.dp))
+                Column(
+                    Modifier.align(Alignment.TopEnd).padding(8.dp),
+                    horizontalAlignment = Alignment.End,
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    if (fullScreen) FullScreenCorner(state, header, actions)
+                    if (state.phase == TerminalPhase.Live && !state.streamConnected) ReconnectingChip()
+                    if (state.sizeTakenByOther) SizeTakenChip(actions.onFit)
                 }
             }
             EndBanner(state, actions)
@@ -328,25 +337,7 @@ private fun TerminalTopBar(
                 if (wide && state.isOnline && state.status != AgentStatus.Unknown) {
                     AgentStatusChip(state.status, Modifier.padding(end = 8.dp))
                 }
-                val next = header.nextNeedsYou
-                if (header.otherNeedsYou > 0 && next != null) {
-                    val description =
-                        pluralStringResource(
-                            R.plurals.terminal_next_needs_you,
-                            header.otherNeedsYou,
-                            header.otherNeedsYou,
-                        )
-                    NeedYouPill(
-                        count = header.otherNeedsYou,
-                        label = header.otherNeedsYou.toString(),
-                        trailingArrow = true,
-                        onClick = { actions.onOpenTerminal(next) },
-                        modifier =
-                            Modifier.semantics { contentDescription = description }.testTag(
-                                "terminal_next_needs_you",
-                            ),
-                    )
-                }
+                NextNeedsYou(header, actions)
                 // With the extra keys on, the keyboard toggle sits in their bar.
                 if (state.canInteract && !state.showExtraKeys) {
                     IconButton(onClick = actions.onToggleKeyboard, modifier = Modifier.testTag("terminal_keyboard")) {
@@ -434,6 +425,10 @@ private fun OverflowMenu(
                 open = false
                 actions.onInterrupt()
             }
+            MenuItem(Icons.Outlined.Fullscreen, R.string.terminal_action_hide_top_bar, enabled = true) {
+                open = false
+                actions.onTopBarHidden(true)
+            }
             MenuItem(
                 Icons.Outlined.PowerSettingsNew,
                 R.string.terminal_action_kill,
@@ -459,6 +454,59 @@ private fun MenuItem(
         leadingIcon = { Icon(icon, null) },
         enabled = enabled,
         onClick = onClick,
+    )
+}
+
+/**
+ * What stays of the top bar in full-screen mode, in the terminal's top-end corner: the host's connection
+ * state while it is not online (stale data stays labelled), the "next needs you" pill, and the button
+ * that brings the bar back.
+ */
+@Composable
+private fun FullScreenCorner(
+    state: TerminalUiState,
+    header: TerminalHeaderUi,
+    actions: TerminalActions,
+) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        if (state.connection !is ConnectionState.Online) ConnectionStateBadge(state.connection)
+        NextNeedsYou(header, actions)
+        // Translucent so the terminal text under the corner stays readable.
+        Surface(
+            onClick = { actions.onTopBarHidden(false) },
+            shape = CircleShape,
+            color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.8f),
+            contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            shadowElevation = 1.dp,
+            modifier = Modifier.testTag("terminal_show_top_bar"),
+        ) {
+            Box(Modifier.size(32.dp), contentAlignment = Alignment.Center) {
+                Icon(
+                    Icons.Outlined.FullscreenExit,
+                    stringResource(R.string.terminal_action_show_top_bar),
+                    Modifier.size(18.dp),
+                )
+            }
+        }
+    }
+}
+
+/** Jumps to the next other terminal that needs the user; nothing when none does. */
+@Composable
+private fun NextNeedsYou(
+    header: TerminalHeaderUi,
+    actions: TerminalActions,
+) {
+    val next = header.nextNeedsYou ?: return
+    if (header.otherNeedsYou <= 0) return
+    val description =
+        pluralStringResource(R.plurals.terminal_next_needs_you, header.otherNeedsYou, header.otherNeedsYou)
+    NeedYouPill(
+        count = header.otherNeedsYou,
+        label = header.otherNeedsYou.toString(),
+        trailingArrow = true,
+        onClick = { actions.onOpenTerminal(next) },
+        modifier = Modifier.semantics { contentDescription = description }.testTag("terminal_next_needs_you"),
     )
 }
 
@@ -727,13 +775,10 @@ private fun ProgressOverlay(
  * on the terminal also takes the size back; this says why it looks small and offers the same.
  */
 @Composable
-private fun SizeTakenChip(
-    onFit: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
+private fun SizeTakenChip(onFit: () -> Unit) {
     Surface(
         onClick = onFit,
-        modifier = modifier.testTag("terminal_size_taken"),
+        modifier = Modifier.testTag("terminal_size_taken"),
         shape = FlocketCorners.HostPill,
         color = MaterialTheme.flocketColors.attentionContainer,
         contentColor = MaterialTheme.flocketColors.onAttentionContainer,
@@ -757,9 +802,8 @@ private fun SizeTakenChip(
 
 /** A neutral pill (dot + word, like the host pill): the link is coming back on its own. */
 @Composable
-private fun ReconnectingChip(modifier: Modifier = Modifier) {
+private fun ReconnectingChip() {
     Surface(
-        modifier = modifier,
         shape = FlocketCorners.HostPill,
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
         contentColor = MaterialTheme.colorScheme.onSurface,

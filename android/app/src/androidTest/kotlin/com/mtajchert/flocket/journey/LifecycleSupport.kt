@@ -153,8 +153,13 @@ fun JourneyRule.openFromList(name: String) {
     awaitTerminalScreen()
 }
 
+/** The terminal screen is up: its top bar's ⋮ menu, or the corner button while the top bar is hidden. */
 fun JourneyRule.awaitTerminalScreen(timeoutMs: Long = 15_000) =
-    compose.waitFor(hasContentDescription(string(TerminalR.string.terminal_action_more)), timeoutMs)
+    compose.waitFor(
+        hasContentDescription(string(TerminalR.string.terminal_action_more)) or
+            hasContentDescription(string(TerminalR.string.terminal_action_show_top_bar)),
+        timeoutMs,
+    )
 
 /**
  * Types `echo <marker>` + Enter into the focused terminal (key events, like `adb shell input text`) and waits

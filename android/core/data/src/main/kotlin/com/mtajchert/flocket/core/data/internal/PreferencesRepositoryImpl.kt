@@ -44,6 +44,7 @@ internal class PreferencesRepositoryImpl(
             notificationPermissionAsked = notificationPermissionAsked,
             keepConnectedInBackground = keepConnectedInBackground,
             terminalSort = enumOrDefault(terminalListSort, TerminalSort.Priority),
+            terminalTopBarHidden = terminalTopBarHidden,
         )
 
     private fun UserPreferences.toStored() =
@@ -62,6 +63,7 @@ internal class PreferencesRepositoryImpl(
             autoConnect = terminal.autoConnect,
             defaultWorkingDirectory = terminal.defaultWorkingDirectory,
             terminalListSort = terminalSort.name,
+            terminalTopBarHidden = terminalTopBarHidden,
         )
 }
 

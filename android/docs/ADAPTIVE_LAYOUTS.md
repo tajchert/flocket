@@ -28,6 +28,8 @@ Compact width shows the terminal list, then the terminal on its own full screen.
 
 Below the terminal top bar, a 40dp strip shows the tabs of the open terminal's space (scrollable, status dot, open tab selected) and, when the tab has 2+ panes, a pane switcher (agent label or name). It appears when the space has 2+ tabs or the tab has 2+ panes. Tapping navigates to the tab's active pane (else first) with a passive `TerminalRoute`. Finished terminals other than the open one are left out of both, as in the sidebar; a tab with none left is hidden. Data comes from `TerminalViewModel.tabStrip` (`buildWorkspace` on the host's `SessionState`, deduplicated, separate from `uiState`). On compact height the strip hides while the IME is visible.
 
+Full-screen terminal: the terminal's ⋮ menu has "Hide top bar", which hides the top bar and the tab strip so the terminal gets their rows (the status bar stays). A small translucent button in the terminal's top-end corner ("Show top bar") brings them back; beside it stay the "next needs you" pill and, while the host is not online, its connection badge (rule 7). The reconnecting and size-taken chips stack under it. The choice is app-wide (`UserPreferences.terminalTopBarHidden`), so every terminal opens the same way until switched back. While hidden, multi-pane focus mode's "Show terminal list" is reached by bringing the bar back first.
+
 ## Testing
 
 Screen-level composables are covered by screenshot tests at phone (360x816), foldable (673x841) and tablet (1280x800) sizes; use `@PreviewFormFactors` from `:core:designsystem`. See [Screenshot testing](SCREENSHOT_TESTING.md).

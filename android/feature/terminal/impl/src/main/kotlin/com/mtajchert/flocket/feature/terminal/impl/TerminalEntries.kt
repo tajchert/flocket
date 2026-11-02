@@ -216,6 +216,7 @@ fun TerminalRouteContent(
                 onClipboardAnswer = viewModel::answerClipboardRequest,
                 onClipboardAlways = viewModel::alwaysAllowClipboard,
                 onReply = viewModel::sendReply,
+                onTopBarHidden = viewModel::setTopBarHidden,
             )
         }
     if (state.offerNotificationPermission) {
