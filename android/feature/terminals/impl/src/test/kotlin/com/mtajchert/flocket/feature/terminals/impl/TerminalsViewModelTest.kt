@@ -14,6 +14,7 @@ import com.mtajchert.flocket.core.model.MachineState
 import com.mtajchert.flocket.core.model.TerminalSort
 import com.mtajchert.flocket.core.session.SendReceipt
 import com.mtajchert.flocket.core.session.SessionState
+import com.mtajchert.flocket.core.testing.FakeAgentMarks
 import com.mtajchert.flocket.core.testing.FakeConnectionManager
 import com.mtajchert.flocket.core.testing.FakeCoreSession
 import com.mtajchert.flocket.core.testing.FakeHostRepository
@@ -68,8 +69,9 @@ class TerminalsViewModelTest {
         settings: FakeHostSettingsRepository = FakeHostSettingsRepository(),
         lastCwd: LastCwdStore = InMemoryLastCwdStore(),
         prefs: FakePreferencesRepository = FakePreferencesRepository(),
+        marks: FakeAgentMarks = FakeAgentMarks(),
     ): TerminalsViewModel {
-        val vm = TerminalsViewModel(manager, lastCwd, settings, prefs)
+        val vm = TerminalsViewModel(manager, lastCwd, settings, prefs, marks)
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.uiState.collect {} }
         return vm
     }
@@ -87,11 +89,11 @@ class TerminalsViewModelTest {
         .orEmpty()
 
     @Test
-    fun `grouped mode groups by host then by federated machine and sorts rows by desktop rank`() =
+    fun `grouped mode groups by host then by federated machine in layout order`() =
         runTest {
             val state = vm(prefs = grouped()).uiState.value
             assertEquals(listOf(studio, hetzner, pi), state.groups.map { it.hostId })
-            assertEquals(listOf("t2", "t3", "t1", "t4", "t5"), state.addresses(studio)) // blocked, done, working, idle, no status
+            assertEquals(listOf("t1", "t2", "t3", "t4", "t5"), state.addresses(studio)) // layout order, no urgency sorting
             assertEquals(listOf("rohan/t7"), state.addresses(studio, "rohan"))
             assertEquals(
                 MachineState.Connected,
@@ -552,5 +554,82 @@ class TerminalsViewModelTest {
                 assertEquals(listOf<Any>("ghost"), machine.args)
             }
             assertNull(vm.dialog.value)
+        }
+
+    // ---- agents-panel: hold rule, pin, unread --------------------------------------------------
+
+    private fun TerminalsUiState.bucketOf(address: String): PriorityBucket? =
+        prioritySections(groups).firstOrNull { s -> s.rows.any { it.row.item.address == address } }?.bucket
+
+    private fun setSeen(
+        m: FakeConnectionManager,
+        address: String,
+        seen: Long,
+        turn: Long,
+    ) = m.fakeSession(studio)!!.update { st ->
+        st.copy(
+            terminals =
+                st.terminals.map {
+                    if (it.address.value == address) {
+                        it.copy(turn = turn, labels = mapOf("herdr.seen" to seen.toString()))
+                    } else {
+                        it
+                    }
+                },
+        )
+    }
+
+    @Test
+    fun `the open terminal that turned Done to Idle keeps its Done section until it is closed`() =
+        runTest {
+            val m = manager()
+            val vm = vm(m)
+            setSeen(m, "t3", seen = 0, turn = 1) // Done: unseen turn
+            vm.setOpenTerminal(studio, "t3")
+            assertEquals(PriorityBucket.Done, vm.uiState.value.bucketOf("t3"))
+            setSeen(m, "t3", seen = 1, turn = 1) // the person looked: Idle
+            assertEquals(PriorityBucket.Done, vm.uiState.value.bucketOf("t3"))
+            vm.setOpenTerminal(null, null)
+            assertEquals(PriorityBucket.Idle, vm.uiState.value.bucketOf("t3"))
+        }
+
+    @Test
+    fun `pin and mark unread go through AgentMarks and failures become an event`() =
+        runTest {
+            val marks = FakeAgentMarks()
+            val vm = vm(marks = marks)
+            val item =
+                vm.uiState.value
+                    .group(studio)
+                    .sections
+                    .first()
+                    .items
+                    .first { it.address == "t4" }
+            vm.setPinned(item, true)
+            vm.markUnread(item)
+            assertEquals(listOf(item.ref to true), marks.pinned.toList())
+            assertEquals(listOf(item.ref), marks.unread.toList())
+            marks.result =
+                com.mtajchert.flocket.core.common.result.AppResult
+                    .Failure(AppError.ConnectionLost)
+            vm.events.test {
+                vm.setPinned(item, false)
+                assertTrue(awaitItem() is TerminalsEvent.Failure)
+            }
+        }
+
+    @Test
+    fun `rows offer label actions only when the host supports labels`() =
+        runTest {
+            // The sample core has no terminal.label method.
+            val item =
+                vm()
+                    .uiState.value
+                    .group(studio)
+                    .sections
+                    .first()
+                    .items
+                    .first()
+            assertFalse(item.supportsLabels)
         }
 }

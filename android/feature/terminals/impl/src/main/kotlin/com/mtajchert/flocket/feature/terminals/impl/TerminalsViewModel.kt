@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.mtajchert.flocket.core.common.error.AppError
 import com.mtajchert.flocket.core.common.result.AppResult
+import com.mtajchert.flocket.core.data.AgentMarks
 import com.mtajchert.flocket.core.data.ConnectionManager
 import com.mtajchert.flocket.core.data.HostOverview
 import com.mtajchert.flocket.core.data.HostSettingsRepository
@@ -16,6 +17,7 @@ import com.mtajchert.flocket.core.model.MachineState
 import com.mtajchert.flocket.core.model.TerminalAddress
 import com.mtajchert.flocket.core.model.TerminalPreferences
 import com.mtajchert.flocket.core.model.TerminalSort
+import com.mtajchert.flocket.core.model.shownStatus
 import com.mtajchert.flocket.core.session.CoreSession
 import com.mtajchert.flocket.core.session.InterruptOutcome
 import com.mtajchert.flocket.core.session.RunRequest
@@ -75,9 +77,12 @@ class TerminalsViewModel
         private val lastCwd: LastCwdStore,
         private val hostSettings: HostSettingsRepository,
         private val preferences: PreferencesRepository,
+        private val marks: AgentMarks,
     ) : ViewModel() {
         private val controls = MutableStateFlow(ListControls())
         private val refreshing = MutableStateFlow(false)
+        private val open = MutableStateFlow<OpenTerminal?>(null)
+        private val hold = HoldRule()
         private val dialogState = MutableStateFlow<TerminalDialog?>(null)
         private val eventChannel = Channel<TerminalsEvent>(Channel.BUFFERED)
 
@@ -90,8 +95,19 @@ class TerminalsViewModel
                 controls,
                 preferences.preferences.map { it.terminalSort }.distinctUntilChanged(),
                 refreshing,
-            ) { overview, controls, sort, refreshing -> buildUiState(overview, controls.copy(sort = sort), refreshing) }
-                .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), TerminalsUiState())
+                open,
+            ) { overview, controls, sort, refreshing, open ->
+                val ownShown =
+                    open?.let { o ->
+                        overview
+                            .firstOrNull { it.host.id == o.hostId }
+                            ?.session
+                            ?.terminals
+                            ?.firstOrNull { it.address.value == o.address }
+                            ?.shownStatus()
+                    }
+                buildUiState(overview, controls.copy(sort = sort), refreshing, held = hold.update(open, ownShown))
+            }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), TerminalsUiState())
 
         // ---- list controls ----------------------------------------------------------------------
 
@@ -100,6 +116,34 @@ class TerminalsViewModel
         /** The sort is a stored preference: it survives restarts and applies to every list. */
         fun setSort(sort: TerminalSort) {
             viewModelScope.launch { preferences.update { it.copy(terminalSort = sort) } }
+        }
+
+        /** The terminal open next to the list (two-pane), for the hold rule; null when none. */
+        fun setOpenTerminal(
+            hostId: HostId?,
+            address: String?,
+        ) {
+            open.value = if (hostId != null && address != null) OpenTerminal(hostId, address) else null
+        }
+
+        /** Pin or unpin (a label write; the core keeps the order). Failures show briefly, nothing is retried. */
+        fun setPinned(
+            item: TerminalItem,
+            pinned: Boolean,
+        ) {
+            viewModelScope.launch {
+                (
+                    marks.setPinned(
+                        item.ref,
+                        pinned,
+                    ) as? AppResult.Failure
+                )?.let { reportError(it.error) }
+            }
+        }
+
+        /** Mark an agent's current turn as not seen again, so it counts as Done. */
+        fun markUnread(item: TerminalItem) {
+            viewModelScope.launch { (marks.markUnread(item.ref) as? AppResult.Failure)?.let { reportError(it.error) } }
         }
 
         fun clearFilters() = controls.update { it.copy(filter = TerminalFilter.All) }

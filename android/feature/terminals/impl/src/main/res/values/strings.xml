@@ -67,6 +67,13 @@
     <string name="row_read_only">Read-only until the host reconnects</string>
     <string name="action_interrupt">Interrupt (stop key)</string>
     <string name="action_send_text">Send text…</string>
+    <string name="action_pin">Pin to the top</string>
+    <string name="action_unpin">Unpin</string>
+    <string name="action_mark_unread">Mark as unread</string>
+    <string name="row_pinned">Pinned</string>
+    <string name="row_subagents_show">Show %1$d sub-agents</string>
+    <string name="row_subagents_hide">Hide sub-agents</string>
+    <string name="priority_pinned">Pinned</string>
     <string name="action_kill">Kill…</string>
     <string name="action_open">Open</string>
 

@@ -109,6 +109,10 @@ class TerminalsActions(
     val onRefresh: () -> Unit = {},
     val onOpen: (TerminalItem) -> Unit = {},
     val onKill: (TerminalItem) -> Unit = {},
+    /** Pin (true) or unpin (false) a terminal. */
+    val onPin: (TerminalItem, Boolean) -> Unit = { _, _ -> },
+    val onMarkUnread: (TerminalItem) -> Unit = {},
+    val onOpenChild: (ChildItem) -> Unit = {},
     val onInterrupt: (TerminalItem) -> Unit = {},
     val onSendText: (TerminalItem) -> Unit = {},
     /** Rename a desktop space or tab: host, target, current given name, automatic name. */
@@ -356,6 +360,17 @@ private fun TerminalList(
 ) {
     // Keys of collapsed spaces ("host/space"); saved across rotation and process death.
     var collapsed by rememberSaveable { mutableStateOf(emptySet<String>()) }
+    // Keys of parents whose sub-agents are folded away.
+    var folded by rememberSaveable { mutableStateOf(emptySet<String>()) }
+    val pinned = remember(state.groups) { pinnedGroupedRows(state.groups) }
+    val unpinnedSpaces =
+        remember(state.groups) {
+            val map = java.util.IdentityHashMap<MachineSection, List<SpaceSection>>()
+            state.groups.forEach { g ->
+                g.sections.forEach { map[it] = it.spaces.mapNotNull { sp -> sp.withoutPinned() } }
+            }
+            map
+        }
     PullToRefreshBox(isRefreshing = state.refreshing, onRefresh = actions.onRefresh) {
         LazyColumn(
             contentPadding = PaddingValues(top = 4.dp, bottom = 96.dp),
@@ -363,6 +378,40 @@ private fun TerminalList(
         ) {
             if (state.emptyKind == EmptyKind.AllOffline) {
                 item(key = "offline", contentType = "notice") { OfflineNotice(actions.onRefresh) }
+            }
+            if (pinned.isNotEmpty()) {
+                val open = PINNED_KEY !in collapsed
+                item(key = "group:$PINNED_KEY", contentType = "group") {
+                    GroupHeader(
+                        title = stringResource(R.string.priority_pinned),
+                        count = pinned.size,
+                        color = StatusGroup.NoStatus.color(),
+                        expanded = open,
+                        onToggle = { collapsed = if (open) collapsed + PINNED_KEY else collapsed - PINNED_KEY },
+                    )
+                }
+                if (open) {
+                    items(pinned.size, key = { "pinned:" + pinned[it].item.key }, contentType = { "row" }) { index ->
+                        val row = pinned[index]
+                        TerminalRowTree(
+                            item = row.item,
+                            selected = selected,
+                            nowMs = nowMs,
+                            actions = actions,
+                            dense = dense,
+                            names = pinnedNames(row.item, row.space),
+                            hostLabel =
+                                listOfNotNull(
+                                    row.hostLabel.takeIf { state.groups.size > 1 },
+                                    row.item.ref.address.machine,
+                                ).joinToString("/").ifEmpty { null },
+                            folded = row.item.key in folded,
+                            onToggleFold = {
+                                folded = if (row.item.key in folded) folded - row.item.key else folded + row.item.key
+                            },
+                        )
+                    }
+                }
             }
             state.groups.forEach { group ->
                 stickyHeader(key = "host:${group.hostId.value}", contentType = "host") { HostHeader(group, nowMs) }
@@ -408,7 +457,7 @@ private fun TerminalList(
                             MachineHeader(section)
                         }
                     }
-                    section.spaces.forEach { space ->
+                    unpinnedSpaces[section].orEmpty().forEach { space ->
                         val spaceKey = "${group.hostId.value}/${section.machine.orEmpty()}/${space.key}"
                         val isCollapsed = spaceKey in collapsed
                         item(key = "space:$spaceKey", contentType = "space") {
@@ -449,16 +498,19 @@ private fun TerminalList(
                                 }
                                 items(tab.items.size, key = { tab.items[it].key }, contentType = { "row" }) { index ->
                                     val item = tab.items[index]
-                                    TerminalRow(
+                                    TerminalRowTree(
                                         item = item,
-                                        selected =
-                                            selected != null && selected.hostId == item.hostId.value &&
-                                                selected.address == item.address,
+                                        selected = selected,
                                         nowMs = nowMs,
                                         actions = actions,
-                                        modifier = Modifier.padding(start = 12.dp),
+                                        indent = 12.dp,
                                         dense = dense,
                                         names = groupedNames(item, space),
+                                        folded = item.key in folded,
+                                        onToggleFold = {
+                                            folded =
+                                                if (item.key in folded) folded - item.key else folded + item.key
+                                        },
                                     )
                                 }
                             }
@@ -759,13 +811,14 @@ private fun PriorityHeader(
 private fun PriorityBucket.group(): StatusGroup =
     when (this) {
         PriorityBucket.NeedsYou -> StatusGroup.NeedsYou
+        PriorityBucket.Pinned -> StatusGroup.NoStatus
         PriorityBucket.Working -> StatusGroup.Working
         PriorityBucket.Done -> StatusGroup.Done
         PriorityBucket.Idle -> StatusGroup.Idle
         PriorityBucket.NoStatus -> StatusGroup.NoStatus
     }
 
-/** The cross-host priority list: Needs you, Done, Working, Idle, then Other terminals (collapsed). */
+/** The cross-host priority list: Needs you, Done, Working, Idle, then Other terminals (collapsed unless no agents). */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun PriorityList(
@@ -776,11 +829,18 @@ private fun PriorityList(
     dense: Boolean,
     hostFilter: HostId?,
 ) {
-    // Group keys the user flipped away from their default (Other terminals start collapsed, the rest expanded).
+    // Group keys the user flipped away from their default (Other terminals start collapsed when agents exist, the rest expanded).
     var flipped by rememberSaveable { mutableStateOf(emptySet<String>()) }
+    var folded by rememberSaveable { mutableStateOf(emptySet<String>()) }
     val sections = remember(state.groups, hostFilter) { prioritySections(state.groups, hostFilter) }
     val shownGroups = state.groups.filter { hostFilter == null || it.hostId == hostFilter }
     val showHost = state.groups.size > 1 && hostFilter == null
+    // Other terminals start expanded when no agent row is listed, so a lone shell is not hidden behind a header.
+    val hasAgentRows =
+        sections.any {
+            it.bucket != PriorityBucket.NoStatus && it.bucket != PriorityBucket.Pinned &&
+                it.rows.isNotEmpty()
+        }
     PullToRefreshBox(isRefreshing = state.refreshing, onRefresh = actions.onRefresh) {
         LazyColumn(
             contentPadding = PaddingValues(top = 4.dp, bottom = 96.dp),
@@ -811,13 +871,15 @@ private fun PriorityList(
             }
             sections.forEach { section ->
                 val key = section.bucket.name
-                val expanded = (section.bucket != PriorityBucket.NoStatus) != (key in flipped)
+                val expanded = (section.bucket != PriorityBucket.NoStatus || !hasAgentRows) != (key in flipped)
                 item(key = "group:$key", contentType = "group") {
                     val group = section.bucket.group()
                     GroupHeader(
                         title =
                             if (section.bucket == PriorityBucket.NoStatus) {
                                 stringResource(R.string.priority_other_terminals)
+                            } else if (section.bucket == PriorityBucket.Pinned) {
+                                stringResource(R.string.priority_pinned)
                             } else {
                                 group.title()
                             },
@@ -838,11 +900,20 @@ private fun PriorityList(
                     ) { index ->
                         val listRow = section.rows[index]
                         val item = listRow.row.item
-                        TerminalRow(
+                        TerminalRowTree(
                             item = item,
-                            selected =
-                                selected != null && selected.hostId == item.hostId.value &&
-                                    selected.address == item.address,
+                            selected = selected,
+                            folded = item.key in folded,
+                            onToggleFold = {
+                                folded =
+                                    if (item.key in
+                                        folded
+                                    ) {
+                                        folded - item.key
+                                    } else {
+                                        folded + item.key
+                                    }
+                            },
                             nowMs = nowMs,
                             actions = actions,
                             dense = dense,
@@ -859,3 +930,5 @@ private fun PriorityList(
         }
     }
 }
+
+private const val PINNED_KEY = "pinned"

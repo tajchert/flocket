@@ -8,10 +8,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.tooling.preview.Preview
 import com.android.tools.screenshot.PreviewTest
+import com.mtajchert.flocket.core.data.HostOverview
 import com.mtajchert.flocket.core.designsystem.preview.PreviewFormFactors
 import com.mtajchert.flocket.core.designsystem.preview.PreviewLargeFont
 import com.mtajchert.flocket.core.designsystem.theme.FlocketTheme
 import com.mtajchert.flocket.core.model.AgentState
+import com.mtajchert.flocket.core.model.AgentStatus
 import com.mtajchert.flocket.core.model.HostId
 import com.mtajchert.flocket.core.model.SpaceSource
 import com.mtajchert.flocket.core.model.TerminalAddress
@@ -339,3 +341,100 @@ private fun TerminalsDensePriorityScreenshot() =
     Shot {
         Dense { TerminalsScreen(priority, TerminalsActions(), selected = TerminalRoute("studio", "t1"), nowMs = NOW) }
     }
+
+private fun agentRecord(
+    address: String,
+    state: AgentState,
+    turn: Long = 0,
+    seen: Long? = null,
+    pinned: Boolean = false,
+    parent: String? = null,
+    name: String? = null,
+    cwd: String = "/Users/mtajchert/code/flocket",
+) = SampleData
+    .terminal(
+        address = address,
+        name = name,
+        argv = listOf("/usr/local/bin/claude"),
+        status = AgentStatus.Reported(state, state.name.lowercase(), app = "claude"),
+        cwd = cwd,
+    ).copy(
+        turn = turn,
+        parent = parent,
+        labels =
+            listOfNotNull(
+                seen?.let { "herdr.seen" to it.toString() },
+                if (pinned) "herdr.pinned" to "1" else null,
+            ).toMap(),
+    )
+
+/** Pinned, Needs you, Done (unseen turn), Idle (seen turn), and a parent with a sub-agent. */
+private fun agentsPanelState(controls: ListControls) =
+    buildUiState(
+        listOf(
+            HostOverview(
+                SampleData.studio,
+                SampleData.overview
+                    .first()
+                    .session
+                    .copy(
+                        machines = emptyList(),
+                        terminals =
+                            listOf(
+                                agentRecord("a1", AgentState.Idle, turn = 4, seen = 4, pinned = true, name = "QA"),
+                                agentRecord(
+                                    "a2",
+                                    AgentState.Blocked,
+                                    turn = 1,
+                                    seen = 1,
+                                    cwd = "/Users/mtajchert/code/docs",
+                                ),
+                                agentRecord(
+                                    "a3",
+                                    AgentState.Idle,
+                                    turn = 3,
+                                    seen = 2,
+                                    cwd = "/Users/mtajchert/code/api",
+                                ),
+                                agentRecord(
+                                    "a4",
+                                    AgentState.Idle,
+                                    turn = 2,
+                                    seen = 2,
+                                    cwd = "/Users/mtajchert/code/web",
+                                ),
+                                agentRecord(
+                                    "a5",
+                                    AgentState.Working,
+                                    turn = 1,
+                                    seen = 1,
+                                    cwd = "/Users/mtajchert/code/cli",
+                                ),
+                                agentRecord(
+                                    "a6",
+                                    AgentState.Working,
+                                    parent = "a5",
+                                    name = "reviewer",
+                                    cwd = "/Users/mtajchert/code/cli",
+                                ),
+                            ),
+                    ),
+            ),
+        ),
+        controls,
+        refreshing = false,
+    )
+
+private val agentsPanel = agentsPanelState(ListControls(sort = TerminalSort.Priority))
+
+@PreviewTest
+@PreviewPhone
+@PreviewPhoneDark
+@Composable
+private fun TerminalsAgentsPanelScreenshot() = Shot { TerminalsScreen(agentsPanel, TerminalsActions(), nowMs = NOW) }
+
+@PreviewTest
+@PreviewPhone
+@Composable
+private fun TerminalsAgentsPanelGroupedScreenshot() =
+    Shot { TerminalsScreen(agentsPanelState(grouped), TerminalsActions(), nowMs = NOW) }

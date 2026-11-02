@@ -13,6 +13,7 @@ import com.mtajchert.flocket.core.model.ConnectionState
 import com.mtajchert.flocket.core.model.DesktopLayout
 import com.mtajchert.flocket.core.model.DesktopSpace
 import com.mtajchert.flocket.core.model.DesktopTab
+import com.mtajchert.flocket.core.model.HerdrLabels
 import com.mtajchert.flocket.core.model.LayoutRef
 import com.mtajchert.flocket.core.model.Liveness
 import com.mtajchert.flocket.core.model.MachineInfo
@@ -724,6 +725,45 @@ class TerminalViewModelTest {
             advanceUntilIdle()
             assertTrue(marks.seen.isEmpty())
             goOnline()
+            advanceUntilIdle()
+            assertEquals(1, marks.seen.size)
+        }
+
+    @Test
+    fun `a failed seen write is retried after a reconnect for the same turn`() =
+        runTest {
+            goOnline()
+            marks.result = AppResult.Failure(AppError.ConnectionLost)
+            val vm = viewModel()
+            vm.setLooking(true)
+            advanceUntilIdle()
+            assertEquals(1, marks.seen.size)
+
+            session.update { it.copy(connection = ConnectionState.Idle) }
+            advanceUntilIdle()
+            marks.result = AppResult.Success(Unit)
+            goOnline()
+            advanceUntilIdle()
+            assertEquals(2, marks.seen.size)
+        }
+
+    @Test
+    fun `a written turn is not repeated after the label is lowered`() =
+        runTest {
+            goOnline()
+            val vm = viewModel()
+            vm.setLooking(true)
+            advanceUntilIdle()
+            assertEquals(1, marks.seen.size)
+
+            session.update { st ->
+                st.copy(
+                    terminals =
+                        st.terminals.map {
+                            it.copy(labels = it.labels + (HerdrLabels.SEEN to "0"))
+                        },
+                )
+            }
             advanceUntilIdle()
             assertEquals(1, marks.seen.size)
         }

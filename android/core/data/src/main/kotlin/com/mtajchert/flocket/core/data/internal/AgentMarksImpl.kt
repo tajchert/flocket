@@ -7,6 +7,7 @@ import com.mtajchert.flocket.core.data.ConnectionManager
 import com.mtajchert.flocket.core.model.CoreInfo
 import com.mtajchert.flocket.core.model.HerdrLabels
 import com.mtajchert.flocket.core.model.HostId
+import com.mtajchert.flocket.core.model.MachineState
 import com.mtajchert.flocket.core.model.TerminalRecord
 import com.mtajchert.flocket.core.model.TerminalRef
 import com.mtajchert.flocket.core.model.isAgent
@@ -67,6 +68,11 @@ internal class AgentMarksImpl(
         val record =
             state.terminal(ref.address)
                 ?: return AppResult.Failure(AppError.InvalidInput("terminal", "unknown terminal"))
+        // Rule 7: a federated terminal is written only while its machine is connected.
+        val machine = ref.address.machine
+        if (machine != null && state.machines.firstOrNull { it.name == machine }?.state != MachineState.Connected) {
+            return AppResult.Failure(AppError.ConnectionLost)
+        }
         return block(session, record)
     }
 }

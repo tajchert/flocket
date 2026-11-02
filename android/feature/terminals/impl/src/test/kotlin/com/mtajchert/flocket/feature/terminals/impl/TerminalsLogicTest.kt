@@ -1,11 +1,14 @@
 package com.mtajchert.flocket.feature.terminals.impl
 
+import com.mtajchert.flocket.core.data.HostOverview
 import com.mtajchert.flocket.core.model.AgentCatalog
 import com.mtajchert.flocket.core.model.AgentState
 import com.mtajchert.flocket.core.model.AgentStatus
 import com.mtajchert.flocket.core.model.Liveness
+import com.mtajchert.flocket.core.model.ShownStatus
 import com.mtajchert.flocket.core.model.SpaceSource
 import com.mtajchert.flocket.core.model.TerminalAddress
+import com.mtajchert.flocket.core.model.TerminalRecord
 import com.mtajchert.flocket.core.model.TerminalSort
 import com.mtajchert.flocket.core.model.Workspace
 import com.mtajchert.flocket.core.model.WorkspaceSpace
@@ -71,13 +74,13 @@ class TerminalsLogicTest {
         groups.first { it.hostId == SampleHost }.sections.first { it.machine == null }
 
     @Test
-    fun `grouped mode groups rows space then tab and sorts rows by rank`() {
+    fun `grouped mode groups rows space then tab in layout order`() {
         val local = state().local()
         assertEquals(listOf("Flocket", "Docs"), local.spaces.map { it.name })
         assertEquals(listOf("agents", "scratch"), local.spaces[0].tabs.map { it.name })
-        // blocked before working inside the first tab; finished t6 is hidden by default
+        // layout order inside the first tab (no urgency sorting); finished t6 is hidden by default
         assertEquals(
-            listOf("t2", "t1"),
+            listOf("t1", "t2"),
             local.spaces[0]
                 .tabs[0]
                 .items
@@ -93,8 +96,7 @@ class TerminalsLogicTest {
     }
 
     @Test
-    fun `grouped mode orders spaces, tabs and rows by desktop rank, stable`() {
-        // A Working space listed before a Done one: Done ranks higher, so it comes first.
+    fun `grouped mode keeps the layout order of spaces, tabs and rows`() {
         val working =
             space("desktop:w", "Work", null, AgentState.Working, tab("1", "w", "t1", top = AgentState.Working))
         val done = space("desktop:d", "Fin", null, AgentState.Done, tab("1", "d", "t3", top = AgentState.Done))
@@ -112,13 +114,12 @@ class TerminalsLogicTest {
         val ws = Workspace(listOf(working, idleA, done, idleB, multi))
         val local =
             buildUiState(listOf(SampleData.overview.first()), grouped, false) { ws }.local()
-        assertEquals(listOf("Multi", "Fin", "Work", "IdleA", "IdleB"), local.spaces.map { it.name })
-        // inside Multi the blocked tab comes first; inside it blocked t2 before working t1
-        assertEquals(listOf("second", "first"), local.spaces[0].tabs.map { it.name })
+        assertEquals(listOf("Work", "IdleA", "Fin", "IdleB", "Multi"), local.spaces.map { it.name })
+        assertEquals(listOf("first", "second"), local.spaces[4].tabs.map { it.name })
         assertEquals(
             listOf("t2", "t1"),
-            local.spaces[0]
-                .tabs[0]
+            local.spaces[4]
+                .tabs[1]
                 .items
                 .map { it.address },
         )
@@ -428,5 +429,355 @@ class TerminalsLogicTest {
         assertEquals("2", details["t2"])
         assertEquals("review", details["t3"])
         assertNull(details["t4"]) // alone in its space: the project says enough
+    }
+
+    // ---- agents-panel list logic -------------------------------------------------------------
+
+    private fun agent(
+        address: String,
+        state: AgentState,
+        turn: Long = 0,
+        seen: Long? = null,
+        since: Long? = null,
+        pinned: Boolean = false,
+        parent: String? = null,
+        name: String? = null,
+    ) = SampleData
+        .terminal(
+            address = address,
+            name = name,
+            argv = listOf("/bin/claude"),
+            status = AgentStatus.Reported(state, state.name.lowercase()),
+        ).copy(
+            turn = turn,
+            statusChangedAtMs = since,
+            parent = parent,
+            labels =
+                listOfNotNull(
+                    seen?.let { "herdr.seen" to it.toString() },
+                    if (pinned) "herdr.pinned" to "1" else null,
+                ).toMap(),
+        )
+
+    private fun overviewOf(vararg terminals: TerminalRecord) =
+        HostOverview(
+            SampleData.studio,
+            SampleData.overview
+                .first()
+                .session
+                .copy(terminals = terminals.toList(), machines = emptyList()),
+        )
+
+    private fun priority(
+        vararg terminals: TerminalRecord,
+        held: OpenTerminal? = null,
+    ) = prioritySections(buildUiState(listOf(overviewOf(*terminals)), ListControls(), false, held = held).groups)
+        .associate { it.bucket to it.rows.map { r -> r.row.item.address } }
+
+    @Test
+    fun `sections come from the shown status, a finished turn is Done until seen then Idle`() {
+        val sections =
+            priority(
+                agent("a", AgentState.Idle, turn = 3, seen = 2),
+                agent("b", AgentState.Idle, turn = 3, seen = 3),
+                agent("c", AgentState.Working),
+                agent("d", AgentState.Error),
+                SampleData.terminal(address = "sh", name = null, argv = listOf("/bin/zsh")),
+            )
+        assertEquals(listOf("d"), sections[PriorityBucket.NeedsYou])
+        assertEquals(listOf("a"), sections[PriorityBucket.Done])
+        assertEquals(listOf("c"), sections[PriorityBucket.Working])
+        assertEquals(listOf("b"), sections[PriorityBucket.Idle])
+        assertEquals(listOf("sh"), sections[PriorityBucket.NoStatus])
+    }
+
+    @Test
+    fun `a missing seen label falls back to the raw word`() {
+        val sections = priority(agent("a", AgentState.Done), agent("b", AgentState.Idle, turn = 5))
+        assertEquals(listOf("a"), sections[PriorityBucket.Done])
+        assertEquals(listOf("b"), sections[PriorityBucket.Idle])
+    }
+
+    @Test
+    fun `rows in a section are ordered by since, newest first, then by original order`() {
+        val sections =
+            priority(
+                agent("a", AgentState.Working, since = 100),
+                agent("b", AgentState.Working, since = 300),
+                agent("c", AgentState.Working, since = 300),
+                agent("d", AgentState.Working, since = null),
+            )
+        assertEquals(listOf("b", "c", "a", "d"), sections[PriorityBucket.Working])
+    }
+
+    @Test
+    fun `pinned rows form the first section in the same order and are not repeated`() {
+        val sections =
+            priority(
+                agent("a", AgentState.Working, pinned = true, since = 1),
+                agent("b", AgentState.Error, pinned = true, since = 1),
+                agent("c", AgentState.Error),
+            )
+        assertEquals(listOf(PriorityBucket.Pinned, PriorityBucket.NeedsYou), sections.keys.toList())
+        assertEquals(listOf("b", "a"), sections[PriorityBucket.Pinned])
+        assertEquals(listOf("c"), sections[PriorityBucket.NeedsYou])
+    }
+
+    @Test
+    fun `a sub-agent nests under its listed parent and lifts the parent's urgency`() {
+        val state =
+            buildUiState(
+                listOf(
+                    overviewOf(
+                        agent("p", AgentState.Idle, turn = 1, seen = 1),
+                        agent("k1", AgentState.Error, parent = "p", name = "reviewer"),
+                        agent("k2", AgentState.Done, parent = "p"),
+                        agent("orphan", AgentState.Idle, parent = "gone"),
+                    ),
+                ),
+                ListControls(),
+                false,
+            )
+        val rows = prioritySections(state.groups).flatMap { s -> s.rows.map { s.bucket to it.row.item } }
+        val parent = rows.first { it.second.address == "p" }
+        // parent glyph stays Idle, but it sits in Needs you because of the child
+        assertEquals(PriorityBucket.NeedsYou, parent.first)
+        assertEquals(ShownStatus.Idle, parent.second.shown)
+        assertEquals(
+            listOf("reviewer", "claude"),
+            parent.second.children
+                .map { it.title },
+        )
+        // a sub-agent is never Done
+        assertEquals(
+            listOf(
+                ShownStatus.NeedsYou,
+                ShownStatus.Idle,
+            ),
+            parent.second.children
+                .map { it.shown },
+        )
+        // children have no row of their own; an orphan (parent absent) is a normal row
+        assertEquals(listOf("p", "orphan"), rows.map { it.second.address })
+    }
+
+    @Test
+    fun `parent cycles leave ordinary rows`() {
+        val rows =
+            priority(agent("x", AgentState.Working, parent = "y"), agent("y", AgentState.Working, parent = "x"))
+        assertEquals(listOf("x", "y"), rows[PriorityBucket.Working])
+    }
+
+    @Test
+    fun `grouped mode keeps sub-agents out of the rows and keeps the layout order`() {
+        val ws =
+            Workspace(
+                listOf(
+                    space("desktop:a", "A", null, null, tab("1", "", "w")),
+                    space("desktop:b", "B", null, null, tab("1", "", "p", "k")),
+                ),
+            )
+        val terminals =
+            arrayOf(
+                agent("w", AgentState.Working),
+                agent("p", AgentState.Idle, turn = 1, seen = 1),
+                agent("k", AgentState.Error, parent = "p"),
+            )
+        val local = buildUiState(listOf(overviewOf(*terminals)), grouped, false, workspaceOf = { ws }).local()
+        assertEquals(listOf("A", "B"), local.spaces.map { it.name })
+        assertEquals(listOf("p"), local.spaces[1].items.map { it.address })
+        assertEquals(
+            ShownStatus.NeedsYou.rank,
+            local.spaces[1]
+                .items
+                .single()
+                .urgency,
+        )
+    }
+
+    @Test
+    fun `hold rule keeps a seen Done agent at Done rank only while it is open`() {
+        val rule = HoldRule()
+        val open = OpenTerminal(SampleData.studio.id, "a")
+        assertNull(rule.update(null, null))
+        assertNull(rule.update(open, ShownStatus.Done))
+        assertEquals(open, rule.update(open, ShownStatus.Idle)) // looked at: Done -> Idle, held
+        assertEquals(open, rule.update(open, ShownStatus.Idle))
+        assertNull(rule.update(open, ShownStatus.Working)) // any other change moves at once
+        assertNull(rule.update(open, ShownStatus.Idle)) // Working -> Idle is not held
+        assertNull(rule.update(open, ShownStatus.Done))
+        assertEquals(open, rule.update(open, ShownStatus.Idle))
+        assertNull(rule.update(null, null)) // left it
+        assertNull(rule.update(open, ShownStatus.Idle)) // arriving at an Idle one
+    }
+
+    @Test
+    fun `a held row keeps Done rank but shows Idle`() {
+        val a = agent("a", AgentState.Idle, turn = 2, seen = 2)
+        val sections = priority(a, held = OpenTerminal(SampleData.studio.id, "a"))
+        assertEquals(listOf("a"), sections[PriorityBucket.Done])
+        val item = a.toItem(writable = true, held = true)
+        assertEquals(ShownStatus.Idle, item.shown)
+    }
+
+    @Test
+    fun `mark unread is offered for agents past turn 0 that are not Done`() {
+        assertTrue(agent("a", AgentState.Idle, turn = 2, seen = 2).toItem(true).canMarkUnread)
+        assertFalse(agent("a", AgentState.Idle, turn = 0, seen = 0).toItem(true).canMarkUnread)
+        assertFalse(agent("a", AgentState.Idle, turn = 2, seen = 1).toItem(true).canMarkUnread)
+        assertFalse(
+            SampleData.terminal(address = "s", name = null, argv = listOf("/bin/zsh")).toItem(true).canMarkUnread,
+        )
+    }
+
+    private fun nestedFor(
+        layout: com.mtajchert.flocket.core.model.DesktopLayout?,
+        vararg terminals: TerminalRecord,
+    ): List<TerminalItem> {
+        val session =
+            SampleData.overview
+                .first()
+                .session
+                .copy(terminals = terminals.toList(), machines = emptyList(), desktopLayout = layout)
+        val ov = HostOverview(SampleData.studio, session)
+        return buildUiState(listOf(ov), ListControls(), false)
+            .groups
+            .flatMap { it.sections }
+            .flatMap { it.items }
+    }
+
+    @Test
+    fun `a child with its own desktop pane or herdr space label stays a top-level row`() {
+        val layout =
+            com.mtajchert.flocket.core.model.DesktopLayout(
+                listOf(
+                    com.mtajchert.flocket.core.model.DesktopSpace(
+                        "s",
+                        "S",
+                        null,
+                        listOf(
+                            com.mtajchert.flocket.core.model.DesktopTab(
+                                "t",
+                                "",
+                                listOf(TerminalAddress("p"), TerminalAddress("paned")),
+                                null,
+                            ),
+                        ),
+                    ),
+                ),
+            )
+        val labelled =
+            agent("labelled", AgentState.Working, parent = "p").let {
+                it.copy(
+                    labels =
+                        it.labels + ("herdr.space" to "x"),
+                )
+            }
+        val items =
+            nestedFor(
+                layout,
+                agent("p", AgentState.Idle),
+                agent("paned", AgentState.Working, parent = "p"),
+                labelled,
+                agent("headless", AgentState.Working, parent = "p"),
+            )
+        assertEquals(
+            listOf("p", "paned", "labelled"),
+            items
+                .map {
+                    it.address
+                }.sortedBy { listOf("p", "paned", "labelled").indexOf(it) },
+        )
+        assertEquals(setOf("p", "paned", "labelled"), items.map { it.address }.toSet())
+        assertEquals(listOf("headless"), items.first { it.address == "p" }.children.map { it.address })
+    }
+
+    @Test
+    fun `sub-agents nest depth first and the root takes the whole subtree's urgency`() {
+        val items =
+            nestedFor(
+                null,
+                agent("p", AgentState.Idle, turn = 1, seen = 1),
+                agent("k1", AgentState.Idle, parent = "p"),
+                agent("g1", AgentState.Error, parent = "k1"),
+                agent("k2", AgentState.Working, parent = "p"),
+            )
+        assertEquals(listOf("p"), items.map { it.address })
+        val p = items.single()
+        assertEquals(listOf("k1" to 1, "g1" to 2, "k2" to 1), p.children.map { it.address to it.depth })
+        assertEquals(ShownStatus.NeedsYou.rank, p.urgency)
+    }
+
+    @Test
+    fun `grouped mode lists pinned rows first and removes them from their space`() {
+        val ws =
+            Workspace(
+                listOf(
+                    space("desktop:a", "A", null, null, tab("1", "", "x", "y")),
+                    space("desktop:b", "B", null, null, tab("1", "", "z")),
+                ),
+            )
+        val terms =
+            arrayOf(
+                agent("x", AgentState.Idle, pinned = true),
+                agent("y", AgentState.Idle),
+                agent("z", AgentState.Idle, pinned = true),
+            )
+        val state = buildUiState(listOf(overviewOf(*terms)), grouped, false, workspaceOf = { ws })
+        assertEquals(listOf("x", "z"), pinnedGroupedRows(state.groups).map { it.item.address })
+        val spaces = state.local().spaces.mapNotNull { it.withoutPinned() }
+        assertEquals(listOf("A"), spaces.map { it.name })
+        assertEquals(listOf("y"), spaces.single().items.map { it.address })
+    }
+
+    @Test
+    fun `a remote child never falls back to a local parent of the same relative name`() {
+        // rohan/t7 is finished and so not listed: rohan/t8 must not nest under the local t7.
+        val live = listOf(agent("t7", AgentState.Working), agent("rohan/t8", AgentState.Working, parent = "t7"))
+        val items = itemsWithChildren(live, true, true, null)
+        assertEquals(listOf("t7", "rohan/t8"), items.map { it.address })
+        assertTrue(items.all { it.children.isEmpty() })
+        // with rohan/t7 listed the child nests under it, not under the local t7
+        val nested = itemsWithChildren(live + agent("rohan/t7", AgentState.Idle), true, true, null)
+        assertEquals(listOf("rohan/t8"), nested.first { it.address == "rohan/t7" }.children.map { it.address })
+        assertTrue(nested.first { it.address == "t7" }.children.isEmpty())
+    }
+
+    @Test
+    fun `a terminal leading into a parent cycle nests and only the cycle members are roots`() {
+        val items =
+            itemsWithChildren(
+                listOf(
+                    agent("t", AgentState.Working, parent = "a"),
+                    agent("a", AgentState.Idle, parent = "b"),
+                    agent("b", AgentState.Idle, parent = "a"),
+                ),
+                true,
+                true,
+                null,
+            )
+        assertEquals(listOf("a", "b"), items.map { it.address })
+        assertEquals(listOf("t"), items.first { it.address == "a" }.children.map { it.address })
+    }
+
+    @Test
+    fun `pin and mark unread are not offered for a federated terminal whose machine is not connected`() {
+        val terminals =
+            listOf(
+                agent("rohan/t7", AgentState.Idle, turn = 2, seen = 2),
+                agent("t1", AgentState.Idle, turn = 2, seen = 2),
+            )
+        val items =
+            itemsWithChildren(
+                terminals,
+                true,
+                true,
+                null,
+                machineConnected = { it == null },
+            ).associateBy { it.address }
+        assertFalse(items.getValue("rohan/t7").supportsLabels)
+        assertTrue(items.getValue("t1").supportsLabels)
+        val up = itemsWithChildren(terminals, true, true, null, machineConnected = { true })
+        assertTrue(up.all { it.supportsLabels })
     }
 }

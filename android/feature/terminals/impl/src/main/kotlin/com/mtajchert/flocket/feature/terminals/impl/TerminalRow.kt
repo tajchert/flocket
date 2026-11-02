@@ -5,6 +5,8 @@ package com.mtajchert.flocket.feature.terminals.impl
 import android.text.format.DateUtils
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -18,17 +20,23 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CloudOff
 import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.ExpandLess
+import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.HourglassEmpty
+import androidx.compose.material.icons.outlined.MarkChatUnread
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.OpenInNew
 import androidx.compose.material.icons.outlined.PowerSettingsNew
+import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material.icons.outlined.Send
 import androidx.compose.material.icons.outlined.StopCircle
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -48,11 +56,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mtajchert.flocket.core.designsystem.theme.FlocketMono
@@ -60,10 +70,12 @@ import com.mtajchert.flocket.core.designsystem.theme.flocketColors
 import com.mtajchert.flocket.core.model.AgentState
 import com.mtajchert.flocket.core.model.AgentStatus
 import com.mtajchert.flocket.core.model.BlockKind
+import com.mtajchert.flocket.core.model.ShownStatus
 import com.mtajchert.flocket.core.model.folderName
 import com.mtajchert.flocket.core.ui.component.AgentIcon
 import com.mtajchert.flocket.core.ui.component.AgentStatusChip
 import com.mtajchert.flocket.core.ui.component.AgentTile
+import com.mtajchert.flocket.feature.terminal.api.TerminalRoute
 import com.mtajchert.flocket.core.ui.R as CoreUiR
 
 /** One terminal. Tap opens it; long-press or the overflow button opens the action menu. */
@@ -82,6 +94,9 @@ internal fun TerminalRow(
     placeInfo: RowPlace? = null,
     /** Priority with several hosts: which host the terminal is on. */
     hostLabel: String? = null,
+    /** Sub-agents are folded away: the row then says how many there are. */
+    folded: Boolean = false,
+    onToggleFold: () -> Unit = {},
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     val scheme = MaterialTheme.colorScheme
@@ -107,12 +122,12 @@ internal fun TerminalRow(
             // The tile's status badge overhangs it by a fifth of its size, so the gap is wider than it looks.
             AgentTile(
                 item.agentId,
-                if (item.isFinished) AgentStatus.Unknown else item.status,
+                if (item.isFinished) AgentStatus.Unknown else badgeStatus(item),
                 Modifier.padding(end = 20.dp, top = 2.dp),
                 ringColor = if (selected) scheme.secondaryContainer else scheme.surface,
                 contentDescription = null,
             )
-            RowBody(item, shown, nowMs, hostLabel, Modifier.weight(1f))
+            RowBody(item, shown, nowMs, hostLabel, selected, folded, onToggleFold, Modifier.weight(1f))
             Box {
                 IconButton(onClick = { menuOpen = true }) {
                     Icon(
@@ -127,6 +142,16 @@ internal fun TerminalRow(
                 RowMenu(menuOpen, { menuOpen = false }, item, actions, placeInfo)
             }
         }
+    }
+}
+
+/** The status the tile's badge shows: Done and Idle follow the shown status (seen or not), not the raw word. */
+private fun badgeStatus(item: TerminalItem): AgentStatus {
+    val reported = item.status as? AgentStatus.Reported ?: return item.status
+    return when (item.shown) {
+        ShownStatus.Done -> reported.copy(state = AgentState.Done)
+        ShownStatus.Idle -> reported.copy(state = AgentState.Idle)
+        else -> reported
     }
 }
 
@@ -167,6 +192,17 @@ internal fun groupedNames(
         session ?: space.name.ifBlank { stringResource(R.string.workspace_space_fallback, space.number) },
         null,
     )
+}
+
+/** Pinned section of the Grouped list: no space header above, so the project comes first, then the session. */
+@Composable
+internal fun pinnedNames(
+    item: TerminalItem,
+    space: SpaceSection,
+): RowNames {
+    val project = space.name.ifBlank { stringResource(R.string.workspace_space_fallback, space.number) }
+    val session = item.liveTitle ?: item.name?.takeIf { it.isNotBlank() } ?: item.detail
+    return RowNames(project, session?.takeIf { it != project })
 }
 
 /** A row with neither a place, a folder nor a title (should not happen). */
@@ -217,12 +253,16 @@ private fun statusWord(item: TerminalItem): String {
             }
         }
 
-        AgentState.Idle -> {
-            stringResource(R.string.space_status_idle)
-        }
-
-        AgentState.Done -> {
-            stringResource(R.string.space_status_done)
+        AgentState.Idle, AgentState.Done -> {
+            stringResource(
+                if (item.shown ==
+                    ShownStatus.Done
+                ) {
+                    R.string.space_status_done
+                } else {
+                    R.string.space_status_idle
+                },
+            )
         }
 
         AgentState.Error -> {
@@ -241,6 +281,9 @@ private fun RowBody(
     names: RowNames,
     nowMs: Long,
     hostLabel: String?,
+    selected: Boolean,
+    folded: Boolean,
+    onToggleFold: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val scheme = MaterialTheme.colorScheme
@@ -248,6 +291,8 @@ private fun RowBody(
     val reported = item.status as? AgentStatus.Reported
     val state = if (item.isFinished) null else reported?.state
     val title = names.project
+    // Idle rows recede, like the desktop, unless they are the open one.
+    val titleColor = if (item.shown == ShownStatus.Idle && !selected) scheme.onSurfaceVariant else scheme.onSurface
     // "· QA", like the desktop; the host (Priority with several hosts) follows.
     val subtitle = listOfNotNull(names.session, hostLabel).joinToString("") { "· $it " }.trimEnd()
     val previewColor =
@@ -268,6 +313,7 @@ private fun RowBody(
                 Text(
                     title,
                     style = MaterialTheme.typography.bodyLarge.copy(fontSize = 15.sp, fontWeight = FontWeight.Medium),
+                    color = titleColor,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -282,6 +328,16 @@ private fun RowBody(
                     )
                 }
             }
+            if (item.pinned) {
+                Icon(
+                    Icons.Outlined.PushPin,
+                    contentDescription = stringResource(R.string.row_pinned),
+                    Modifier.size(14.dp),
+                    tint = scheme.onSurfaceVariant,
+                )
+            }
+            if (item.children.isNotEmpty()) FoldToggle(item.children.size, folded, onToggleFold)
+            if (item.shown == ShownStatus.NeedsYou) NeedsYouPill()
             if (!item.writable) {
                 Icon(
                     Icons.Outlined.CloudOff,
@@ -322,6 +378,150 @@ private fun RowBody(
             )
         }
         if (item.liveness != LivenessKind.Running) LivenessLabel(item)
+    }
+}
+
+/** Compact "Needs you" pill in the status colors; the tile badge alone is easy to miss. */
+@Composable
+private fun NeedsYouPill() {
+    val fixed = MaterialTheme.flocketColors
+    Surface(shape = RoundedCornerShape(5.dp), color = fixed.attentionContainer) {
+        Text(
+            stringResource(CoreUiR.string.group_needs_you),
+            Modifier.padding(horizontal = 6.dp, vertical = 1.dp),
+            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+            color = fixed.onAttentionContainer,
+            maxLines = 1,
+        )
+    }
+}
+
+/** Chevron of a parent with sub-agents; folded, it also says how many are hidden. */
+@Composable
+private fun FoldToggle(
+    count: Int,
+    folded: Boolean,
+    onToggle: () -> Unit,
+) {
+    val scheme = MaterialTheme.colorScheme
+    val label = stringResource(if (folded) R.string.row_subagents_show else R.string.row_subagents_hide, count)
+    Row(
+        Modifier.clip(RoundedCornerShape(6.dp)).clickable(onClick = onToggle).padding(horizontal = 2.dp).semantics {
+            contentDescription = label
+        },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (folded) Text("$count", style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant)
+        Icon(
+            if (folded) Icons.Outlined.ExpandMore else Icons.Outlined.ExpandLess,
+            contentDescription = null,
+            Modifier.size(16.dp),
+            tint = scheme.onSurfaceVariant,
+        )
+    }
+}
+
+/** A row and, unless folded, its sub-agents indented below it. */
+@Composable
+internal fun TerminalRowTree(
+    item: TerminalItem,
+    selected: TerminalRoute?,
+    nowMs: Long,
+    actions: TerminalsActions,
+    modifier: Modifier = Modifier,
+    /** Extra start padding for the row and its sub-agents. */
+    indent: Dp = 0.dp,
+    dense: Boolean = false,
+    names: RowNames? = null,
+    placeInfo: RowPlace? = null,
+    hostLabel: String? = null,
+    folded: Boolean = false,
+    onToggleFold: () -> Unit = {},
+) {
+    fun isOpen(
+        hostId: String,
+        address: String,
+    ) = selected != null && selected.hostId == hostId && selected.address == address
+    Column(modifier) {
+        TerminalRow(
+            item = item,
+            selected = isOpen(item.hostId.value, item.address),
+            nowMs = nowMs,
+            actions = actions,
+            modifier = Modifier.padding(start = indent),
+            dense = dense,
+            names = names,
+            placeInfo = placeInfo,
+            hostLabel = hostLabel,
+            folded = folded,
+            onToggleFold = onToggleFold,
+        )
+        if (!folded) {
+            item.children.forEach { child ->
+                ChildRow(child, isOpen(child.hostId.value, child.address), {
+                    actions.onOpenChild(child)
+                }, Modifier.padding(start = indent))
+            }
+        }
+    }
+}
+
+/** A sub-agent: smaller, indented, with the status glyph at the right (desktop `subRow`). */
+@Composable
+private fun ChildRow(
+    child: ChildItem,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val scheme = MaterialTheme.colorScheme
+    Row(
+        modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp)
+            .clip(MaterialTheme.shapes.medium)
+            .background(if (selected) scheme.secondaryContainer else Color.Transparent)
+            .clickable(onClick = onClick)
+            .padding(start = 52.dp + 16.dp * (child.depth - 1), end = 12.dp)
+            .heightIn(min = 36.dp)
+            .semantics { this.selected = selected },
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        AgentIcon(child.agentId, size = 18.dp, contentDescription = null)
+        Text(
+            child.title,
+            Modifier.weight(1f),
+            style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp),
+            color = if (selected) scheme.onSurface else scheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        StatusGlyph(child.shown)
+    }
+}
+
+/** Working spins, Needs you is a solid warning dot, Idle is a ring; Done a filled dot. */
+@Composable
+private fun StatusGlyph(shown: ShownStatus?) {
+    val scheme = MaterialTheme.colorScheme
+    val fixed = MaterialTheme.flocketColors
+    when (shown) {
+        ShownStatus.Working -> {
+            CircularProgressIndicator(Modifier.size(14.dp), color = scheme.primary, strokeWidth = 2.dp)
+        }
+
+        ShownStatus.NeedsYou -> {
+            Box(Modifier.size(8.dp).background(fixed.attentionSolid, CircleShape))
+        }
+
+        ShownStatus.Done -> {
+            Box(Modifier.size(8.dp).background(scheme.primary, CircleShape))
+        }
+
+        else -> {
+            Box(Modifier.size(8.dp).border(1.5.dp, scheme.outline, CircleShape))
+        }
     }
 }
 
@@ -382,6 +582,23 @@ private fun RowMenu(
             leadingIcon = { Icon(Icons.Outlined.OpenInNew, contentDescription = null) },
         )
         if (placeInfo != null) RenameItems(item, placeInfo, actions, onDismiss)
+        if (item.supportsLabels && item.writable && !item.isFinished) {
+            DropdownMenuItem(
+                text = { Text(stringResource(if (item.pinned) R.string.action_unpin else R.string.action_pin)) },
+                onClick = {
+                    onDismiss()
+                    actions.onPin(item, !item.pinned)
+                },
+                leadingIcon = { Icon(Icons.Outlined.PushPin, contentDescription = null) },
+            )
+            if (item.canMarkUnread) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.action_mark_unread)) },
+                    onClick = run(actions.onMarkUnread),
+                    leadingIcon = { Icon(Icons.Outlined.MarkChatUnread, contentDescription = null) },
+                )
+            }
+        }
         if (!item.isFinished) {
             DropdownMenuItem(
                 text = { Text(stringResource(R.string.action_interrupt)) },

@@ -147,7 +147,7 @@ class TerminalsComposeTest {
     @Test
     fun `priority list groups rows by status across hosts with Other terminals collapsed`() {
         show(priorityState)
-        rule.onNodeWithText("Needs you").assertExists()
+        rule.onAllNodesWithText("Needs you")[0].assertExists()
         val rows = hasContentDescription("Actions for", substring = true)
         val before = rule.onAllNodes(rows).fetchSemanticsNodes().size
         val other =
@@ -159,6 +159,30 @@ class TerminalsComposeTest {
         // Other terminals start collapsed; one tap on its header shows its rows.
         rule.onAllNodesWithText("Other terminals")[0].performClick()
         assertEquals(before + other.sumOf { it.rows.size }, rule.onAllNodes(rows).fetchSemanticsNodes().size)
+    }
+
+    @Test
+    fun `priority list shows Other terminals expanded when there are no agent rows`() {
+        val shellsOnly =
+            priorityState.copy(
+                groups =
+                    priorityState.groups.map { g ->
+                        g.copy(
+                            sections =
+                                g.sections.map { sec ->
+                                    sec.copy(priority = sec.priority.filter { it.bucket == PriorityBucket.NoStatus })
+                                },
+                        )
+                    },
+            )
+        val rows = hasContentDescription("Actions for", substring = true)
+        val shells = shellsOnly.groups.flatMap { g -> g.sections.flatMap { it.priority } }.sumOf { it.rows.size }
+        assertTrue(shells > 0)
+        show(shellsOnly)
+        assertEquals(shells, rule.onAllNodes(rows).fetchSemanticsNodes().size)
+        // The user's toggle wins over the default.
+        rule.onAllNodesWithText("Other terminals")[0].performClick()
+        assertEquals(0, rule.onAllNodes(rows).fetchSemanticsNodes().size)
     }
 
     @Test
@@ -221,6 +245,62 @@ class TerminalsComposeTest {
         rule.onAllNodesWithContentDescription("fix-ci", substring = true)[0].performClick()
         rule.onNodeWithText("Kill…").performClick()
         assertEquals("t2", killed?.address)
+    }
+
+    private fun TerminalsUiState.mapItems(f: (TerminalItem) -> TerminalItem) =
+        copy(
+            groups =
+                groups.map { g ->
+                    g.copy(
+                        sections =
+                            g.sections.map { sec ->
+                                sec.copy(
+                                    priority =
+                                        sec.priority.map { p ->
+                                            p.copy(rows = p.rows.map { r -> r.copy(item = f(r.item)) })
+                                        },
+                                )
+                            },
+                    )
+                },
+        )
+
+    @Test
+    fun `row menu offers pin and mark unread when the host supports labels`() {
+        var pinned: Pair<String, Boolean>? = null
+        var unread: String? = null
+        val labelled = state.mapItems { it.copy(supportsLabels = true, canMarkUnread = true) }
+        show(
+            labelled,
+            TerminalsActions(onPin = {
+                item,
+                pin,
+                ->
+                pinned = item.address to pin
+            }, onMarkUnread = { unread = it.address }),
+        )
+        rule.onAllNodesWithContentDescription("fix-ci", substring = true)[0].performClick()
+        rule.onNodeWithText("Mark as unread").performClick()
+        assertEquals("t2", unread)
+        rule.onAllNodesWithContentDescription("fix-ci", substring = true)[0].performClick()
+        rule.onNodeWithText("Pin to the top").performClick()
+        assertEquals("t2" to true, pinned)
+    }
+
+    @Test
+    fun `a pinned row offers Unpin and unsupported hosts hide the label actions`() {
+        show(state.mapItems { it.copy(supportsLabels = true, pinned = true) })
+        rule.onAllNodesWithContentDescription("fix-ci", substring = true)[0].performClick()
+        rule.onNodeWithText("Unpin").assertExists()
+        rule.onNodeWithText("Mark as unread").assertDoesNotExist()
+    }
+
+    @Test
+    fun `hosts without label support show neither pin nor mark unread`() {
+        show(state.mapItems { it.copy(supportsLabels = false, canMarkUnread = true) })
+        rule.onAllNodesWithContentDescription("fix-ci", substring = true)[0].performClick()
+        rule.onNodeWithText("Pin to the top").assertDoesNotExist()
+        rule.onNodeWithText("Mark as unread").assertDoesNotExist()
     }
 
     @Test
