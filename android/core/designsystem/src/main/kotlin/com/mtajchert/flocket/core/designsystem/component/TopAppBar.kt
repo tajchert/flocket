@@ -39,7 +39,7 @@ import com.mtajchert.flocket.core.designsystem.theme.FlocketTheme
  * Scaffold(
  *     topBar = {
  *         FlocketTopAppBar(
- *             title = "Terminals",
+ *             title = "Agents",
  *             onNavigationClick = { navController.popBackStack() },
  *         )
  *     }
@@ -98,7 +98,7 @@ fun FlocketTopAppBar(
 private fun FlocketTopAppBarPreview() {
     FlocketTheme {
         FlocketTopAppBar(
-            title = "Terminals",
+            title = "Agents",
         )
     }
 }

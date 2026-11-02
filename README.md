@@ -22,13 +22,13 @@ onto them. It's built for phones, foldables and tablets alike.
 
 <p align="center">
   <img src="docs/readme/screenshots/welcome-phone-light.png" alt="Welcome screen with the Flocket mark" width="200">
-  <img src="docs/readme/screenshots/terminals-phone-light.png" alt="Terminals grouped by agent status: needs you, working, done" width="200">
+  <img src="docs/readme/screenshots/terminals-phone-light.png" alt="Agents grouped by status: needs you, working, done" width="200">
   <img src="docs/readme/screenshots/terminals-phone-dark.png" alt="The same list in the dark theme" width="200">
   <img src="docs/readme/screenshots/terminal-live-phone-dark.png" alt="A live terminal running a coding agent, with the extra-keys row" width="200">
 </p>
 <p align="center">
-  <img src="docs/readme/screenshots/terminal-two-pane-tablet.png" alt="Tablet: the terminals list and a live agent terminal side by side" width="560">
-  <img src="docs/readme/screenshots/terminals-foldable.png" alt="Unfolded foldable: terminals across hosts, folders and a federated machine" width="280">
+  <img src="docs/readme/screenshots/terminal-two-pane-tablet.png" alt="Tablet: the agents list and a live agent terminal side by side" width="560">
+  <img src="docs/readme/screenshots/terminals-foldable.png" alt="Unfolded foldable: agents across hosts, folders and a federated machine" width="280">
 </p>
 
 <picture>

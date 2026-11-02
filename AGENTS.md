@@ -38,6 +38,10 @@ shared by every platform. Read it first, then the guide for your platform:
 
 ## Working rules
 
+- **UI vocabulary.** The things in the list are **agents** (the Agents tab, New agent, "3 agents"),
+  because nearly every terminal runs one. Say **terminal** only for the screen and its display
+  settings, for shells, and for the protocol. Rows with no agent are grouped as "Other terminals".
+  Code and the protocol keep `terminal` (`feature:terminals`, `TerminalRoute`, `terminal.attach`).
 - **Protocol changes start in `protocol/`.** Update `SPEC.md` and add or refresh a
   fixture, then change each platform. Fixtures record the `hc --version` they came from.
 - **Do not touch a developer's real herdr session.** Tests and experiments use an
