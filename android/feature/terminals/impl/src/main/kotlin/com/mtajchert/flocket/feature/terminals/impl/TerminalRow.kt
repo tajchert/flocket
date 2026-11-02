@@ -36,7 +36,6 @@ import androidx.compose.material.icons.outlined.PowerSettingsNew
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material.icons.outlined.Send
 import androidx.compose.material.icons.outlined.StopCircle
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -75,6 +74,7 @@ import com.mtajchert.flocket.core.model.folderName
 import com.mtajchert.flocket.core.ui.component.AgentIcon
 import com.mtajchert.flocket.core.ui.component.AgentStatusChip
 import com.mtajchert.flocket.core.ui.component.AgentTile
+import com.mtajchert.flocket.core.ui.component.WorkingSpinner
 import com.mtajchert.flocket.feature.terminal.api.TerminalRoute
 import com.mtajchert.flocket.core.ui.R as CoreUiR
 
@@ -508,7 +508,7 @@ private fun StatusGlyph(shown: ShownStatus?) {
     val fixed = MaterialTheme.flocketColors
     when (shown) {
         ShownStatus.Working -> {
-            CircularProgressIndicator(Modifier.size(14.dp), color = scheme.primary, strokeWidth = 2.dp)
+            WorkingSpinner(color = scheme.primary)
         }
 
         ShownStatus.NeedsYou -> {
