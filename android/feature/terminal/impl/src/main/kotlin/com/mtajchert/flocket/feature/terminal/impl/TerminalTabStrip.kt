@@ -98,13 +98,15 @@ fun TerminalTabStrip(
                     ) { onOpen(tab.target) }
                 }
             }
-        } else {
+        } else if (strip.panes.size < 2) {
             Box(Modifier.weight(1f))
         }
         if (strip.panes.size >= 2) {
             if (strip.tabs.size >= 2) VerticalDivider(Modifier.padding(horizontal = 8.dp).height(20.dp))
+            // Beside tabs the pane switcher is capped; alone (one tab, several panes) it starts at the edge.
+            val width = if (strip.tabs.size >= 2) Modifier.widthIn(max = 300.dp) else Modifier.weight(1f)
             Row(
-                modifier = Modifier.widthIn(max = 300.dp).horizontalScroll(rememberScrollState()),
+                modifier = width.horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
