@@ -5,6 +5,7 @@ import android.content.Intent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -17,6 +18,7 @@ import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
@@ -27,6 +29,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
@@ -89,13 +92,6 @@ fun PublicKeyCard(
                     modifier = Modifier.padding(start = 8.dp),
                 )
             }
-            OutlinedButton(onClick = { copy("key", key.publicKeyOpenSsh) }, modifier = Modifier.heightIn(min = 40.dp)) {
-                CopyIcon(copied == "key")
-                Text(
-                    stringResource(if (copied == "key") R.string.pubkey_copied else R.string.pubkey_copy_key),
-                    modifier = Modifier.padding(start = 8.dp),
-                )
-            }
             OutlinedButton(
                 onClick = {
                     val send =
@@ -123,11 +119,17 @@ fun PublicKeyCard(
                 Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                Text(
-                    stringResource(R.string.pubkey_fingerprint_label),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        stringResource(R.string.pubkey_fingerprint_label),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.weight(1f),
+                    )
+                    IconButton(onClick = { copy("key", key.publicKeyOpenSsh) }, modifier = Modifier.size(32.dp)) {
+                        CopyIcon(copied == "key", stringResource(R.string.pubkey_copy_key_description))
+                    }
+                }
                 Text(
                     stringResource(R.string.pubkey_summary, key.keyType, key.fingerprint),
                     style = FlocketMono.small.copy(lineHeight = 18.sp),
@@ -138,9 +140,11 @@ fun PublicKeyCard(
 }
 
 @Composable
-private fun CopyIcon(done: Boolean) =
-    Icon(
-        if (done) Icons.Outlined.Done else Icons.Outlined.ContentCopy,
-        contentDescription = null,
-        modifier = Modifier.size(ButtonDefaults.IconSize),
-    )
+private fun CopyIcon(
+    done: Boolean,
+    description: String? = null,
+) = Icon(
+    if (done) Icons.Outlined.Done else Icons.Outlined.ContentCopy,
+    contentDescription = description,
+    modifier = Modifier.size(ButtonDefaults.IconSize),
+)
