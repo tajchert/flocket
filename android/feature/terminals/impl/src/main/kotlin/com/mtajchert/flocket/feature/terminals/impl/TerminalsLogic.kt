@@ -341,49 +341,40 @@ internal fun buildUiState(
     )
 }
 
-/** One row of the inbox: a terminal plus where it lives and which host it is on. */
+/** One row of the Priority list: a terminal plus where it lives and which host it is on. */
 @Immutable
-internal data class InboxRow(
+internal data class PriorityListRow(
     val row: PriorityRow,
     val hostId: HostId,
     val hostLabel: String,
 )
 
-/** One status group of the inbox. */
+/** One status section of the Priority list. */
 @Immutable
-internal data class InboxSection(
+internal data class PriorityListSection(
     val bucket: PriorityBucket,
-    val rows: List<InboxRow>,
+    val rows: List<PriorityListRow>,
 )
 
-/** Inbox group order: needs you, working, done, idle, then no status. */
-private val INBOX_ORDER =
-    listOf(
-        PriorityBucket.NeedsYou,
-        PriorityBucket.Working,
-        PriorityBucket.Done,
-        PriorityBucket.Idle,
-        PriorityBucket.NoStatus,
-    )
-
-/** Flattens the hosts' priority sections into one status-grouped list, optionally for a single host. */
-internal fun inboxSections(
+/** The Priority list: the hosts' status sections flattened into one list across hosts, optionally for a single host. */
+internal fun prioritySections(
     groups: List<HostGroup>,
     hostFilter: HostId? = null,
-): List<InboxSection> {
+): List<PriorityListSection> {
     val rows =
         groups
             .filter { hostFilter == null || it.hostId == hostFilter }
             .flatMap { group ->
                 group.sections.flatMap { section ->
                     section.priority.flatMap { prio ->
-                        prio.rows.map { prio.bucket to InboxRow(it, group.hostId, group.label) }
+                        prio.rows.map { prio.bucket to PriorityListRow(it, group.hostId, group.label) }
                     }
                 }
             }
-    return INBOX_ORDER.mapNotNull { bucket ->
+    // PriorityBucket declares the desktop order: Needs you, Done, Working, Idle, no status.
+    return PriorityBucket.entries.mapNotNull { bucket ->
         rows.filter { it.first == bucket }.map { it.second }.takeIf { it.isNotEmpty() }?.let {
-            InboxSection(
+            PriorityListSection(
                 bucket,
                 it,
             )

@@ -58,7 +58,7 @@ data class MachineSection(
     val machineStateRaw: String?,
     /** Grouped mode: spaces of this machine in display order; empty spaces and tabs are dropped. Empty in Priority mode. */
     val spaces: List<SpaceSection>,
-    /** Priority mode: the non-empty status sections in desktop order. Empty in Grouped mode. */
+    /** Priority mode: the non-empty status sections in desktop order (flattened across hosts by [prioritySections]). Empty in Grouped mode. */
     val priority: List<PrioritySection> = emptyList(),
 ) {
     /** Every row of the section in display order (priority sections, or spaces then tabs then rows). */

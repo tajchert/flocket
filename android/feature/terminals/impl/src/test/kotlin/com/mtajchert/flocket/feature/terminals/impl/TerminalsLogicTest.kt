@@ -157,6 +157,23 @@ class TerminalsLogicTest {
     }
 
     @Test
+    fun `the priority list is one list across hosts in desktop section order`() {
+        val ui = buildUiState(SampleData.overview, ListControls(), refreshing = false)
+        val all = prioritySections(ui.groups)
+        assertEquals(
+            PriorityBucket.entries.filter { b -> all.any { it.bucket == b } },
+            all.map { it.bucket },
+        )
+        assertEquals(PriorityBucket.NoStatus, all.last().bucket)
+        assertEquals(
+            ui.groups.sumOf { it.visibleCount },
+            all.sumOf { it.rows.size },
+        )
+        val one = prioritySections(ui.groups, ui.groups.first().hostId)
+        assertTrue(one.all { s -> s.rows.all { it.hostId == ui.groups.first().hostId } })
+    }
+
+    @Test
     fun `row item carries the matched agent id`() {
         val claude =
             SampleData.terminal(

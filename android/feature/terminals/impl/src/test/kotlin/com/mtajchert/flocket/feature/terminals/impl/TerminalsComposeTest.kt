@@ -55,6 +55,9 @@ class TerminalsComposeTest {
 
     private val state = buildUiState(SampleData.overview, ListControls(), refreshing = false)
 
+    private val groupedState =
+        buildUiState(SampleData.overview, ListControls(sort = TerminalSort.Grouped), refreshing = false)
+
     private fun show(
         state: TerminalsUiState = this.state,
         actions: TerminalsActions = TerminalsActions(),
@@ -122,46 +125,46 @@ class TerminalsComposeTest {
     @Test
     fun `filter chips report the chosen filter`() {
         var chosen: TerminalFilter? = null
-        show(actions = TerminalsActions(onFilter = { chosen = it }))
-        // The priority section "Working" shares the chip label; the chip comes first in the tree.
+        show(groupedState, TerminalsActions(onFilter = { chosen = it }))
+        // The status filter is a chip row in Grouped mode on a phone; the Priority list keeps it in the menu.
         rule.onAllNodesWithText("Working")[0].performClick()
         assertEquals(TerminalFilter.Working, chosen)
         rule.onAllNodesWithText("Finished").assertCountEquals(0)
     }
 
     @Test
-    fun `list shows host headers, the federated machine and the needs attention action`() {
-        show()
+    fun `grouped list shows host headers, the federated machine and the needs attention action`() {
+        show(groupedState)
         rule.onNodeWithText("Studio Mac").assertExists()
         rule.onNodeWithText("Machine rohan").assertExists()
         rule.onAllNodesWithText("Allow running `npm test`?")[0].assertExists()
         rule.onNodeWithText("Review host key").assertExists()
     }
 
-    private val inboxState =
-        buildUiState(SampleData.overview, ListControls(sort = TerminalSort.Inbox), refreshing = false)
+    private val priorityState =
+        buildUiState(SampleData.overview, ListControls(sort = TerminalSort.Priority), refreshing = false)
 
     @Test
-    fun `inbox groups rows by status across hosts with Idle collapsed`() {
-        show(inboxState)
+    fun `priority list groups rows by status across hosts with Other terminals collapsed`() {
+        show(priorityState)
         rule.onNodeWithText("Needs you").assertExists()
         val rows = hasContentDescription("Actions for", substring = true)
         val before = rule.onAllNodes(rows).fetchSemanticsNodes().size
-        val idle =
-            inboxState.groups.flatMap { g -> g.sections.flatMap { it.priority } }.filter {
+        val other =
+            priorityState.groups.flatMap { g -> g.sections.flatMap { it.priority } }.filter {
                 it.bucket ==
-                    PriorityBucket.Idle
+                    PriorityBucket.NoStatus
             }
-        assertTrue(idle.isNotEmpty())
-        // Idle starts collapsed; one tap on its header shows its rows.
-        rule.onAllNodesWithText("Idle")[0].performClick()
-        assertEquals(before + idle.sumOf { it.rows.size }, rule.onAllNodes(rows).fetchSemanticsNodes().size)
+        assertTrue(other.isNotEmpty())
+        // Other terminals start collapsed; one tap on its header shows its rows.
+        rule.onAllNodesWithText("Other terminals")[0].performClick()
+        assertEquals(before + other.sumOf { it.rows.size }, rule.onAllNodes(rows).fetchSemanticsNodes().size)
     }
 
     @Test
-    fun `inbox host chips filter and status filter stays in the options menu`() {
+    fun `priority host chips filter and status filter stays in the options menu`() {
         var chosen: TerminalFilter? = null
-        show(inboxState, TerminalsActions(onFilter = { chosen = it }))
+        show(priorityState, TerminalsActions(onFilter = { chosen = it }))
         rule.onNodeWithText("Studio Mac").performClick()
         rule.onNodeWithContentDescription("List options").performClick()
         rule.onNodeWithText("Needs attention").performClick()
@@ -173,11 +176,11 @@ class TerminalsComposeTest {
         var chosen: TerminalSort? = null
         show(actions = TerminalsActions(onSort = { chosen = it }))
         rule.onNodeWithContentDescription("List options").performClick()
-        rule.onNodeWithText("Priority").assertExists()
+        rule.onNodeWithText("Priority (by status)").assertExists()
         rule.onNodeWithText("Grouped by space").performClick()
         assertEquals(TerminalSort.Grouped, chosen)
         rule.onNodeWithContentDescription("List options").performClick()
-        rule.onNodeWithText("Priority").performClick()
+        rule.onNodeWithText("Priority (by status)").performClick()
         assertEquals(TerminalSort.Priority, chosen)
     }
 
@@ -390,12 +393,9 @@ class TerminalsComposeTest {
     fun `priority row overflow has Rename tab and Rename space only when refs exist`() {
         val state = renameState(TerminalSort.Priority)
         val addresses =
-            state.groups
-                .first()
-                .sections
-                .first()
-                .items
-                .map { it.address }
+            prioritySections(state.groups)
+                .filter { it.bucket != PriorityBucket.NoStatus }
+                .flatMap { s -> s.rows.map { it.row.item.address } }
         val actionButtons = hasContentDescription("Actions for", substring = true)
         var asked = mutableListOf<LayoutRef>()
         show(state, TerminalsActions(onRename = { _, ref, _, _ -> asked += ref }))
@@ -422,12 +422,9 @@ class TerminalsComposeTest {
             }
         val stale = buildUiState(listOf(offline), ListControls(), false) { renameWorkspace }
         val addresses =
-            stale.groups
-                .first()
-                .sections
-                .first()
-                .items
-                .map { it.address }
+            prioritySections(stale.groups)
+                .filter { it.bucket != PriorityBucket.NoStatus }
+                .flatMap { s -> s.rows.map { it.row.item.address } }
         var asked = 0
         show(stale, TerminalsActions(onRename = { _, _, _, _ -> asked++ }))
         rule.onAllNodes(hasContentDescription("Actions for", substring = true))[addresses.indexOf("t1")].performClick()

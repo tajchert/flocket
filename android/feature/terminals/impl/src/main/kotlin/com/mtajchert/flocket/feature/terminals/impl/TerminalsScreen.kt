@@ -134,7 +134,7 @@ fun TerminalsScreen(
     val canAdd = state.emptyKind != EmptyKind.NoHosts && state.loaded
     // The navigation rail carries the New terminal button; the list shows its own only without the rail.
     val showAdd = canAdd && !paneLayout.navigationRail
-    val inbox = state.sort == TerminalSort.Inbox
+    val priority = state.sort == TerminalSort.Priority
     // The host chip selection; a host that has gone away counts as "All".
     var hostFilterValue by rememberSaveable { mutableStateOf<String?>(null) }
     val hostFilter = state.groups.firstOrNull { it.hostId.value == hostFilterValue }?.hostId
@@ -177,7 +177,11 @@ fun TerminalsScreen(
                             )
                         }
                     }
-                    if (state.emptyKind != EmptyKind.NoHosts) OptionsMenu(state, actions, showFilters = inbox || dense)
+                    if (state.emptyKind !=
+                        EmptyKind.NoHosts
+                    ) {
+                        OptionsMenu(state, actions, showFilters = priority || dense)
+                    }
                 },
             )
         },
@@ -200,8 +204,8 @@ fun TerminalsScreen(
     ) { padding ->
         CenteredContent(Modifier.padding(padding), maxWidth = 720.dp) {
             Column {
-                if (inbox && state.loaded && state.emptyKind != EmptyKind.NoHosts) {
-                    InboxHeader(state, hostFilter, onHost = { hostFilterValue = it?.value })
+                if (priority && state.loaded && state.emptyKind != EmptyKind.NoHosts) {
+                    PriorityHeader(state, hostFilter, onHost = { hostFilterValue = it?.value })
                 } else if (!dense && state.loaded && state.emptyKind != EmptyKind.NoHosts) {
                     FilterRow(state.filter, actions.onFilter)
                 }
@@ -237,8 +241,8 @@ fun TerminalsScreen(
                     }
 
                     else -> {
-                        if (inbox) {
-                            InboxList(state, actions, selected, nowMs, dense, hostFilter)
+                        if (priority) {
+                            PriorityList(state, actions, selected, nowMs, dense, hostFilter)
                         } else {
                             TerminalList(state, actions, selected, nowMs, dense)
                         }
@@ -266,7 +270,7 @@ private fun OptionsMenu(
     }
     DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
         if (showFilters) {
-            // The status filter is a chip row only on a phone outside the inbox; otherwise it lives here.
+            // The status filter is a chip row only on a phone outside the priority list; otherwise it lives here.
             Text(
                 stringResource(R.string.menu_filter_title),
                 style = MaterialTheme.typography.labelMedium,
@@ -292,7 +296,6 @@ private fun OptionsMenu(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
         )
         listOf(
-            TerminalSort.Inbox to R.string.menu_sort_inbox,
             TerminalSort.Priority to R.string.menu_sort_priority,
             TerminalSort.Grouped to R.string.menu_sort_grouped,
         ).forEach { (sort, label) ->
@@ -405,25 +408,6 @@ private fun TerminalList(
                             MachineHeader(section)
                         }
                     }
-                    section.priority.forEach { prio ->
-                        val sectionKey = "${group.hostId.value}/${section.machine.orEmpty()}/${prio.bucket.name}"
-                        item(key = "prio:$sectionKey", contentType = "prio") { PriorityHeader(prio) }
-                        items(prio.rows.size, key = { prio.rows[it].item.key }, contentType = { "row" }) { index ->
-                            val row = prio.rows[index]
-                            TerminalRow(
-                                item = row.item,
-                                selected =
-                                    selected != null && selected.hostId == row.item.hostId.value &&
-                                        selected.address == row.item.address,
-                                nowMs = nowMs,
-                                actions = actions,
-                                modifier = Modifier.padding(start = 12.dp),
-                                dense = dense,
-                                names = row.place.names(row.item),
-                                placeInfo = row.place,
-                            )
-                        }
-                    }
                     section.spaces.forEach { space ->
                         val spaceKey = "${group.hostId.value}/${section.machine.orEmpty()}/${space.key}"
                         val isCollapsed = spaceKey in collapsed
@@ -483,32 +467,6 @@ private fun TerminalList(
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun PriorityHeader(section: PrioritySection) {
-    val scheme = MaterialTheme.colorScheme
-    val (title, color) =
-        when (section.bucket) {
-            PriorityBucket.NeedsYou -> R.string.priority_needs_you to statusColor(AgentState.Blocked, scheme)
-            PriorityBucket.Done -> R.string.priority_done to statusColor(AgentState.Done, scheme)
-            PriorityBucket.Working -> R.string.priority_working to statusColor(AgentState.Working, scheme)
-            PriorityBucket.Idle -> R.string.priority_idle to statusColor(AgentState.Idle, scheme)
-            PriorityBucket.NoStatus -> R.string.priority_no_status to statusColor(null, scheme)
-        }
-    Row(
-        Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        Box(Modifier.size(10.dp).background(color, CircleShape))
-        Text(stringResource(title), style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
-        Text(
-            section.rows.size.toString(),
-            style = MaterialTheme.typography.labelMedium,
-            color = scheme.onSurfaceVariant,
-        )
     }
 }
 
@@ -719,10 +677,10 @@ private fun OfflineNotice(onRetry: () -> Unit) {
     }
 }
 
-/** Summary line and host chips above the inbox. */
+/** Summary line and host chips above the priority list. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun InboxHeader(
+private fun PriorityHeader(
     state: TerminalsUiState,
     hostFilter: HostId?,
     onHost: (HostId?) -> Unit,
@@ -807,10 +765,10 @@ private fun PriorityBucket.group(): StatusGroup =
         PriorityBucket.NoStatus -> StatusGroup.NoStatus
     }
 
-/** The status-grouped inbox: Needs you, Working, Done, Idle (collapsed), then no status. */
+/** The cross-host priority list: Needs you, Done, Working, Idle, then Other terminals (collapsed). */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun InboxList(
+private fun PriorityList(
     state: TerminalsUiState,
     actions: TerminalsActions,
     selected: TerminalRoute?,
@@ -818,9 +776,9 @@ private fun InboxList(
     dense: Boolean,
     hostFilter: HostId?,
 ) {
-    // Group keys the user flipped away from their default (Idle starts collapsed, the rest expanded).
+    // Group keys the user flipped away from their default (Other terminals start collapsed, the rest expanded).
     var flipped by rememberSaveable { mutableStateOf(emptySet<String>()) }
-    val sections = remember(state.groups, hostFilter) { inboxSections(state.groups, hostFilter) }
+    val sections = remember(state.groups, hostFilter) { prioritySections(state.groups, hostFilter) }
     val shownGroups = state.groups.filter { hostFilter == null || it.hostId == hostFilter }
     val showHost = state.groups.size > 1 && hostFilter == null
     PullToRefreshBox(isRefreshing = state.refreshing, onRefresh = actions.onRefresh) {
@@ -853,11 +811,16 @@ private fun InboxList(
             }
             sections.forEach { section ->
                 val key = section.bucket.name
-                val expanded = (section.bucket != PriorityBucket.Idle) != (key in flipped)
+                val expanded = (section.bucket != PriorityBucket.NoStatus) != (key in flipped)
                 item(key = "group:$key", contentType = "group") {
                     val group = section.bucket.group()
                     GroupHeader(
-                        title = group.title(),
+                        title =
+                            if (section.bucket == PriorityBucket.NoStatus) {
+                                stringResource(R.string.priority_other_terminals)
+                            } else {
+                                group.title()
+                            },
                         count = section.rows.size,
                         color = group.color(),
                         expanded = expanded,
@@ -873,8 +836,8 @@ private fun InboxList(
                         },
                         contentType = { "row" },
                     ) { index ->
-                        val inboxRow = section.rows[index]
-                        val item = inboxRow.row.item
+                        val listRow = section.rows[index]
+                        val item = listRow.row.item
                         TerminalRow(
                             item = item,
                             selected =
@@ -883,10 +846,10 @@ private fun InboxList(
                             nowMs = nowMs,
                             actions = actions,
                             dense = dense,
-                            names = inboxRow.row.place.names(item),
-                            placeInfo = inboxRow.row.place,
+                            names = listRow.row.place.names(item),
+                            placeInfo = listRow.row.place,
                             hostLabel =
-                                listOfNotNull(inboxRow.hostLabel.takeIf { showHost }, item.ref.address.machine)
+                                listOfNotNull(listRow.hostLabel.takeIf { showHost }, item.ref.address.machine)
                                     .joinToString("/")
                                     .ifEmpty { null },
                         )

@@ -78,9 +78,9 @@ internal fun TerminalRow(
     dense: Boolean = false,
     /** Project and session, as the desktop's Agents panel names a row; see [rowNames]. */
     names: RowNames? = null,
-    /** Priority and inbox modes: the row's space and tab, for the rename entries. */
+    /** Priority mode: the row's space and tab, for the rename entries. */
     placeInfo: RowPlace? = null,
-    /** Inbox with several hosts: which host the terminal is on. */
+    /** Priority with several hosts: which host the terminal is on. */
     hostLabel: String? = null,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
@@ -140,7 +140,7 @@ internal data class RowNames(
     val session: String?,
 )
 
-/** Priority and inbox rows: no space header above, so the row names its space first. */
+/** Priority rows: no space header above, so the row names its space first. */
 @Composable
 internal fun RowPlace.names(item: TerminalItem): RowNames {
     val project =
@@ -248,7 +248,7 @@ private fun RowBody(
     val reported = item.status as? AgentStatus.Reported
     val state = if (item.isFinished) null else reported?.state
     val title = names.project
-    // "· QA", like the desktop; the host (inbox with several hosts) follows.
+    // "· QA", like the desktop; the host (Priority with several hosts) follows.
     val subtitle = listOfNotNull(names.session, hostLabel).joinToString("") { "· $it " }.trimEnd()
     val previewColor =
         when (state) {

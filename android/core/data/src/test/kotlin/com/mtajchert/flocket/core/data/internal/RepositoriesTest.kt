@@ -216,6 +216,9 @@ class RepositoriesTest {
             // A value the app does not know (an older or newer build wrote it) reads back as Priority.
             source.update { it.copy(terminalListSort = "Sideways") }
             assertEquals(TerminalSort.Priority, repo.preferences.first().terminalSort)
+            // The retired Inbox mode is what Priority is now.
+            source.update { it.copy(terminalListSort = "Inbox") }
+            assertEquals(TerminalSort.Priority, repo.preferences.first().terminalSort)
         }
 
     @Test
