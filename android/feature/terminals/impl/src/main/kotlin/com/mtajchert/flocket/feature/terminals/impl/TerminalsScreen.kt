@@ -370,6 +370,41 @@ private fun TerminalList(
             if (state.emptyKind == EmptyKind.AllOffline) {
                 item(key = "offline", contentType = "notice") { OfflineNotice(actions.onRefresh) }
             }
+            val pinned = pinnedGroupedRows(state.groups)
+            if (pinned.isNotEmpty()) {
+                val open = PINNED_KEY !in collapsed
+                item(key = "group:$PINNED_KEY", contentType = "group") {
+                    GroupHeader(
+                        title = stringResource(R.string.priority_pinned),
+                        count = pinned.size,
+                        color = StatusGroup.NoStatus.color(),
+                        expanded = open,
+                        onToggle = { collapsed = if (open) collapsed + PINNED_KEY else collapsed - PINNED_KEY },
+                    )
+                }
+                if (open) {
+                    items(pinned.size, key = { "pinned:" + pinned[it].item.key }, contentType = { "row" }) { index ->
+                        val row = pinned[index]
+                        TerminalRowTree(
+                            item = row.item,
+                            selected = selected,
+                            nowMs = nowMs,
+                            actions = actions,
+                            dense = dense,
+                            names = pinnedNames(row.item, row.space),
+                            hostLabel =
+                                listOfNotNull(
+                                    row.hostLabel.takeIf { state.groups.size > 1 },
+                                    row.item.ref.address.machine,
+                                ).joinToString("/").ifEmpty { null },
+                            folded = row.item.key in folded,
+                            onToggleFold = {
+                                folded = if (row.item.key in folded) folded - row.item.key else folded + row.item.key
+                            },
+                        )
+                    }
+                }
+            }
             state.groups.forEach { group ->
                 stickyHeader(key = "host:${group.hostId.value}", contentType = "host") { HostHeader(group, nowMs) }
                 group.error?.let { error ->
@@ -414,7 +449,7 @@ private fun TerminalList(
                             MachineHeader(section)
                         }
                     }
-                    section.spaces.forEach { space ->
+                    section.spaces.mapNotNull { it.withoutPinned() }.forEach { space ->
                         val spaceKey = "${group.hostId.value}/${section.machine.orEmpty()}/${space.key}"
                         val isCollapsed = spaceKey in collapsed
                         item(key = "space:$spaceKey", contentType = "space") {
@@ -881,3 +916,5 @@ private fun PriorityList(
         }
     }
 }
+
+private const val PINNED_KEY = "pinned"

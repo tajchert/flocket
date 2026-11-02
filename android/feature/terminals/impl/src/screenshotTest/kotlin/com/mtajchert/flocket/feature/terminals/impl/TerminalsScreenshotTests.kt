@@ -369,7 +369,7 @@ private fun agentRecord(
     )
 
 /** Pinned, Needs you, Done (unseen turn), Idle (seen turn), and a parent with a sub-agent. */
-private val agentsPanel =
+private fun agentsPanelState(controls: ListControls) =
     buildUiState(
         listOf(
             HostOverview(
@@ -421,12 +421,20 @@ private val agentsPanel =
                     ),
             ),
         ),
-        ListControls(sort = TerminalSort.Priority),
+        controls,
         refreshing = false,
     )
+
+private val agentsPanel = agentsPanelState(ListControls(sort = TerminalSort.Priority))
 
 @PreviewTest
 @PreviewPhone
 @PreviewPhoneDark
 @Composable
 private fun TerminalsAgentsPanelScreenshot() = Shot { TerminalsScreen(agentsPanel, TerminalsActions(), nowMs = NOW) }
+
+@PreviewTest
+@PreviewPhone
+@Composable
+private fun TerminalsAgentsPanelGroupedScreenshot() =
+    Shot { TerminalsScreen(agentsPanelState(grouped), TerminalsActions(), nowMs = NOW) }

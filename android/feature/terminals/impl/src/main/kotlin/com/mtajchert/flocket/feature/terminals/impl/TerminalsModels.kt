@@ -74,6 +74,8 @@ data class ChildItem(
     val agentId: String?,
     /** Sub-agent status ([com.mtajchert.flocket.core.model.childShownStatus]); null = no reported status. */
     val shown: ShownStatus?,
+    /** 1 = a direct sub-agent of the row; deeper levels indent further. */
+    val depth: Int = 1,
 ) {
     val hostId: HostId get() = ref.endpoint.hostId
     val address: String get() = ref.address.value

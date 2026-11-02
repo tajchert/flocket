@@ -194,6 +194,17 @@ internal fun groupedNames(
     )
 }
 
+/** Pinned section of the Grouped list: no space header above, so the project comes first, then the session. */
+@Composable
+internal fun pinnedNames(
+    item: TerminalItem,
+    space: SpaceSection,
+): RowNames {
+    val project = space.name.ifBlank { stringResource(R.string.workspace_space_fallback, space.number) }
+    val session = item.liveTitle ?: item.name?.takeIf { it.isNotBlank() } ?: item.detail
+    return RowNames(project, session?.takeIf { it != project })
+}
+
 /** A row with neither a place, a folder nor a title (should not happen). */
 @Composable
 private fun unnamed(item: TerminalItem): String = item.agentLabel.ifBlank { stringResource(R.string.row_shell) }
@@ -471,7 +482,7 @@ private fun ChildRow(
             .clip(MaterialTheme.shapes.medium)
             .background(if (selected) scheme.secondaryContainer else Color.Transparent)
             .clickable(onClick = onClick)
-            .padding(start = 52.dp, end = 12.dp)
+            .padding(start = 52.dp + 16.dp * (child.depth - 1), end = 12.dp)
             .heightIn(min = 36.dp)
             .semantics { this.selected = selected },
         verticalAlignment = Alignment.CenterVertically,

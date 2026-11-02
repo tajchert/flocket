@@ -624,4 +624,104 @@ class TerminalsLogicTest {
             SampleData.terminal(address = "s", name = null, argv = listOf("/bin/zsh")).toItem(true).canMarkUnread,
         )
     }
+
+    private fun nestedFor(
+        layout: com.mtajchert.flocket.core.model.DesktopLayout?,
+        vararg terminals: TerminalRecord,
+    ): List<TerminalItem> {
+        val session =
+            SampleData.overview
+                .first()
+                .session
+                .copy(terminals = terminals.toList(), machines = emptyList(), desktopLayout = layout)
+        val ov = HostOverview(SampleData.studio, session)
+        return buildUiState(listOf(ov), ListControls(), false)
+            .groups
+            .flatMap { it.sections }
+            .flatMap { it.items }
+    }
+
+    @Test
+    fun `a child with its own desktop pane or herdr space label stays a top-level row`() {
+        val layout =
+            com.mtajchert.flocket.core.model.DesktopLayout(
+                listOf(
+                    com.mtajchert.flocket.core.model.DesktopSpace(
+                        "s",
+                        "S",
+                        null,
+                        listOf(
+                            com.mtajchert.flocket.core.model.DesktopTab(
+                                "t",
+                                "",
+                                listOf(TerminalAddress("p"), TerminalAddress("paned")),
+                                null,
+                            ),
+                        ),
+                    ),
+                ),
+            )
+        val labelled =
+            agent("labelled", AgentState.Working, parent = "p").let {
+                it.copy(
+                    labels =
+                        it.labels + ("herdr.space" to "x"),
+                )
+            }
+        val items =
+            nestedFor(
+                layout,
+                agent("p", AgentState.Idle),
+                agent("paned", AgentState.Working, parent = "p"),
+                labelled,
+                agent("headless", AgentState.Working, parent = "p"),
+            )
+        assertEquals(
+            listOf("p", "paned", "labelled"),
+            items
+                .map {
+                    it.address
+                }.sortedBy { listOf("p", "paned", "labelled").indexOf(it) },
+        )
+        assertEquals(setOf("p", "paned", "labelled"), items.map { it.address }.toSet())
+        assertEquals(listOf("headless"), items.first { it.address == "p" }.children.map { it.address })
+    }
+
+    @Test
+    fun `sub-agents nest depth first and the root takes the whole subtree's urgency`() {
+        val items =
+            nestedFor(
+                null,
+                agent("p", AgentState.Idle, turn = 1, seen = 1),
+                agent("k1", AgentState.Idle, parent = "p"),
+                agent("g1", AgentState.Error, parent = "k1"),
+                agent("k2", AgentState.Working, parent = "p"),
+            )
+        assertEquals(listOf("p"), items.map { it.address })
+        val p = items.single()
+        assertEquals(listOf("k1" to 1, "g1" to 2, "k2" to 1), p.children.map { it.address to it.depth })
+        assertEquals(ShownStatus.NeedsYou.rank, p.urgency)
+    }
+
+    @Test
+    fun `grouped mode lists pinned rows first and removes them from their space`() {
+        val ws =
+            Workspace(
+                listOf(
+                    space("desktop:a", "A", null, null, tab("1", "", "x", "y")),
+                    space("desktop:b", "B", null, null, tab("1", "", "z")),
+                ),
+            )
+        val terms =
+            arrayOf(
+                agent("x", AgentState.Idle, pinned = true),
+                agent("y", AgentState.Idle),
+                agent("z", AgentState.Idle, pinned = true),
+            )
+        val state = buildUiState(listOf(overviewOf(*terms)), grouped, false, workspaceOf = { ws })
+        assertEquals(listOf("x", "z"), pinnedGroupedRows(state.groups).map { it.item.address })
+        val spaces = state.local().spaces.mapNotNull { it.withoutPinned() }
+        assertEquals(listOf("A"), spaces.map { it.name })
+        assertEquals(listOf("y"), spaces.single().items.map { it.address })
+    }
 }
