@@ -6,7 +6,7 @@ Compact width shows the terminal list, then the terminal on its own full screen.
 
 - `:app` creates `FlocketNavHost` (`app/src/main/kotlin/com/mtajchert/flocket/navigation/`) with a single Navigation 3 back stack and `rememberListDetailSceneStrategy`. Features do not branch on screen size; a destination declares its pane role as `NavEntry` metadata (`ListDetailSceneStrategy.listPane()` / `detailPane()`), and the scene strategy decides what fits.
 - This is the Navigation 3 Scenes approach, deliberately not `ListDetailPaneScaffold`, which would need selection state alongside the back stack (two sources of truth).
-- `calculatePaneScaffoldDirective(...)` is copied with `horizontalPartitionSpacerSize = 0.dp` to remove the gap between panes (b/418201867); drop the override once fixed upstream.
+- `calculatePaneScaffoldDirectiveWithTwoPanesOnMediumWidth(...)` (two panes from 600dp; the plain `calculatePaneScaffoldDirective` would only split expanded windows, leaving an unfolded Fold single-pane) is copied with `horizontalPartitionSpacerSize = 0.dp` to remove the gap between panes (b/418201867); drop the override once fixed upstream.
 - When two panes are visible a detail screen must not draw a back arrow. Entries receive a `showDetailBackButton` flag (false on multi-pane layouts).
 
 ## Sidebar, focus mode and chrome
