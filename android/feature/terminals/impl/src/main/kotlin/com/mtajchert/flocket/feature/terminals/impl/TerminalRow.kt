@@ -224,7 +224,6 @@ private fun RowBody(
                     style = MaterialTheme.typography.bodyLarge.copy(fontSize = 15.sp, fontWeight = FontWeight.Medium),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false),
                 )
                 if (subtitle.isNotEmpty()) {
                     Text(
