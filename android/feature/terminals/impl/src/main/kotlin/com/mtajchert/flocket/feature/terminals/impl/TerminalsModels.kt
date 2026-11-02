@@ -12,8 +12,8 @@ import com.mtajchert.flocket.core.model.TerminalSort
 import com.mtajchert.flocket.core.model.TerminalTemplate
 import com.mtajchert.flocket.core.ui.error.UiError
 
-/** Which terminals the list shows. Finished ones additionally need [TerminalsUiState.showFinished] (or [Finished]). */
-enum class TerminalFilter { All, NeedsAttention, Working, Finished }
+/** Which terminals the list shows. Finished terminals are never listed. */
+enum class TerminalFilter { All, NeedsAttention, Working }
 
 enum class LivenessKind { Running, Waiting, Finished }
 
@@ -40,6 +40,10 @@ data class TerminalItem(
     val urgency: Int,
     /** False while the host is not online: all write actions are disabled. */
     val writable: Boolean,
+    /** The program's own title when it says something (an agent's session title such as `QA`); see [tellingTitle]. */
+    val liveTitle: String? = null,
+    /** What the row says after its project ("flocket · QA"); set by [buildSections], see [rowDetail]. */
+    val detail: String? = null,
 ) {
     val hostId: HostId get() = ref.endpoint.hostId
     val address: String get() = ref.address.value
@@ -64,7 +68,7 @@ data class MachineSection(
 }
 
 /** The desktop Agents panel's sections, in display order. */
-enum class PriorityBucket { NeedsYou, Done, Working, Idle, NoStatus, Finished }
+enum class PriorityBucket { NeedsYou, Done, Working, Idle, NoStatus }
 
 /** Where a row lives, shown under it in Priority mode. */
 @Immutable
@@ -173,12 +177,10 @@ data class TerminalsUiState(
     val groups: List<HostGroup> = emptyList(),
     val filter: TerminalFilter = TerminalFilter.All,
     val sort: TerminalSort = TerminalSort.Priority,
-    val showFinished: Boolean = false,
     val refreshing: Boolean = false,
     val emptyKind: EmptyKind? = null,
     /** At least one host is online, so a terminal can be started. */
     val canCreate: Boolean = false,
-    val hiddenFinished: Int = 0,
 )
 
 sealed interface TerminalDialog {

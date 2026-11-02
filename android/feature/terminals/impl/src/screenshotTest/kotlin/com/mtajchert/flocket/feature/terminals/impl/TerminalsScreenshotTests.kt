@@ -228,7 +228,7 @@ private fun TerminalsDenseDesktopLayoutScreenshot() =
 private fun TerminalsPriorityScreenshot() =
     Shot {
         TerminalsScreen(
-            stateFor(desktopWorkspace, ListControls(showFinished = true)),
+            stateFor(desktopWorkspace, ListControls()),
             TerminalsActions(),
             selected = TerminalRoute("studio", "t1"),
             nowMs = NOW,
@@ -259,12 +259,12 @@ private fun TerminalsDenseLabelsOnlyScreenshot() =
 @PreviewTest
 @PreviewPhone
 @Composable
-private fun TerminalsListFilteredFinishedScreenshot() =
+private fun TerminalsListGroupedScreenshot() =
     Shot {
         TerminalsScreen(
             buildUiState(
                 SampleData.overview,
-                ListControls(filter = TerminalFilter.All, showFinished = true, sort = TerminalSort.Grouped),
+                ListControls(sort = TerminalSort.Grouped),
                 false,
             ),
             TerminalsActions(),

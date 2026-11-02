@@ -126,8 +126,7 @@ class TerminalsComposeTest {
         // The priority section "Working" shares the chip label; the chip comes first in the tree.
         rule.onAllNodesWithText("Working")[0].performClick()
         assertEquals(TerminalFilter.Working, chosen)
-        rule.onNodeWithText("Finished").performClick()
-        assertEquals(TerminalFilter.Finished, chosen)
+        rule.onAllNodesWithText("Finished").assertCountEquals(0)
     }
 
     @Test
@@ -183,7 +182,7 @@ class TerminalsComposeTest {
     }
 
     @Test
-    fun `unnamed tab shows its number`() {
+    fun `rows read project then session, like the desktop`() {
         val ws =
             Workspace(
                 listOf(
@@ -203,17 +202,20 @@ class TerminalsComposeTest {
                 ),
             )
         show(buildUiState(SampleData.overview.take(1), ListControls(), refreshing = false) { ws })
-        // The place shares the row's subtitle with the agent, so it is matched as a part of it.
-        rule.onAllNodesWithText("Flocket · 2", substring = true)[0].assertExists()
-        rule.onAllNodesWithText("Flocket · agents", substring = true)[0].assertExists()
-        rule.onAllNodesWithText("Flocket · Tab 2", substring = true).assertCountEquals(0)
+        // Like the desktop: the project (space), then a named tab, else the terminal's name; never the agent.
+        rule.onAllNodesWithText("Flocket").assertCountEquals(2)
+        rule.onNodeWithText("· agents").assertExists()
+        rule.onNodeWithText("· fix-ci").assertExists()
+        rule.onAllNodesWithText("· 2", substring = true).assertCountEquals(0)
+        rule.onAllNodesWithText("codex", substring = true).assertCountEquals(0)
+        rule.onAllNodesWithText("claude", substring = true).assertCountEquals(0)
     }
 
     @Test
     fun `row menu kill goes through the callback with the right terminal`() {
         var killed: TerminalItem? = null
         show(actions = TerminalsActions(onKill = { killed = it }))
-        rule.onAllNodesWithContentDescription("Actions for codex")[0].performClick()
+        rule.onAllNodesWithContentDescription("fix-ci", substring = true)[0].performClick()
         rule.onNodeWithText("Kill…").performClick()
         assertEquals("t2", killed?.address)
     }
@@ -223,7 +225,7 @@ class TerminalsComposeTest {
         val stale = state.copy(groups = state.groups.filter { it.hostId == HostId("hetzner") })
         var killed = false
         show(stale, TerminalsActions(onKill = { killed = true }))
-        rule.onAllNodesWithContentDescription("Actions for claude")[0].performClick()
+        rule.onAllNodesWithContentDescription("Actions for", substring = true)[0].performClick()
         rule.onNodeWithText("Read-only until the host reconnects").assertIsDisplayed()
         rule.onNodeWithText("Kill…").assertIsNotEnabled()
         rule.onNodeWithText("Send text…").assertIsNotEnabled()
@@ -361,7 +363,8 @@ class TerminalsComposeTest {
                     listOf(host, ref, current, placeholder)
             }),
         )
-        rule.onNodeWithText("Flocket").performTouchInput { longClick() }
+        // The space header comes before its rows.
+        rule.onAllNodesWithText("Flocket")[0].performTouchInput { longClick() }
         assertEquals(listOf<Any?>(studio, refA, "Flocket", "Space 1"), asked)
         asked = null
         rule.onNodeWithText("agents").performTouchInput { longClick() }

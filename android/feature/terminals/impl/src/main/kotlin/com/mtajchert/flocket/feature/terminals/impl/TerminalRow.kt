@@ -22,7 +22,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CloudOff
-import androidx.compose.material.icons.outlined.DeleteSweep
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.HourglassEmpty
 import androidx.compose.material.icons.outlined.MoreVert
@@ -39,6 +38,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -60,6 +60,7 @@ import com.mtajchert.flocket.core.designsystem.theme.flocketColors
 import com.mtajchert.flocket.core.model.AgentState
 import com.mtajchert.flocket.core.model.AgentStatus
 import com.mtajchert.flocket.core.model.BlockKind
+import com.mtajchert.flocket.core.model.folderName
 import com.mtajchert.flocket.core.ui.component.AgentIcon
 import com.mtajchert.flocket.core.ui.component.AgentStatusChip
 import com.mtajchert.flocket.core.ui.component.AgentTile
@@ -75,8 +76,8 @@ internal fun TerminalRow(
     actions: TerminalsActions,
     modifier: Modifier = Modifier,
     dense: Boolean = false,
-    /** Priority and inbox modes: where the terminal lives ("Space · Tab"), shown beside the agent. */
-    place: String? = null,
+    /** Project and session, as the desktop's Agents panel names a row; see [rowNames]. */
+    names: RowNames? = null,
     /** Priority and inbox modes: the row's space and tab, for the rename entries. */
     placeInfo: RowPlace? = null,
     /** Inbox with several hosts: which host the terminal is on. */
@@ -84,7 +85,7 @@ internal fun TerminalRow(
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     val scheme = MaterialTheme.colorScheme
-    val label = item.agentLabel.ifBlank { stringResource(R.string.row_shell) }
+    val shown = names ?: RowPlace.None.names(item)
     Surface(
         modifier = modifier.padding(horizontal = 8.dp).semantics { this.selected = selected },
         shape = MaterialTheme.shapes.large,
@@ -111,16 +112,66 @@ internal fun TerminalRow(
                 ringColor = if (selected) scheme.secondaryContainer else scheme.surface,
                 contentDescription = null,
             )
-            RowBody(item, label, nowMs, place, hostLabel, Modifier.weight(1f))
+            RowBody(item, shown, nowMs, hostLabel, Modifier.weight(1f))
             Box {
                 IconButton(onClick = { menuOpen = true }) {
-                    Icon(Icons.Outlined.MoreVert, contentDescription = stringResource(R.string.row_actions, label))
+                    Icon(
+                        Icons.Outlined.MoreVert,
+                        contentDescription =
+                            stringResource(
+                                R.string.row_actions,
+                                listOfNotNull(shown.project, shown.session).joinToString(" · "),
+                            ),
+                    )
                 }
                 RowMenu(menuOpen, { menuOpen = false }, item, actions, placeInfo)
             }
         }
     }
 }
+
+/**
+ * How the desktop's Agents panel names a row: the project (its space, e.g. `flocket`) then the session
+ * ([TerminalItem.detail], e.g. `QA`). The agent is not named: its icon already shows it.
+ */
+@Immutable
+internal data class RowNames(
+    val project: String,
+    val session: String?,
+)
+
+/** Priority and inbox rows: no space header above, so the row names its space first. */
+@Composable
+internal fun RowPlace.names(item: TerminalItem): RowNames {
+    val project =
+        when {
+            spaceName.isNotBlank() -> spaceName
+            spaceNumber > 0 -> stringResource(R.string.workspace_space_fallback, spaceNumber)
+            else -> folderName(item.cwd)
+        } ?: return RowNames(item.detail ?: unnamed(item), null)
+    return RowNames(project, item.detail?.takeIf { it != project })
+}
+
+/**
+ * Grouped rows: the space header already names the project, so the session alone. Under tab labels the
+ * tab is named already too, so only the program's title or the terminal's name; else the project.
+ */
+@Composable
+internal fun groupedNames(
+    item: TerminalItem,
+    space: SpaceSection,
+): RowNames {
+    val own = item.liveTitle ?: item.name?.takeIf { it.isNotBlank() }
+    val session = own ?: item.detail.takeUnless { space.showTabLabels }
+    return RowNames(
+        session ?: space.name.ifBlank { stringResource(R.string.workspace_space_fallback, space.number) },
+        null,
+    )
+}
+
+/** A row with neither a place, a folder nor a title (should not happen). */
+@Composable
+private fun unnamed(item: TerminalItem): String = item.agentLabel.ifBlank { stringResource(R.string.row_shell) }
 
 /** Compact age: "now", "5m", "3h", "2d". */
 @Composable
@@ -187,9 +238,8 @@ private fun statusWord(item: TerminalItem): String {
 @Composable
 private fun RowBody(
     item: TerminalItem,
-    label: String,
+    names: RowNames,
     nowMs: Long,
-    place: String?,
     hostLabel: String?,
     modifier: Modifier = Modifier,
 ) {
@@ -197,13 +247,9 @@ private fun RowBody(
     val fixed = MaterialTheme.flocketColors
     val reported = item.status as? AgentStatus.Reported
     val state = if (item.isFinished) null else reported?.state
-    val title = item.name?.takeIf { it.isNotBlank() } ?: label
-    val subtitle =
-        listOfNotNull(
-            label.takeIf { !item.name.isNullOrBlank() },
-            place ?: item.cwd.takeIf { it.isNotBlank() },
-            hostLabel,
-        ).joinToString(" · ")
+    val title = names.project
+    // "· QA", like the desktop; the host (inbox with several hosts) follows.
+    val subtitle = listOfNotNull(names.session, hostLabel).joinToString("") { "· $it " }.trimEnd()
     val previewColor =
         when (state) {
             AgentState.Blocked -> fixed.attention
@@ -336,14 +382,7 @@ private fun RowMenu(
             leadingIcon = { Icon(Icons.Outlined.OpenInNew, contentDescription = null) },
         )
         if (placeInfo != null) RenameItems(item, placeInfo, actions, onDismiss)
-        if (item.isFinished) {
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.action_remove)) },
-                onClick = run(actions.onRemove),
-                enabled = item.writable,
-                leadingIcon = { Icon(Icons.Outlined.DeleteSweep, contentDescription = null) },
-            )
-        } else {
+        if (!item.isFinished) {
             DropdownMenuItem(
                 text = { Text(stringResource(R.string.action_interrupt)) },
                 onClick = run(actions.onInterrupt),

@@ -3,6 +3,7 @@ package com.mtajchert.flocket.feature.terminals.impl
 import androidx.compose.runtime.Immutable
 import com.mtajchert.flocket.core.data.HostOverview
 import com.mtajchert.flocket.core.model.AgentCatalog
+import com.mtajchert.flocket.core.model.AgentKind
 import com.mtajchert.flocket.core.model.AgentState
 import com.mtajchert.flocket.core.model.AgentStatus
 import com.mtajchert.flocket.core.model.ConnectionState
@@ -33,6 +34,40 @@ internal fun shortenPath(path: String): String {
     return "$head/…/${parts[parts.size - 2]}/${parts.last()}"
 }
 
+private val LEADING_GLYPHS = Regex("^[^\\p{L}\\p{N}]+")
+private val PATH_LIKE = Regex("^[~/]|^[A-Za-z]:\\\\")
+
+/**
+ * A terminal title worth showing, like the desktop's Agents panel: leading glyphs (an agent's spinner) are
+ * dropped, and paths, `user@host` prompts and the program's own name say nothing. Null when nothing is left.
+ */
+internal fun tellingTitle(
+    raw: String,
+    agent: AgentKind?,
+    agentLabel: String,
+): String? {
+    // The path check also looks at the raw title: dropping glyphs would turn `~/code` into `code`.
+    if (PATH_LIKE.containsMatchIn(raw.trim())) return null
+    val live = LEADING_GLYPHS.replaceFirst(raw, "").trim()
+    return live.takeUnless {
+        it.isEmpty() ||
+            PATH_LIKE.containsMatchIn(it) ||
+            '@' in it ||
+            it == agent?.name ||
+            it.equals(agent?.id, ignoreCase = true) ||
+            it.equals(agentLabel, ignoreCase = true)
+    }
+}
+
+/**
+ * What a row says after its project, like the desktop: a tab someone named, else the program's own title,
+ * else the terminal's name. Never an automatic tab number (see [buildSections] for the one exception).
+ */
+internal fun rowDetail(
+    tabName: String,
+    item: TerminalItem,
+): String? = tabName.takeIf { it.isNotBlank() } ?: item.liveTitle ?: item.name?.takeIf { it.isNotBlank() }
+
 internal fun TerminalRecord.toItem(writable: Boolean): TerminalItem {
     val finished = liveness as? Liveness.Finished
     val kind =
@@ -42,11 +77,12 @@ internal fun TerminalRecord.toItem(writable: Boolean): TerminalItem {
             is Liveness.Finished -> LivenessKind.Finished
         }
     val endpoint = ref.endpoint
+    val agent = AgentCatalog.of(this)
     return TerminalItem(
         ref = ref,
         key = "${endpoint.hostId.value}/${endpoint.session.orEmpty()}/${address.value}",
         agentLabel = agentLabel,
-        agentId = AgentCatalog.of(this)?.id,
+        agentId = agent?.id,
         name = name,
         status = status,
         headline = statusLine() ?: title.ifBlank { where.orEmpty() },
@@ -57,6 +93,7 @@ internal fun TerminalRecord.toItem(writable: Boolean): TerminalItem {
         signal = finished?.signal,
         urgency = urgencyOf(status, finished != null),
         writable = writable,
+        liveTitle = tellingTitle(title, agent, agentLabel),
     )
 }
 
@@ -69,24 +106,22 @@ private fun TerminalRecord.statusLine(): String? {
 internal data class ListControls(
     val filter: TerminalFilter = TerminalFilter.All,
     val sort: TerminalSort = TerminalSort.Priority,
-    val showFinished: Boolean = false,
 )
 
 private fun TerminalItem.matches(controls: ListControls): Boolean =
     when (controls.filter) {
-        TerminalFilter.All -> controls.showFinished || !isFinished
+        TerminalFilter.All -> true
         TerminalFilter.NeedsAttention -> needsAttention()
         TerminalFilter.Working -> isWorking()
-        TerminalFilter.Finished -> isFinished
     }
 
 /**
- * Arranges the already filtered [shown] rows per machine (the host's own first). In Priority mode each
+ * Arranges the already filtered [rows] per machine (the host's own first). In Priority mode each
  * machine gets the desktop's status sections with rows in core order; in Grouped mode it gets
  * space -> tab -> rows, all ordered by desktop rank (stable, so ties keep the layout order).
  */
 internal fun buildSections(
-    shown: List<TerminalItem>,
+    rows: List<TerminalItem>,
     workspace: Workspace,
     session: SessionState,
     controls: ListControls,
@@ -96,8 +131,9 @@ internal fun buildSections(
 
     // A write goes out only to an online host and, for a federated space, to a connected machine.
     fun canRename(machine: String?) = online && (machine == null || info(machine)?.state == MachineState.Connected)
+    val places = workspace.rowPlaces(::canRename)
+    val shown = withDetails(rows, places)
     if (controls.sort != TerminalSort.Grouped) {
-        val places = workspace.rowPlaces(::canRename)
         return shown
             .groupBy { it.ref.address.machine }
             .entries
@@ -176,19 +212,42 @@ internal fun buildSections(
         }
 }
 
+/**
+ * Sets each row's [TerminalItem.detail]. Rows of one space with nothing to tell them apart get their tab
+ * numbers instead, as on the desktop.
+ */
+private fun withDetails(
+    rows: List<TerminalItem>,
+    places: Map<TerminalAddress, RowPlace>,
+): List<TerminalItem> {
+    val details = rows.map { rowDetail(places[it.ref.address]?.tabName.orEmpty(), it) }
+    val blankPerSpace =
+        rows
+            .filterIndexed { i, _ -> details[i] == null }
+            .groupingBy { places[it.ref.address]?.spaceKey }
+            .eachCount()
+    return rows.mapIndexed { i, item ->
+        val place = places[item.ref.address]
+        val detail =
+            details[i] ?: place
+                ?.takeIf { it.spaceNumber > 0 && (blankPerSpace[it.spaceKey] ?: 0) > 1 }
+                ?.tabNumber
+                ?.toString()
+        if (detail == item.detail) item else item.copy(detail = detail)
+    }
+}
+
 private fun AgentState?.rank(): Int = this?.priorityRank ?: -1
 
 /** The desktop section a row belongs to. A reported but unrecognised state counts as no status. */
-internal fun TerminalItem.bucket(): PriorityBucket {
-    if (isFinished) return PriorityBucket.Finished
-    return when ((status as? AgentStatus.Reported)?.state) {
+internal fun TerminalItem.bucket(): PriorityBucket =
+    when ((status as? AgentStatus.Reported)?.state) {
         AgentState.Blocked, AgentState.Error -> PriorityBucket.NeedsYou
         AgentState.Done -> PriorityBucket.Done
         AgentState.Working -> PriorityBucket.Working
         AgentState.Idle -> PriorityBucket.Idle
         AgentState.Other, null -> PriorityBucket.NoStatus
     }
-}
 
 private fun Workspace.rowPlaces(canRename: (String?) -> Boolean): Map<TerminalAddress, RowPlace> {
     val places = HashMap<TerminalAddress, RowPlace>()
@@ -229,17 +288,13 @@ internal fun buildUiState(
     workspaceOf: (SessionState) -> Workspace = { buildWorkspace(it.terminals, it.desktopLayout, it.machineLayouts) },
 ): TerminalsUiState {
     var totalTerminals = 0
-    var hiddenFinished = 0
     val groups =
         overview.mapNotNull { (host, session) ->
             val online = session.connection is ConnectionState.Online
-            val items = session.terminals.map { it.toItem(writable = online) }
+            // Finished terminals are never listed (the desktop's Agents panel hides them too).
+            val items =
+                session.terminals.filter { it.liveness !is Liveness.Finished }.map { it.toItem(writable = online) }
             totalTerminals += items.size
-            if (controls.filter == TerminalFilter.All &&
-                !controls.showFinished
-            ) {
-                hiddenFinished += items.count { it.isFinished }
-            }
             val shown = items.filter { it.matches(controls) }
             val sections =
                 buildSections(shown, workspaceOf(session), session, controls)
@@ -280,11 +335,9 @@ internal fun buildUiState(
         groups = groups,
         filter = controls.filter,
         sort = controls.sort,
-        showFinished = controls.showFinished,
         refreshing = refreshing,
         emptyKind = empty,
         canCreate = anyOnline,
-        hiddenFinished = hiddenFinished,
     )
 }
 
@@ -303,7 +356,7 @@ internal data class InboxSection(
     val rows: List<InboxRow>,
 )
 
-/** Inbox group order: needs you, working, done, idle, then no status and finished. */
+/** Inbox group order: needs you, working, done, idle, then no status. */
 private val INBOX_ORDER =
     listOf(
         PriorityBucket.NeedsYou,
@@ -311,7 +364,6 @@ private val INBOX_ORDER =
         PriorityBucket.Done,
         PriorityBucket.Idle,
         PriorityBucket.NoStatus,
-        PriorityBucket.Finished,
     )
 
 /** Flattens the hosts' priority sections into one status-grouped list, optionally for a single host. */
@@ -339,5 +391,5 @@ internal fun inboxSections(
     }
 }
 
-/** Needs-you terminals on one host (finished ones excluded). */
+/** Needs-you terminals on one host. */
 internal fun HostGroup.needsYouCount(): Int = sections.sumOf { s -> s.items.count { it.needsAttention() } }
