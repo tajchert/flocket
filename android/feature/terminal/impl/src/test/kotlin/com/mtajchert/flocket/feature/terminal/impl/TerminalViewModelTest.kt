@@ -24,6 +24,7 @@ import com.mtajchert.flocket.core.session.StreamEnd
 import com.mtajchert.flocket.core.session.TerminalStream
 import com.mtajchert.flocket.core.terminal.controller.TerminalController
 import com.mtajchert.flocket.core.terminal.fake.FakeTerminalEngine
+import com.mtajchert.flocket.core.testing.FakeAgentMarks
 import com.mtajchert.flocket.core.testing.FakeConnectionManager
 import com.mtajchert.flocket.core.testing.FakeCoreSession
 import com.mtajchert.flocket.core.testing.FakeHostRepository
@@ -71,6 +72,7 @@ class TerminalViewModelTest {
     private val session: FakeCoreSession get() = manager.fakeSession(SampleData.studio.id)!!
     private val streams = mutableListOf<FakeTerminalStream>()
     private val store = ViewModelStore()
+    private val marks = FakeAgentMarks()
 
     private fun TestScope.viewModel(
         address: String = "t1",
@@ -87,6 +89,7 @@ class TerminalViewModelTest {
                 connections = manager,
                 preferences = preferences,
                 hostSettings = settings,
+                agentMarks = marks,
                 controllerFactory = {
                     TerminalController(
                         engineFactory = { c, r -> FakeTerminalEngine(c, r) },
@@ -372,6 +375,7 @@ class TerminalViewModelTest {
                     manager,
                     FakePreferencesRepository(),
                     FakeHostSettingsRepository(),
+                    marks,
                     {
                         TerminalController({ c, r -> FakeTerminalEngine(c, r) }, FakeTerminalEngine.DEFAULT_THEME, {
                             awaitCancellation()
@@ -638,5 +642,89 @@ class TerminalViewModelTest {
                 TerminalScreenEvent.Message(UiText.Res(UiR.string.rename_error_unreachable, listOf("rohan"))),
                 vm.events.first(),
             )
+        }
+
+    private fun setTurn(
+        address: String,
+        turn: Long,
+    ) = session.update { st ->
+        st.copy(terminals = st.terminals.map { if (it.address.value == address) it.copy(turn = turn) else it })
+    }
+
+    @Test
+    fun `marks the agent seen when it becomes visible, not before`() =
+        runTest {
+            goOnline()
+            val vm = viewModel()
+            advanceUntilIdle()
+            assertTrue(marks.seen.isEmpty())
+
+            vm.setLooking(true)
+            advanceUntilIdle()
+            assertEquals(1, marks.seen.size)
+            assertEquals(
+                "t1",
+                marks.seen
+                    .single()
+                    .address.value,
+            )
+        }
+
+    @Test
+    fun `writes again on a new turn but not twice for the same turn after an unread`() =
+        runTest {
+            goOnline()
+            val vm = viewModel()
+            vm.setLooking(true)
+            advanceUntilIdle()
+            assertEquals(1, marks.seen.size)
+
+            // Mark unread from the list (turn unchanged): a state change must not rewrite it.
+            session.update { st -> st.copy(terminals = st.terminals.map { it.copy(title = "x") }) }
+            advanceUntilIdle()
+            assertEquals(1, marks.seen.size)
+
+            setTurn("t1", 1)
+            advanceUntilIdle()
+            assertEquals(2, marks.seen.size)
+        }
+
+    @Test
+    fun `writes again after leaving and returning`() =
+        runTest {
+            goOnline()
+            val vm = viewModel()
+            vm.setLooking(true)
+            advanceUntilIdle()
+            vm.setLooking(false)
+            setTurn("t1", 1)
+            advanceUntilIdle()
+            assertEquals("nothing while away", 1, marks.seen.size)
+
+            vm.setLooking(true)
+            advanceUntilIdle()
+            assertEquals(2, marks.seen.size)
+        }
+
+    @Test
+    fun `no write for a plain shell`() =
+        runTest {
+            val shell = viewModel(address = "t5")
+            shell.setLooking(true)
+            goOnline()
+            advanceUntilIdle()
+            assertTrue(marks.seen.isEmpty())
+        }
+
+    @Test
+    fun `waits for Online before writing`() =
+        runTest {
+            val vm = viewModel()
+            vm.setLooking(true)
+            advanceUntilIdle()
+            assertTrue(marks.seen.isEmpty())
+            goOnline()
+            advanceUntilIdle()
+            assertEquals(1, marks.seen.size)
         }
 }

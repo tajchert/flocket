@@ -37,6 +37,7 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.core.content.ContextCompat
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mtajchert.flocket.core.model.BellMode
 import com.mtajchert.flocket.core.terminal.controller.TerminalController
@@ -132,6 +133,12 @@ fun TerminalRouteContent(
     DisposableEffect(view, state.keepScreenOn) {
         view.keepScreenOn = state.keepScreenOn
         onDispose { view.keepScreenOn = false }
+    }
+    // "Looking" = app resumed AND this pane composed (Nav3 composes only drawn entries, the detail pane
+    // included): the ViewModel marks the agent seen while this holds.
+    LifecycleResumeEffect(viewModel) {
+        viewModel.setLooking(true)
+        onPauseOrDispose { viewModel.setLooking(false) }
     }
     // Hardware keyboards type into the terminal as soon as the pane is shown (tablets, two-pane).
     LaunchedEffect(surfaceState) {

@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.mtajchert.flocket.core.common.error.AppError
 import com.mtajchert.flocket.core.common.result.AppResult
+import com.mtajchert.flocket.core.data.AgentMarks
 import com.mtajchert.flocket.core.data.ApplicationScope
 import com.mtajchert.flocket.core.data.ConnectionManager
 import com.mtajchert.flocket.core.data.HostSettingsRepository
@@ -16,6 +17,7 @@ import com.mtajchert.flocket.core.model.Liveness
 import com.mtajchert.flocket.core.model.MachineState
 import com.mtajchert.flocket.core.model.TerminalAddress
 import com.mtajchert.flocket.core.model.buildWorkspace
+import com.mtajchert.flocket.core.model.isAgent
 import com.mtajchert.flocket.core.session.AttachMode
 import com.mtajchert.flocket.core.session.AttachRequest
 import com.mtajchert.flocket.core.session.CoreSession
@@ -41,6 +43,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -79,6 +82,7 @@ class TerminalViewModel
         private val connections: ConnectionManager,
         private val preferences: PreferencesRepository,
         private val hostSettings: HostSettingsRepository,
+        private val agentMarks: AgentMarks,
         controllerFactory: TerminalControllerFactory,
         @ApplicationScope private val appScope: CoroutineScope,
     ) : ViewModel() {
@@ -100,6 +104,9 @@ class TerminalViewModel
         private val fontSizes = MutableStateFlow<Float?>(null)
         private val _events = Channel<TerminalScreenEvent>(Channel.BUFFERED)
         val events: Flow<TerminalScreenEvent> = _events.receiveAsFlow()
+
+        /** A person is looking: app in the foreground and this pane drawn (see [setLooking]). */
+        private val looking = MutableStateFlow(false)
 
         @Volatile private var stream: TerminalStream? = null
 
@@ -193,6 +200,7 @@ class TerminalViewModel
 
         init {
             viewModelScope.launch { run() }
+            viewModelScope.launch { markSeenWhileLooking() }
             viewModelScope.launch {
                 var last: AppError? = null
                 var lastAtMs = 0L
@@ -347,6 +355,44 @@ class TerminalViewModel
             }
             // Only now is it a different program than the one the user saw.
             local.update { it.copy(freshShell = true) }
+        }
+
+        // ------------------------------------------------------------------ seen
+
+        /**
+         * The screen reports whether the terminal is really on screen (resumed and composed). Not part of
+         * the attach path: it only drives the `herdr.seen` write.
+         */
+        fun setLooking(value: Boolean) {
+            looking.value = value
+        }
+
+        /**
+         * While looking, marks the agent seen once when the visit starts and again for each new turn.
+         * The turn handled is remembered per visit, so a mark-unread done elsewhere (two-pane list)
+         * is not overwritten; a new visit starts fresh. Failures are ignored: the write is idempotent.
+         */
+        private suspend fun markSeenWhileLooking() {
+            looking.collectLatest { isLooking ->
+                if (!isLooking) return@collectLatest
+                var handled: Long? = null
+                sessionState
+                    .map { st ->
+                        val record = st?.terminal(address)
+                        if (record != null && record.isAgent &&
+                            st.connection is ConnectionState.Online
+                        ) {
+                            record
+                        } else {
+                            null
+                        }
+                    }.distinctUntilChanged { a, b -> a?.turn == b?.turn }
+                    .collect { record ->
+                        if (record == null || record.turn == handled) return@collect
+                        handled = record.turn
+                        agentMarks.markSeen(record.ref)
+                    }
+            }
         }
 
         // ------------------------------------------------------------------ actions

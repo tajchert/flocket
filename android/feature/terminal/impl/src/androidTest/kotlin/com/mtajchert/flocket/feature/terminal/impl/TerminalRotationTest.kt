@@ -12,6 +12,7 @@ import com.mtajchert.flocket.core.designsystem.theme.FlocketTheme
 import com.mtajchert.flocket.core.model.ConnectionState
 import com.mtajchert.flocket.core.terminal.controller.TerminalController
 import com.mtajchert.flocket.core.terminal.fake.FakeTerminalEngine
+import com.mtajchert.flocket.core.testing.FakeAgentMarks
 import com.mtajchert.flocket.core.testing.FakeConnectionManager
 import com.mtajchert.flocket.core.testing.FakeHostRepository
 import com.mtajchert.flocket.core.testing.FakeHostSettingsRepository
@@ -47,6 +48,7 @@ class TerminalRotationTest {
                     connections = manager,
                     preferences = FakePreferencesRepository(),
                     hostSettings = FakeHostSettingsRepository(),
+                    agentMarks = FakeAgentMarks(),
                     controllerFactory = {
                         TerminalController({ c, r -> FakeTerminalEngine(c, r) }, FakeTerminalEngine.DEFAULT_THEME)
                     },
