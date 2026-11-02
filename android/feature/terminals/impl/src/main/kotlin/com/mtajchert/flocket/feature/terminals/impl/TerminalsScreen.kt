@@ -362,6 +362,15 @@ private fun TerminalList(
     var collapsed by rememberSaveable { mutableStateOf(emptySet<String>()) }
     // Keys of parents whose sub-agents are folded away.
     var folded by rememberSaveable { mutableStateOf(emptySet<String>()) }
+    val pinned = remember(state.groups) { pinnedGroupedRows(state.groups) }
+    val unpinnedSpaces =
+        remember(state.groups) {
+            val map = java.util.IdentityHashMap<MachineSection, List<SpaceSection>>()
+            state.groups.forEach { g ->
+                g.sections.forEach { map[it] = it.spaces.mapNotNull { sp -> sp.withoutPinned() } }
+            }
+            map
+        }
     PullToRefreshBox(isRefreshing = state.refreshing, onRefresh = actions.onRefresh) {
         LazyColumn(
             contentPadding = PaddingValues(top = 4.dp, bottom = 96.dp),
@@ -370,7 +379,6 @@ private fun TerminalList(
             if (state.emptyKind == EmptyKind.AllOffline) {
                 item(key = "offline", contentType = "notice") { OfflineNotice(actions.onRefresh) }
             }
-            val pinned = pinnedGroupedRows(state.groups)
             if (pinned.isNotEmpty()) {
                 val open = PINNED_KEY !in collapsed
                 item(key = "group:$PINNED_KEY", contentType = "group") {
@@ -449,7 +457,7 @@ private fun TerminalList(
                             MachineHeader(section)
                         }
                     }
-                    section.spaces.mapNotNull { it.withoutPinned() }.forEach { space ->
+                    unpinnedSpaces[section].orEmpty().forEach { space ->
                         val spaceKey = "${group.hostId.value}/${section.machine.orEmpty()}/${space.key}"
                         val isCollapsed = spaceKey in collapsed
                         item(key = "space:$spaceKey", contentType = "space") {
