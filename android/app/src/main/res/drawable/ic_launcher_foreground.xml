@@ -1,24 +1,30 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Prompt flock: five shell prompts in a V with a cursor in front. Light palette. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Terminal window: rounded square inside the 66dp safe zone (21..87). -->
-    <path
-        android:fillColor="#1A237E"
-        android:pathData="M35,21h38a14,14 0,0 1,14 14v38a14,14 0,0 1,-14 14h-38a14,14 0,0 1,-14 -14v-38a14,14 0,0 1,14 -14z" />
-    <!-- Prompt chevron. -->
-    <path
-        android:pathData="M40,45l13,9l-13,9"
-        android:strokeColor="#E0F2F1"
-        android:strokeWidth="6"
-        android:strokeLineCap="round"
-        android:strokeLineJoin="round" />
-    <!-- Underscore cursor. -->
-    <path
-        android:pathData="M58,67h12"
-        android:strokeColor="#E0F2F1"
-        android:strokeWidth="6"
-        android:strokeLineCap="round" />
+    <!-- Design is on a 100 unit grid, mapped into the 72dp visible area (inside the 66dp safe zone). -->
+    <group
+        android:scaleX="0.72"
+        android:scaleY="0.72"
+        android:translateX="18"
+        android:translateY="18">
+        <path
+            android:pathData="M29,17L37,24L29,31M29,69L37,76L29,83"
+            android:strokeColor="#86C4BB"
+            android:strokeWidth="5"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round" />
+        <path
+            android:pathData="M45,30L53,37L45,44M45,56L53,63L45,70M61,43L69,50L61,57"
+            android:strokeColor="#006A60"
+            android:strokeWidth="5"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round" />
+        <path
+            android:fillColor="#E0560F"
+            android:pathData="M74.6,53.5H82.4A1.6,1.6 0,0 1,84 55.1V56.9A1.6,1.6 0,0 1,82.4 58.5H74.6A1.6,1.6 0,0 1,73 56.9V55.1A1.6,1.6 0,0 1,74.6 53.5Z" />
+    </group>
 </vector>
