@@ -4,6 +4,7 @@ package com.mtajchert.flocket.feature.hosts.impl.list
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
@@ -14,9 +15,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Dns
+import androidx.compose.material.icons.outlined.Hub
+import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -36,13 +40,23 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.mtajchert.flocket.core.designsystem.theme.FlocketCorners
+import com.mtajchert.flocket.core.designsystem.theme.FlocketMono
+import com.mtajchert.flocket.core.designsystem.theme.flocketColors
 import com.mtajchert.flocket.core.model.HostId
+import com.mtajchert.flocket.core.model.MachineInfo
+import com.mtajchert.flocket.core.model.MachineState
 import com.mtajchert.flocket.core.ui.component.CenteredContent
 import com.mtajchert.flocket.core.ui.component.ConnectionStateBadge
 import com.mtajchert.flocket.core.ui.component.EmptyState
+import com.mtajchert.flocket.core.ui.component.NeedYouPill
 import com.mtajchert.flocket.core.ui.component.rememberNowMs
+import com.mtajchert.flocket.core.ui.error.UiError
+import com.mtajchert.flocket.core.ui.error.asString
 import com.mtajchert.flocket.feature.hosts.impl.R
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -73,6 +87,9 @@ fun HostsScreen(
                     icon = { Icon(Icons.Outlined.Add, contentDescription = null) },
                     text = { Text(label) },
                     modifier = Modifier.semantics { contentDescription = label },
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    shape = FlocketCorners.Fab,
                 )
             }
         },
@@ -91,8 +108,8 @@ fun HostsScreen(
         } else {
             CenteredContent(Modifier.padding(padding), maxWidth = 720.dp) {
                 LazyColumn(
-                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 96.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 96.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     items(state.hosts, key = { it.id.value }) { host ->
                         HostCard(
@@ -123,6 +140,88 @@ private fun CustomBadge() {
 }
 
 @Composable
+private fun CountChip(text: String) {
+    Text(
+        text,
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier =
+            Modifier
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh, FlocketCorners.Chip)
+                .padding(horizontal = 10.dp, vertical = 6.dp),
+    )
+}
+
+@Composable
+private fun AttentionNote(error: UiError) {
+    val colors = MaterialTheme.flocketColors
+    val action = error.primaryAction
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .background(colors.attentionContainer, RoundedCornerShape(12.dp))
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Icon(
+            Icons.Outlined.WarningAmber,
+            contentDescription = null,
+            tint = colors.onAttentionContainer,
+            modifier = Modifier.size(22.dp),
+        )
+        Text(
+            error.message.asString(),
+            style = MaterialTheme.typography.bodyMedium,
+            color = colors.onAttentionContainer,
+            modifier = Modifier.weight(1f),
+        )
+        if (action != null) {
+            Text(
+                stringResource(action.label),
+                style = MaterialTheme.typography.labelLarge,
+                color = colors.onAttentionContainer,
+            )
+        }
+    }
+}
+
+@Composable
+private fun MachinesLine(machines: List<MachineInfo>) {
+    val flocket = MaterialTheme.flocketColors
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Icon(
+            Icons.Outlined.Hub,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(16.dp),
+        )
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            machines.forEach { machine ->
+                val dot =
+                    when (machine.state) {
+                        MachineState.Connected -> flocket.done
+                        MachineState.NeedsLogin, MachineState.NeedsUpdate -> flocket.attention
+                        MachineState.Unreachable, MachineState.Other -> MaterialTheme.colorScheme.error
+                        MachineState.Connecting -> MaterialTheme.colorScheme.outline
+                    }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Box(Modifier.size(6.dp).background(dot, CircleShape))
+                    Text(
+                        machine.name,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun HostCard(
     host: HostItem,
     selected: Boolean,
@@ -134,10 +233,28 @@ private fun HostCard(
             containerColor = if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainerLow,
         )
     val modifier = Modifier.fillMaxWidth().semantics { this.selected = selected }
-    Card(onClick = onClick, colors = colors, modifier = modifier) {
+    Card(
+        onClick = onClick,
+        colors = colors,
+        shape = FlocketCorners.CardLarge,
+        modifier = modifier,
+    ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Icon(Icons.Outlined.Dns, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                Box(
+                    Modifier
+                        .size(
+                            40.dp,
+                        ).background(MaterialTheme.colorScheme.surfaceContainerHigh, RoundedCornerShape(12.dp)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        Icons.Outlined.Dns,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(22.dp),
+                    )
+                }
                 Column(Modifier.weight(1f)) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -146,51 +263,36 @@ private fun HostCard(
                         Text(
                             host.label,
                             style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Medium,
                             modifier = Modifier.weight(1f, fill = false),
                         )
                         if (host.customized) CustomBadge()
                     }
                     Text(
                         stringResource(R.string.host_address, host.address.user, host.address.host, host.address.port),
-                        style = MaterialTheme.typography.bodySmall,
-                        fontFamily = FontFamily.Monospace,
+                        style = FlocketMono.small.copy(fontSize = 11.5.sp),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-            }
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 ConnectionStateBadge(host.connection, nowMs = nowMs)
-                Text(
-                    text =
-                        if (host.coreName != null && host.coreVersion != null) {
-                            stringResource(R.string.host_core_info, host.coreName, host.coreVersion)
-                        } else {
-                            stringResource(R.string.host_core_unknown)
-                        },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
             }
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                if (host.counts.blocked > 0) {
-                    Text(
-                        pluralStringResource(R.plurals.host_count_blocked, host.counts.blocked, host.counts.blocked),
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.tertiary,
-                    )
-                }
+            FlowRow(
+                Modifier.padding(start = 52.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                if (host.counts.blocked > 0) NeedYouPill(host.counts.blocked)
                 if (host.counts.working > 0) {
-                    Text(
+                    CountChip(
                         pluralStringResource(R.plurals.host_count_working, host.counts.working, host.counts.working),
-                        style = MaterialTheme.typography.labelLarge,
                     )
                 }
-                Text(
-                    pluralStringResource(R.plurals.host_count_total, host.counts.total, host.counts.total),
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                CountChip(pluralStringResource(R.plurals.host_count_total, host.counts.total, host.counts.total))
             }
+            host.error?.let { AttentionNote(it) }
+            if (host.machines.isNotEmpty()) MachinesLine(host.machines)
         }
     }
 }

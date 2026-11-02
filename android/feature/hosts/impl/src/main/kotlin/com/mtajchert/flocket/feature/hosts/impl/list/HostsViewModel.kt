@@ -10,6 +10,9 @@ import com.mtajchert.flocket.core.model.AgentStatus
 import com.mtajchert.flocket.core.model.ConnectionState
 import com.mtajchert.flocket.core.model.HostId
 import com.mtajchert.flocket.core.model.Liveness
+import com.mtajchert.flocket.core.model.MachineInfo
+import com.mtajchert.flocket.core.ui.error.UiError
+import com.mtajchert.flocket.core.ui.error.toUiError
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -34,6 +37,10 @@ data class HostItem(
     val counts: TerminalCounts,
     /** The host overrides some app-level terminal defaults. */
     val customized: Boolean = false,
+    /** Why the host needs attention (error / needs setup); shown as an inline note on the card. */
+    val error: UiError? = null,
+    /** Federated machines (`machine.list`), empty when none. */
+    val machines: List<MachineInfo> = emptyList(),
 )
 
 data class UserAtHost(
@@ -85,5 +92,12 @@ internal fun toItem(
                 overview.session.terminals.size,
             ),
         customized = customized,
+        error =
+            when (val c = overview.session.connection) {
+                is ConnectionState.NeedsAttention -> c.error.toUiError()
+                is ConnectionState.Reconnecting -> c.lastError?.toUiError()
+                else -> null
+            },
+        machines = overview.session.machines,
     )
 }

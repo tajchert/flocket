@@ -1,12 +1,12 @@
 package com.mtajchert.flocket.core.ui.terminalsettings
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -19,6 +19,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import com.mtajchert.flocket.core.designsystem.theme.FlocketCorners
 import com.mtajchert.flocket.core.model.TerminalColorScheme
 import com.mtajchert.flocket.core.terminal.engine.ScreenSnapshot
 import com.mtajchert.flocket.core.terminal.fake.FakeTerminalEngine
@@ -55,8 +56,9 @@ fun TerminalPreview(
         modifier
             .fillMaxWidth()
             .height((PREVIEW_ROWS * LINE_HEIGHT_EM * emDp).dp + 16.dp)
-            .clip(RoundedCornerShape(12.dp))
+            .clip(FlocketCorners.Card)
             .background(Color(theme.background))
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, FlocketCorners.Card)
             .semantics { contentDescription = description },
     ) {
         val cols = ((maxWidth.value - 16f) / (CELL_WIDTH_EM * emDp)).toInt().coerceIn(16, 160)

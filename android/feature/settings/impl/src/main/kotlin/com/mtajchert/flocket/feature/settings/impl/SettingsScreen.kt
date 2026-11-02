@@ -25,6 +25,8 @@ import androidx.compose.material.icons.outlined.Key
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -32,12 +34,10 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
-import androidx.compose.material3.Slider
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
@@ -58,11 +58,13 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mtajchert.flocket.core.data.ThemePreference
+import com.mtajchert.flocket.core.designsystem.theme.FlocketCorners
+import com.mtajchert.flocket.core.designsystem.theme.FlocketMono
 import com.mtajchert.flocket.core.ui.component.CenteredContent
 import com.mtajchert.flocket.core.ui.component.PublicKeyCard
 import com.mtajchert.flocket.core.ui.terminalsettings.TerminalSettingsCallbacks
@@ -113,6 +115,14 @@ fun SettingsScreen(
                 item { KeysSection(state.keys, callbacks) }
                 item { HostsSection(callbacks) }
                 item { AboutSection(appInfo, callbacks) }
+                item {
+                    Text(
+                        stringResource(R.string.settings_footer, appInfo.versionName),
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 24.dp),
+                    )
+                }
             }
         }
     }
@@ -126,6 +136,8 @@ internal fun SectionHeader(
     Text(
         title,
         style = MaterialTheme.typography.titleSmall,
+        fontSize = 13.sp,
+        fontWeight = FontWeight.SemiBold,
         color = MaterialTheme.colorScheme.primary,
         modifier = modifier.padding(start = 16.dp, end = 16.dp, top = 24.dp, bottom = 8.dp),
     )
@@ -139,18 +151,20 @@ private fun SwitchRow(
     onCheckedChange: (Boolean) -> Unit,
     enabled: Boolean = true,
 ) {
-    ListItem(
-        modifier =
-            Modifier.toggleable(
-                value = checked,
-                enabled = enabled,
-                role = Role.Switch,
-                onValueChange = onCheckedChange,
-            ),
-        headlineContent = { Text(title) },
-        supportingContent = { Text(hint) },
-        trailingContent = { Switch(checked = checked, onCheckedChange = null, enabled = enabled) },
-    )
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .toggleable(value = checked, enabled = enabled, role = Role.Switch, onValueChange = onCheckedChange)
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(title, fontSize = 16.sp, color = MaterialTheme.colorScheme.onSurface)
+            Text(hint, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Switch(checked = checked, onCheckedChange = null, enabled = enabled)
+    }
 }
 
 @Composable
@@ -161,7 +175,6 @@ private fun AppearanceSection(
 ) {
     SectionHeader(stringResource(R.string.section_appearance))
     Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(stringResource(R.string.theme_label), style = MaterialTheme.typography.bodyLarge)
         val options =
             listOf(
                 ThemePreference.System to R.string.theme_system,
@@ -173,6 +186,11 @@ private fun AppearanceSection(
                 SegmentedButton(
                     selected = state.preferences.theme == theme,
                     onClick = { callbacks.onTheme(theme) },
+                    colors =
+                        SegmentedButtonDefaults.colors(
+                            activeContainerColor = MaterialTheme.colorScheme.secondaryContainer,
+                            activeContentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                        ),
                     shape = SegmentedButtonDefaults.itemShape(index, options.size),
                 ) { Text(stringResource(label)) }
             }
@@ -265,7 +283,11 @@ private fun KeyCard(
     onDelete: (KeyItem) -> Unit,
 ) {
     var expanded by rememberSaveable(item.key.alias) { mutableStateOf(false) }
-    OutlinedCard(Modifier.fillMaxWidth()) {
+    Card(
+        Modifier.fillMaxWidth(),
+        shape = FlocketCorners.Card,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+    ) {
         Column(
             Modifier.padding(start = 16.dp, top = 12.dp, end = 8.dp, bottom = 8.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -295,8 +317,7 @@ private fun KeyCard(
             }
             Text(
                 item.key.fingerprint,
-                style = MaterialTheme.typography.bodySmall,
-                fontFamily = FontFamily.Monospace,
+                style = FlocketMono.small,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(end = 8.dp),
             )
