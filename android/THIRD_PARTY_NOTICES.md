@@ -15,7 +15,7 @@ Flocket is Apache-2.0 ([ADR-0002](../docs/decisions/0002-license.md)). Runtime d
 | zlib (statically linked into libghostty-vt) | zlib license | Kitty graphics decompression |
 | wuffs (statically linked into libghostty-vt) | Apache-2.0 OR MIT | Image decoding for Kitty graphics |
 | zigimg (in libghostty-vt build graph) | MIT | Image helpers |
-| JetBrains Mono 2.304 (fonts bundled in `core/terminal/src/main/res/font`) | SIL OFL-1.1 (Copyright 2020 The JetBrains Mono Project Authors; text in `core/terminal/third_party/jetbrains-mono/OFL.txt`) | Terminal font (`core:terminal`) |
+| JetBrains Mono 2.304 (fonts bundled in `core/designsystem/src/main/res/font`) | SIL OFL-1.1 (Copyright 2020 The JetBrains Mono Project Authors; text in `core/terminal/third_party/jetbrains-mono/OFL.txt`) | Terminal and mono UI font (`core:designsystem`, used by `core:terminal`) |
 | herdr-mobile `t3-terminal` Android patch (`scripts/ghostty/patches/0001-*.patch`, adapted) | MIT | Link libghostty-vt with libc on Android; build-time only |
 | LobeHub icons (`@lobehub/icons-static-svg` 1.101.0; 17 agent glyphs converted to VectorDrawables in `core/ui/src/main/res/drawable/ic_agent_*.xml`; Copyright (c) 2023 LobeHub) | MIT | Agent icons in the terminal list and tab strip |
 | Herdr.app 0.1.11 agent catalog (`core/model/.../AgentCatalog.kt`, adapted: names, start commands, match names, tile colours of 20 coding agents, and the interpreter list) | Apache-2.0 | Matching a terminal to a coding agent |

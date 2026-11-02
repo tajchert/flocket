@@ -8,72 +8,90 @@ import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 
-/**
- * Light color scheme for the app.
- *
- * Uses the teal palette as primary color family.
- */
+/** Light fallback scheme: the design v2 tokens (used when dynamic color is off or unavailable). */
 private val LightColorScheme =
     lightColorScheme(
-        primary = Teal40,
-        onPrimary = Gray99,
-        primaryContainer = Teal90,
-        onPrimaryContainer = Teal10,
-        secondary = Sage40,
-        onSecondary = Gray99,
-        secondaryContainer = Sage90,
-        onSecondaryContainer = Sage10,
-        tertiary = Slate40,
-        onTertiary = Gray99,
-        tertiaryContainer = Slate90,
-        onTertiaryContainer = Slate10,
-        error = Red40,
-        onError = Gray99,
-        errorContainer = Red90,
-        onErrorContainer = Red10,
-        background = Gray99,
-        onBackground = Gray10,
-        surface = Gray99,
-        onSurface = Gray10,
-        surfaceVariant = GrayVariant90,
-        onSurfaceVariant = GrayVariant30,
-        outline = GrayVariant50,
-        outlineVariant = GrayVariant80,
+        primary = LightPrimary,
+        onPrimary = Color.White,
+        primaryContainer = LightPrimaryContainer,
+        onPrimaryContainer = LightOnPrimaryContainer,
+        secondary = LightSecondary,
+        onSecondary = Color.White,
+        secondaryContainer = LightSecondaryContainer,
+        onSecondaryContainer = LightOnSecondaryContainer,
+        tertiary = LightTertiary,
+        onTertiary = Color.White,
+        tertiaryContainer = LightTertiaryContainer,
+        onTertiaryContainer = LightOnTertiaryContainer,
+        error = LightError,
+        onError = Color.White,
+        errorContainer = LightErrorContainer,
+        onErrorContainer = LightOnErrorContainer,
+        background = LightBg,
+        onBackground = LightOn,
+        surface = LightBg,
+        onSurface = LightOn,
+        surfaceVariant = LightSurf3,
+        onSurfaceVariant = LightOnVariant,
+        outline = LightOutline,
+        outlineVariant = LightOutlineVariant,
+        inverseSurface = LightInverse,
+        inverseOnSurface = LightOnInverse,
+        inversePrimary = LightInversePrimary,
+        scrim = Color.Black,
+        surfaceTint = LightPrimary,
+        surfaceBright = LightBg,
+        surfaceDim = LightDim,
+        surfaceContainerLowest = Color.White,
+        surfaceContainerLow = LightSurf1,
+        surfaceContainer = LightSurf2,
+        surfaceContainerHigh = LightSurf3,
+        surfaceContainerHighest = LightSurf3,
     )
 
-/**
- * Dark color scheme for the app.
- *
- * Uses lighter tones of the color palette for better contrast.
- */
+/** Dark fallback scheme: the design v2 tokens. */
 private val DarkColorScheme =
     darkColorScheme(
-        primary = Teal80,
-        onPrimary = Teal20,
-        primaryContainer = Teal30,
-        onPrimaryContainer = Teal90,
-        secondary = Sage80,
-        onSecondary = Sage20,
-        secondaryContainer = Sage30,
-        onSecondaryContainer = Sage90,
-        tertiary = Slate80,
-        onTertiary = Slate20,
-        tertiaryContainer = Slate30,
-        onTertiaryContainer = Slate90,
-        error = Red80,
-        onError = Red20,
-        errorContainer = Red30,
-        onErrorContainer = Red90,
-        background = Gray10,
-        onBackground = Gray90,
-        surface = Gray10,
-        onSurface = Gray90,
-        surfaceVariant = GrayVariant30,
-        onSurfaceVariant = GrayVariant80,
-        outline = GrayVariant60,
-        outlineVariant = GrayVariant30,
+        primary = DarkPrimary,
+        onPrimary = DarkOnPrimary,
+        primaryContainer = DarkPrimaryContainer,
+        onPrimaryContainer = DarkOnPrimaryContainer,
+        secondary = DarkSecondary,
+        onSecondary = DarkOnSecondary,
+        secondaryContainer = DarkSecondaryContainer,
+        onSecondaryContainer = DarkOnSecondaryContainer,
+        tertiary = DarkTertiary,
+        onTertiary = DarkOnTertiary,
+        tertiaryContainer = DarkTertiaryContainer,
+        onTertiaryContainer = DarkOnTertiaryContainer,
+        error = DarkError,
+        onError = DarkOnError,
+        errorContainer = DarkErrorContainer,
+        onErrorContainer = DarkOnErrorContainer,
+        background = DarkBg,
+        onBackground = DarkOn,
+        surface = DarkBg,
+        onSurface = DarkOn,
+        surfaceVariant = DarkSurf3,
+        onSurfaceVariant = DarkOnVariant,
+        outline = DarkOutline,
+        outlineVariant = DarkOutlineVariant,
+        inverseSurface = DarkInverse,
+        inverseOnSurface = DarkOnInverse,
+        inversePrimary = DarkInversePrimary,
+        scrim = Color.Black,
+        surfaceTint = DarkPrimary,
+        surfaceBright = DarkBright,
+        surfaceDim = DarkBg,
+        surfaceContainerLowest = DarkLowest,
+        surfaceContainerLow = DarkSurf1,
+        surfaceContainer = DarkSurf2,
+        surfaceContainerHigh = DarkSurf3,
+        surfaceContainerHighest = DarkSurf3,
     )
 
 /**
@@ -90,6 +108,11 @@ private val DarkColorScheme =
  * On Android 12 (API 31) and above, the theme can use colors extracted
  * from the user's wallpaper. This is enabled by default but can be
  * disabled by setting [dynamicColor] to false.
+ *
+ * ## Semantic colors
+ *
+ * Status colors (attention, done, terminal preview...) are fixed and not dynamic; read them with
+ * `MaterialTheme.flocketColors`. Mono text styles live in [FlocketMono].
  *
  * ## Usage
  *
@@ -134,10 +157,14 @@ fun FlocketTheme(
             }
         }
 
-    MaterialTheme(
-        colorScheme = colorScheme,
-        typography = FlocketTypography,
-        shapes = FlocketShapes,
-        content = content,
-    )
+    CompositionLocalProvider(
+        LocalFlocketColors provides if (darkTheme) DarkFlocketColors else LightFlocketColors,
+    ) {
+        MaterialTheme(
+            colorScheme = colorScheme,
+            typography = FlocketTypography,
+            shapes = FlocketShapes,
+            content = content,
+        )
+    }
 }

@@ -2,9 +2,12 @@ package com.mtajchert.flocket.core.designsystem.theme
 
 import androidx.compose.material3.Typography
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
+import com.mtajchert.flocket.core.designsystem.R
 
 /**
  * Typography scale for the Flocket app.
@@ -178,3 +181,48 @@ val FlocketTypography =
                 letterSpacing = 0.5.sp,
             ),
     )
+
+/**
+ * JetBrains Mono (OFL-1.1, see THIRD_PARTY_NOTICES.md): the one mono family, shared by the terminal
+ * renderer and by mono UI text (previews, addresses, fingerprints, commands, key caps). The
+ * SemiBold weight maps to the bold file.
+ */
+val FlocketMonoFamily =
+    FontFamily(
+        Font(R.font.jetbrains_mono_regular, FontWeight.Normal),
+        Font(R.font.jetbrains_mono_regular, FontWeight.Medium),
+        Font(R.font.jetbrains_mono_bold, FontWeight.SemiBold),
+        Font(R.font.jetbrains_mono_bold, FontWeight.Bold),
+        Font(R.font.jetbrains_mono_italic, FontWeight.Normal, FontStyle.Italic),
+        Font(R.font.jetbrains_mono_bold_italic, FontWeight.Bold, FontStyle.Italic),
+    )
+
+/** Mono text styles for UI text. Combine with `.copy(color = ...)` as needed. */
+object FlocketMono {
+    /** 11sp semibold: key caps, tiny tags. */
+    val label =
+        TextStyle(
+            fontFamily = FlocketMonoFamily,
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 11.sp,
+            lineHeight = 16.sp,
+        )
+
+    /** 12sp: addresses, fingerprints, terminal previews in list rows. */
+    val small =
+        TextStyle(
+            fontFamily = FlocketMonoFamily,
+            fontWeight = FontWeight.Normal,
+            fontSize = 12.sp,
+            lineHeight = 16.sp,
+        )
+
+    /** 13sp: commands and longer mono text. */
+    val body =
+        TextStyle(
+            fontFamily = FlocketMonoFamily,
+            fontWeight = FontWeight.Normal,
+            fontSize = 13.sp,
+            lineHeight = 18.sp,
+        )
+}

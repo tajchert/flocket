@@ -4,12 +4,12 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Typeface
-import com.mtajchert.flocket.core.terminal.R
 import com.mtajchert.flocket.core.terminal.engine.CellFlags
 import com.mtajchert.flocket.core.terminal.engine.ScreenSnapshot
 import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.max
+import com.mtajchert.flocket.core.designsystem.R as DesignR
 
 /** The four JetBrains Mono faces bundled with `core:terminal` (SIL OFL-1.1). */
 class TerminalTypefaces(
@@ -31,10 +31,10 @@ class TerminalTypefaces(
                 ): Typeface =
                     runCatching { res.getFont(id) }.getOrNull() ?: Typeface.create(Typeface.MONOSPACE, fallbackStyle)
                 TerminalTypefaces(
-                    regular = load(R.font.jetbrains_mono_regular, Typeface.NORMAL),
-                    bold = load(R.font.jetbrains_mono_bold, Typeface.BOLD),
-                    italic = load(R.font.jetbrains_mono_italic, Typeface.ITALIC),
-                    boldItalic = load(R.font.jetbrains_mono_bold_italic, Typeface.BOLD_ITALIC),
+                    regular = load(DesignR.font.jetbrains_mono_regular, Typeface.NORMAL),
+                    bold = load(DesignR.font.jetbrains_mono_bold, Typeface.BOLD),
+                    italic = load(DesignR.font.jetbrains_mono_italic, Typeface.ITALIC),
+                    boldItalic = load(DesignR.font.jetbrains_mono_bold_italic, Typeface.BOLD_ITALIC),
                 ).also { cached = it }
             }
     }
