@@ -25,6 +25,7 @@ import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -74,6 +75,8 @@ data class TerminalViewport(
  * then on the viewport's cols x rows are sent (debounced while the window animates). A stream
  * bound in [AttachMode.Owner] takes the size again after a dropped link, once the link is back
  * and the terminal is visible (the session re-attaches with `resumed:true`, which is passive).
+ * After a RESIZE, other sizes are treated as stale until the core reports ours, for at most
+ * [sizeAckTimeoutMs]; then the latest reported size decides whether another viewer has it.
  */
 @OptIn(FlowPreview::class)
 class TerminalController(
@@ -82,6 +85,7 @@ class TerminalController(
     private val frameClock: FrameClock = ChoreographerFrameClock(),
     engineDispatcher: CoroutineDispatcher? = null,
     private val resizeDebounceMs: Long = DEFAULT_RESIZE_DEBOUNCE_MS,
+    private val sizeAckTimeoutMs: Long = DEFAULT_SIZE_ACK_TIMEOUT_MS,
     inputQueueCapacity: Int = DEFAULT_INPUT_QUEUE,
     initialCols: Int = 80,
     initialRows: Int = 24,
@@ -123,8 +127,15 @@ class TerminalController(
     private var lastRequested: TerminalSize? = null
 
     // A RESIZE was sent and the core has not reported that size yet: sizes seen meanwhile are
-    // stale (sent before ours was applied), not another viewer taking over.
+    // stale (sent before ours was applied), not another viewer taking over. Bounded by
+    // [sizeAckJob]: [TerminalStream.size] is a StateFlow, so the ack can be conflated away by a
+    // later size, or by a return to the size we started from, and then never arrives.
     private var awaitingSizeAck = false
+    private var sizeAckJob: Job? = null
+
+    // The ack window ran out and we went passive: our size arriving later is the late ack (a slow
+    // link), so we are the owner after all. Cleared by any other size.
+    private var lateAckPossible = false
     private var theme = theme
 
     @Volatile private var visible = true
@@ -250,7 +261,7 @@ class TerminalController(
             refitPending = false
             takenByOther = false
             lastRequested = null
-            awaitingSizeAck = false
+            clearSizeAck()
             _isOwner.value = false
             _isReadOnly.value = mode == AttachMode.Observe
             applyRemoteSize(stream.size.value)
@@ -280,6 +291,7 @@ class TerminalController(
             owner = false
             refitPending = false
             takenByOther = false
+            clearSizeAck()
             _isOwner.value = false
             _connected.value = false
         }
@@ -295,7 +307,7 @@ class TerminalController(
             focusSent = false
             takenByOther = false
             lastRequested = null
-            awaitingSizeAck = false
+            clearSizeAck()
             if (mode == AttachMode.Owner) refitPending = true
         } else {
             refitIfPending()
@@ -564,17 +576,52 @@ class TerminalController(
             requestFrame()
         }
         lastRequested = size
+        clearSizeAck()
         // The core reports only changes: no ack comes for the size it already has.
-        awaitingSizeAck = stream?.size?.value != size
+        if (stream?.size?.value != size) {
+            awaitingSizeAck = true
+            sizeAckJob =
+                scope.launch {
+                    delay(sizeAckTimeoutMs)
+                    onSizeAckTimeout()
+                }
+        }
         stream?.resize(size.cols, size.rows)
+    }
+
+    private fun clearSizeAck() {
+        awaitingSizeAck = false
+        lateAckPossible = false
+        sizeAckJob?.cancel()
+        sizeAckJob = null
+    }
+
+    /** No ack within the window: it was conflated away or is late. Judge the latest size. */
+    private fun onSizeAckTimeout() {
+        sizeAckJob = null
+        if (!awaitingSizeAck) return
+        awaitingSizeAck = false
+        val s = stream ?: return
+        applyRemoteSize(s.size.value)
+        if (takenByOther) lateAckPossible = true
     }
 
     private fun applyRemoteSize(size: TerminalSize) {
         val e = engine ?: return
         if (size.cols <= 0 || size.rows <= 0) return
         if (owner && awaitingSizeAck) {
-            if (size == lastRequested) awaitingSizeAck = false
+            if (size == lastRequested) clearSizeAck()
             return
+        }
+        if (lateAckPossible) {
+            lateAckPossible = false
+            if (!owner && size == lastRequested) {
+                // The window ran out on a slow link, but the core did apply our size.
+                owner = true
+                takenByOther = false
+                _isOwner.value = true
+                updateFocus()
+            }
         }
         if (owner && lastRequested != null && size != lastRequested) {
             // Another viewer became the leader (SPEC §7.5); stay passive until the user interacts.
@@ -715,6 +762,7 @@ class TerminalController(
 
     companion object {
         const val DEFAULT_RESIZE_DEBOUNCE_MS = 120L
+        const val DEFAULT_SIZE_ACK_TIMEOUT_MS = 1_000L
         const val DEFAULT_INPUT_QUEUE = 256
 
         private fun hex(argb: Int) = "#%06x".format(argb and 0xFFFFFF)
