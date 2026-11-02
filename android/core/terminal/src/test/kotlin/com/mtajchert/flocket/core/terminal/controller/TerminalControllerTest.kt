@@ -58,8 +58,10 @@ class ManualFrameClock : FrameClock {
     }
 }
 
+/** [echoResize]: report a RESIZE back as the core does; false models an ack that is late or conflated away. */
 class FakeStream(
     initial: TerminalSize = TerminalSize(80, 24),
+    private val echoResize: Boolean = true,
 ) : TerminalStream {
     override val address = TerminalAddress("t1")
     override val size = MutableStateFlow(initial)
@@ -82,6 +84,7 @@ class FakeStream(
         rows: Int,
     ) {
         calls += "resize ${cols}x$rows"
+        if (echoResize) size.value = TerminalSize(cols, rows)
     }
 
     override fun focus(focused: Boolean) {
@@ -306,10 +309,10 @@ class TerminalControllerTest {
     fun `the core's previous size arriving after our resize does not drop ownership`() =
         runTest {
             val c = controller()
-            val s = FakeStream(TerminalSize(200, 120)) // headless size from before our RESIZE
+            val s = FakeStream(TerminalSize(200, 120), echoResize = false) // headless size from before our RESIZE
             c.onViewportChanged(phone)
             c.bind(s, AttachMode.Owner)
-            advanceUntilIdle()
+            advanceTimeBy(TerminalController.DEFAULT_SIZE_ACK_TIMEOUT_MS / 2) // inside the ack window
             assertTrue(c.isOwner.value)
             assertEquals(TerminalSize(100, 70), c.gridSize.value)
             s.size.value = TerminalSize(100, 70) // the core applied our size
@@ -319,6 +322,88 @@ class TerminalControllerTest {
             advanceUntilIdle()
             assertFalse(c.isOwner.value)
             assertEquals(200, engine.cols)
+            c.close()
+        }
+
+    @Test
+    fun `a stale size while we await our ack does not drop ownership`() =
+        runTest {
+            val c = controller()
+            val s = FakeStream(TerminalSize(200, 120), echoResize = false)
+            c.onViewportChanged(phone)
+            c.bind(s, AttachMode.Owner)
+            runCurrent()
+            s.size.value = TerminalSize(150, 40) // in flight before our RESIZE was applied
+            advanceTimeBy(TerminalController.DEFAULT_SIZE_ACK_TIMEOUT_MS / 2)
+            assertTrue(c.isOwner.value)
+            assertEquals(100, engine.cols)
+            s.size.value = TerminalSize(100, 70) // our size, inside the ack window
+            advanceUntilIdle()
+            assertTrue(c.isOwner.value)
+            assertEquals(100, engine.cols)
+            c.close()
+        }
+
+    @Test
+    fun `another viewer's size that conflated our ack away still makes us passive`() =
+        runTest {
+            val c = controller()
+            val s = FakeStream(TerminalSize(200, 120), echoResize = false)
+            c.onViewportChanged(phone)
+            c.bind(s, AttachMode.Owner)
+            runCurrent()
+            // The size StateFlow keeps only the latest value: the collector never sees our ack.
+            s.size.value = TerminalSize(100, 70)
+            s.size.value = TerminalSize(200, 50) // the desktop took it right after
+            advanceUntilIdle()
+            assertFalse(c.isOwner.value)
+            assertEquals(200, engine.cols)
+            s.calls.clear()
+            c.reclaimSize() // a tap takes it back
+            runCurrent()
+            assertTrue(c.isOwner.value)
+            assertEquals(listOf("resize 100x70", "display"), s.calls.toList())
+            c.close()
+        }
+
+    @Test
+    fun `the desktop taking back its own size before our ack was seen still makes us passive`() =
+        runTest {
+            val c = controller()
+            val s = FakeStream(TerminalSize(200, 50), echoResize = false)
+            c.onViewportChanged(phone)
+            c.bind(s, AttachMode.Owner)
+            runCurrent()
+            // 200x50 -> 100x70 -> 200x50 before the collector runs: it sees no change at all.
+            s.size.value = TerminalSize(100, 70)
+            s.size.value = TerminalSize(200, 50)
+            advanceUntilIdle()
+            assertFalse(c.isOwner.value)
+            assertEquals(200, engine.cols)
+            s.calls.clear()
+            c.reclaimSize()
+            runCurrent()
+            assertTrue(c.isOwner.value)
+            assertEquals(listOf("resize 100x70", "display"), s.calls.toList())
+            c.close()
+        }
+
+    @Test
+    fun `an ack that arrives after the window gives us the size back`() =
+        runTest {
+            val c = controller()
+            val s = FakeStream(TerminalSize(200, 120), echoResize = false)
+            c.onViewportChanged(phone)
+            c.bind(s, AttachMode.Owner)
+            advanceUntilIdle() // a slow link: no ack within the window
+            assertFalse(c.isOwner.value)
+            assertEquals(200, engine.cols)
+            s.calls.clear()
+            s.size.value = TerminalSize(100, 70) // our RESIZE was applied after all
+            advanceUntilIdle()
+            assertTrue(c.isOwner.value)
+            assertEquals(100, engine.cols)
+            assertEquals(emptyList<String>(), s.calls.filter { it.startsWith("resize") })
             c.close()
         }
 
