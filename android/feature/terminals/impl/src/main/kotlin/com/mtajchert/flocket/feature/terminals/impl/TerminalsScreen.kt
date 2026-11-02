@@ -21,15 +21,14 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.MenuOpen
 import androidx.compose.material.icons.filled.FrontHand
 import androidx.compose.material.icons.outlined.Add
-import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.CloudOff
 import androidx.compose.material.icons.outlined.Devices
 import androidx.compose.material.icons.outlined.Dns
 import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
-import androidx.compose.material.icons.outlined.FilterList
 import androidx.compose.material.icons.outlined.FilterListOff
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.Terminal
@@ -67,6 +66,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
@@ -97,6 +97,7 @@ import com.mtajchert.flocket.core.ui.component.rememberNowMs
 import com.mtajchert.flocket.core.ui.component.title
 import com.mtajchert.flocket.core.ui.error.UiErrorAction
 import com.mtajchert.flocket.core.ui.nav.LocalPaneLayout
+import com.mtajchert.flocket.core.ui.nav.LocalSidebarToggle
 import com.mtajchert.flocket.feature.terminal.api.TerminalRoute
 import com.mtajchert.flocket.core.ui.R as CoreUiR
 
@@ -131,6 +132,7 @@ fun TerminalsScreen(
     snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
 ) {
     val paneLayout = LocalPaneLayout.current
+    val sidebar = LocalSidebarToggle.current
     val dense = paneLayout.multiPane
     val canAdd = state.emptyKind != EmptyKind.NoHosts && state.loaded
     // The navigation rail carries the New terminal button; the list shows its own only without the rail.
@@ -143,6 +145,21 @@ fun TerminalsScreen(
         modifier = modifier,
         topBar = {
             TopAppBar(
+                navigationIcon = {
+                    // Beside an open terminal the list can step aside (focus mode); the terminal's top bar
+                    // brings it back from the same spot.
+                    if (dense && selected != null) {
+                        IconButton(
+                            onClick = { sidebar.setSidebarVisible(false) },
+                            modifier = Modifier.testTag("terminals_collapse"),
+                        ) {
+                            Icon(
+                                Icons.AutoMirrored.Outlined.MenuOpen,
+                                contentDescription = stringResource(R.string.terminals_collapse),
+                            )
+                        }
+                    }
+                },
                 title = {
                     Text(
                         stringResource(R.string.terminals_title),
@@ -159,15 +176,12 @@ fun TerminalsScreen(
                         TopAppBarDefaults.topAppBarColors()
                     },
                 actions = {
-                    if (dense && state.loaded && state.emptyKind != EmptyKind.NoHosts) {
-                        FilterMenu(state.filter, actions.onFilter)
-                    }
                     if (dense && showAdd) {
                         IconButton(onClick = actions.onNewTerminal) {
                             Icon(Icons.Outlined.Add, contentDescription = stringResource(R.string.new_terminal))
                         }
                     }
-                    if (state.emptyKind != EmptyKind.NoHosts) OptionsMenu(state, actions, showFilters = inbox && !dense)
+                    if (state.emptyKind != EmptyKind.NoHosts) OptionsMenu(state, actions, showFilters = inbox || dense)
                 },
             )
         },
@@ -246,12 +260,17 @@ private fun OptionsMenu(
     showFilters: Boolean = false,
 ) {
     var open by remember { mutableStateOf(false) }
+    // With the status filter inside the menu, a dot on the button says a filter is narrowing the list.
+    val filtered = showFilters && state.filter != TerminalFilter.All
     IconButton(onClick = { open = true }) {
-        Icon(Icons.Outlined.MoreVert, contentDescription = stringResource(R.string.menu_options))
+        BadgedBox(badge = { if (filtered) Badge() }) {
+            val description = if (filtered) R.string.menu_options_filtered else R.string.menu_options
+            Icon(Icons.Outlined.MoreVert, contentDescription = stringResource(description))
+        }
     }
     DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
         if (showFilters) {
-            // The status filter is not a chip row in the inbox: it lives here.
+            // The status filter is a chip row only on a phone outside the inbox; otherwise it lives here.
             Text(
                 stringResource(R.string.menu_filter_title),
                 style = MaterialTheme.typography.labelMedium,
@@ -306,36 +325,6 @@ private fun TerminalFilter.label() =
         TerminalFilter.Working -> R.string.filter_working
         TerminalFilter.Finished -> R.string.filter_finished
     }
-
-/** Dense (sidebar) replacement for [FilterRow]: one icon, a dot while a non-default filter is active. */
-@Composable
-private fun FilterMenu(
-    filter: TerminalFilter,
-    onFilter: (TerminalFilter) -> Unit,
-) {
-    var open by remember { mutableStateOf(false) }
-    val active = filter != TerminalFilter.All
-    val description = stringResource(R.string.filters_description)
-    IconButton(onClick = { open = true }) {
-        BadgedBox(badge = { if (active) Badge() }) {
-            Icon(Icons.Outlined.FilterList, contentDescription = description)
-        }
-    }
-    DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-        TerminalFilter.entries.forEach { entry ->
-            DropdownMenuItem(
-                text = { Text(stringResource(entry.label())) },
-                onClick = {
-                    open = false
-                    onFilter(entry)
-                },
-                leadingIcon = {
-                    if (entry == filter) Icon(Icons.Outlined.Check, contentDescription = null)
-                },
-            )
-        }
-    }
-}
 
 @Composable
 private fun FilterRow(

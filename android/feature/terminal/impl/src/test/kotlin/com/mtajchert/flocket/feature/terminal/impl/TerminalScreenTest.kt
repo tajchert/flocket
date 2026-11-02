@@ -224,17 +224,17 @@ class TerminalScreenTest {
     }
 
     @Test
-    fun `multi-pane top bar toggles the sidebar instead of going back`() {
+    fun `beside the list the top bar has neither back nor a sidebar button`() {
+        // The list hides itself from its own header; the terminal only brings it back.
         showMulti(sidebarVisible = true)
         compose.onAllNodesWithContentDescription("Back").assertCountEquals(0)
-        compose.onNodeWithContentDescription("Hide sidebar").performClick()
-        assertEquals(listOf("sidebar:false"), clicks)
+        compose.onAllNodes(hasTestTag("terminal_sidebar_toggle")).assertCountEquals(0)
     }
 
     @Test
-    fun `focus mode offers to show the sidebar again`() {
+    fun `focus mode offers to show the list again`() {
         showMulti(sidebarVisible = false)
-        compose.onNodeWithContentDescription("Show sidebar").performClick()
+        compose.onNodeWithContentDescription("Show terminal list").performClick()
         assertEquals(listOf("sidebar:true"), clicks)
     }
 
@@ -242,7 +242,7 @@ class TerminalScreenTest {
     fun `single-pane keeps the back arrow`() {
         show(live)
         compose.onNodeWithContentDescription("Back").performClick()
-        compose.onAllNodesWithContentDescription("Hide sidebar").assertCountEquals(0)
+        compose.onAllNodesWithContentDescription("Show terminal list").assertCountEquals(0)
         assertEquals(listOf("close"), clicks)
     }
 

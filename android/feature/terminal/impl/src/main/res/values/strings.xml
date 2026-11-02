@@ -2,8 +2,7 @@
 <resources>
     <!-- Top bar -->
     <string name="terminal_back">Back</string>
-    <string name="terminal_sidebar_hide">Hide sidebar</string>
-    <string name="terminal_sidebar_show">Show sidebar</string>
+    <string name="terminal_sidebar_show">Show terminal list</string>
     <string name="terminal_tab_format">%1$s, %2$s</string>
     <string name="terminal_tab_state_idle">idle</string>
     <string name="terminal_tab_state_working">working</string>
