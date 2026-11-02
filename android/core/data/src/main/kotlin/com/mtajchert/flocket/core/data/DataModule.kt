@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.ConnectivityManager
 import com.mtajchert.flocket.core.common.logging.Logger
 import com.mtajchert.flocket.core.common.time.Clock
+import com.mtajchert.flocket.core.data.internal.AgentMarksImpl
 import com.mtajchert.flocket.core.data.internal.AndroidLogger
 import com.mtajchert.flocket.core.data.internal.ConnectionManagerImpl
 import com.mtajchert.flocket.core.data.internal.ConnectivityNetworkMonitor
@@ -121,6 +122,10 @@ internal object DataModule {
             autoConnect = hostSettings.autoConnect,
             logger = AndroidLogger,
         )
+
+    @Provides
+    @Singleton
+    fun provideAgentMarks(connections: ConnectionManager): AgentMarks = AgentMarksImpl(connections)
 
     @Provides
     @Singleton
