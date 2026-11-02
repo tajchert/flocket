@@ -59,6 +59,8 @@ vsync (Choreographer) ──▶ [engine thread] drainEvents + engine.snapshot(wo
   1 or 2 cells and squeezed horizontally if wider. Wide spacers are skipped.
 - Box drawing (U+2500-254F, U+256D-257B) and block elements (U+2580-259F) are drawn as rects so borders join across
   rows (font glyphs leave gaps when line height exceeds glyph height). Double lines still use the font.
+- Braille (U+2800-28FF) is drawn as square dots on a whole-pixel grid (Ghostty's sizing, as the desktop app does).
+  JetBrains Mono has no braille, and fallback glyphs shifted between patterns, so agents' dot spinners jittered.
 - Underline/strikethrough: merged rects. Faint and inverse are already resolved by the engine. Invisible cells are not drawn.
 - Cursor: block (inverted glyph), bar, underline; hollow block when the view is not focused. No blink (battery).
 - Selection: translucent overlay plus teardrop handles in Material `primary` (`TerminalView.selectionColor`, set by the

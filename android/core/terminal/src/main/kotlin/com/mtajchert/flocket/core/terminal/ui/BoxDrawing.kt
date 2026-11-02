@@ -9,6 +9,9 @@ import kotlin.math.roundToInt
  * Draws box-drawing lines (U+2500-U+254F, U+256D-U+257B) and block elements (U+2580-U+259F)
  * geometrically so borders of TUIs (htop, tmux, lazygit) join seamlessly across cells and rows,
  * which font glyphs cannot do when the line height exceeds the glyph height.
+ * Braille (U+2800-U+28FF) is drawn as square dots on a fixed grid, like Ghostty and the desktop app:
+ * the bundled font has no braille, and fallback glyphs sit and scale differently per pattern, so an
+ * agent's dot spinner (⠋⠙⠹…) jittered from frame to frame.
  * Double lines (U+2550-U+256C) and other symbols fall back to the font.
  */
 internal object BoxDrawing {
@@ -132,7 +135,8 @@ internal object BoxDrawing {
     fun handles(cp: Int): Boolean =
         cp in 0x2500..0x254F ||
             (cp in 0x256D..0x257B && TAIL[cp - 0x256D] != 0) ||
-            cp in 0x2580..0x259F
+            cp in 0x2580..0x259F ||
+            cp in BRAILLE
 
     /** Draw [cp] into the cell at ([x], 0) of size [w] x [h]. [paint] carries the color. */
     fun draw(
@@ -144,6 +148,10 @@ internal object BoxDrawing {
         light: Float,
         paint: Paint,
     ) {
+        if (cp in BRAILLE) {
+            drawBraille(canvas, cp, x, w, h, paint)
+            return
+        }
         if (cp >= 0x2580) {
             drawBlock(canvas, cp, x, w, h, paint)
             return
@@ -169,6 +177,92 @@ internal object BoxDrawing {
         if (up != 0) canvas.drawRect(cx - t(up) / 2, 0f, cx + t(up) / 2, cy + vHalf, paint)
         if (down != 0) canvas.drawRect(cx - t(down) / 2, cy - vHalf, cx + t(down) / 2, h, paint)
         paint.isAntiAlias = save
+    }
+
+    private val BRAILLE = 0x2800..0x28FF
+
+    /** (col, row) of braille bits 0-7: dots 1,2,3 then 4,5,6 down the columns, then 7 and 8 at the bottom. */
+    private val BRAILLE_CELLS = intArrayOf(0, 0, 0, 1, 0, 2, 1, 0, 1, 1, 1, 2, 0, 3, 1, 3)
+
+    private fun drawBraille(
+        canvas: Canvas,
+        cp: Int,
+        x: Float,
+        w: Float,
+        h: Float,
+        paint: Paint,
+    ) {
+        // Whole device pixels, so every frame of a spinner puts each dot on exactly the same pixels.
+        val left = x.roundToInt()
+        val dots = brailleDots(cp, (x + w).roundToInt() - left, h.roundToInt()) ?: return
+        val save = paint.isAntiAlias
+        paint.isAntiAlias = false
+        for (i in dots.indices step 4) {
+            canvas.drawRect(
+                (left + dots[i]).toFloat(),
+                dots[i + 1].toFloat(),
+                (left + dots[i + 2]).toFloat(),
+                dots[i + 3].toFloat(),
+                paint,
+            )
+        }
+        paint.isAntiAlias = save
+    }
+
+    /**
+     * The dots of braille [cp] in a [width] x [height] pixel cell, as `x0, y0, x1, y1` quads; null when
+     * [cp] is not braille. Ghostty's dot sizing, with vertical spacing even across adjacent cells.
+     * Adapted from Herdr.app `src/sprites.rs` (Apache-2.0).
+     */
+    internal fun brailleDots(
+        cp: Int,
+        width: Int,
+        height: Int,
+    ): IntArray? {
+        if (cp !in BRAILLE) return null
+        var dot = minOf(width / 4, height / 8)
+        var xs = width / 4
+        val ys = height / 8
+        var xm = xs / 2
+        val ym = ys / 2
+        var xr = width - 2 * xm - xs - 2 * dot
+        var yr = height - 2 * ym - 3 * ys - 4 * dot
+        if (xr >= 2 && yr >= 4 && dot == 0) {
+            dot += 1
+            xr -= 2
+            yr -= 4
+        }
+        if (xr >= 2 && xm == 0) {
+            xm = 1
+            xr -= 2
+        }
+        if (yr >= 2 && ym == 0) yr -= 2
+        if (xr >= 1) {
+            xs += 1
+            xr -= 1
+        }
+        if (yr >= 3) yr -= 3
+        if (xr >= 2) {
+            xm += 1
+            xr -= 2
+        }
+        if (yr >= 2) yr -= 2
+        if (xr >= 2 && yr >= 4) dot += 1
+        val bits = cp - BRAILLE.first
+        val out = IntArray(Integer.bitCount(bits) * 4)
+        var n = 0
+        for (bit in 0 until 8) {
+            if (bits and (1 shl bit) == 0) continue
+            val col = BRAILLE_CELLS[bit * 2]
+            val row = BRAILLE_CELLS[bit * 2 + 1]
+            val dx = xm + col * (dot + xs)
+            val dy = ((2 * row + 1) * height - 4 * dot + 4) / 8
+            out[n++] = dx
+            out[n++] = dy
+            out[n++] = dx + dot
+            out[n++] = dy + dot
+        }
+        return out
     }
 
     private fun drawBlock(
