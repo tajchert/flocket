@@ -9,9 +9,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isPopup
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onAllNodesWithContentDescription
@@ -35,7 +37,10 @@ import com.mtajchert.flocket.core.model.WorkspaceSpace
 import com.mtajchert.flocket.core.model.WorkspaceTab
 import com.mtajchert.flocket.core.testing.SampleData
 import com.mtajchert.flocket.core.ui.nav.LocalPaneLayout
+import com.mtajchert.flocket.core.ui.nav.LocalSidebarToggle
 import com.mtajchert.flocket.core.ui.nav.PaneLayout
+import com.mtajchert.flocket.core.ui.nav.SidebarToggle
+import com.mtajchert.flocket.feature.terminal.api.TerminalRoute
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -54,12 +59,14 @@ class TerminalsComposeTest {
         state: TerminalsUiState = this.state,
         actions: TerminalsActions = TerminalsActions(),
         layout: PaneLayout = PaneLayout(),
+        selected: TerminalRoute? = null,
+        sidebar: SidebarToggle = SidebarToggle { },
     ) = rule.setContent {
         FlocketTheme(dynamicColor = false) {
-            CompositionLocalProvider(LocalPaneLayout provides layout) {
+            CompositionLocalProvider(LocalPaneLayout provides layout, LocalSidebarToggle provides sidebar) {
                 Box(
                     Modifier.requiredSize(600.dp, 4000.dp),
-                ) { TerminalsScreen(state, actions, nowMs = SampleData.NOW_MS) }
+                ) { TerminalsScreen(state, actions, selected = selected, nowMs = SampleData.NOW_MS) }
             }
         }
     }
@@ -80,6 +87,36 @@ class TerminalsComposeTest {
     fun `a sidebar without the rail keeps the top bar New terminal button`() {
         show(layout = PaneLayout(multiPane = true, compactHeight = true))
         rule.onAllNodesWithContentDescription("New terminal").assertCountEquals(1)
+    }
+
+    @Test
+    fun `beside an open terminal the list can collapse itself`() {
+        val visible = mutableListOf<Boolean>()
+        val open = TerminalRoute("studio", "t1")
+        show(layout = PaneLayout(multiPane = true), selected = open, sidebar = SidebarToggle { visible += it })
+        rule.onNodeWithContentDescription("Hide terminal list").performClick()
+        assertEquals(listOf(false), visible)
+    }
+
+    @Test
+    fun `no collapse button without an open terminal or on a phone`() {
+        show(layout = PaneLayout(multiPane = true))
+        rule.onAllNodesWithContentDescription("Hide terminal list").assertCountEquals(0)
+    }
+
+    @Test
+    fun `a sidebar keeps filter and sort in the options menu`() {
+        var chosen: TerminalFilter? = null
+        show(
+            state.copy(sort = TerminalSort.Priority),
+            TerminalsActions(onFilter = { chosen = it }),
+            layout = PaneLayout(multiPane = true, navigationRail = true),
+        )
+        rule.onAllNodesWithContentDescription("Filter terminals").assertCountEquals(0)
+        rule.onNodeWithContentDescription("List options").performClick()
+        rule.onNodeWithText("Sort").assertExists()
+        rule.onNode(hasText("Working") and hasAnyAncestor(isPopup())).performClick()
+        assertEquals(TerminalFilter.Working, chosen)
     }
 
     @Test

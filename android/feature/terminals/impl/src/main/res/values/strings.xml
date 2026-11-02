@@ -8,7 +8,8 @@
     <string name="filter_attention">Needs attention</string>
     <string name="filter_working">Working</string>
     <string name="filter_finished">Finished</string>
-    <string name="filters_description">Filter terminals</string>
+    <string name="terminals_collapse">Hide terminal list</string>
+    <string name="menu_options_filtered">List options, filter on</string>
     <string name="menu_options">List options</string>
     <string name="menu_sort_title">Sort</string>
     <string name="menu_sort_inbox">Inbox (by status)</string>

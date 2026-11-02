@@ -32,7 +32,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.outlined.MenuOpen
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.ContentPaste
@@ -308,14 +307,13 @@ private fun TerminalTopBar(
         TopAppBar(
             navigationIcon = {
                 if (layout.multiPane) {
-                    // The sidebar is already beside the terminal: no back arrow, a hide/show toggle instead.
-                    IconButton(
-                        onClick = { sidebar.setSidebarVisible(!layout.sidebarVisible) },
-                        modifier = Modifier.testTag("terminal_sidebar_toggle"),
-                    ) {
-                        if (layout.sidebarVisible) {
-                            Icon(Icons.AutoMirrored.Outlined.MenuOpen, stringResource(R.string.terminal_sidebar_hide))
-                        } else {
+                    // The list sits beside the terminal: no back arrow. The list hides itself from its own
+                    // header; once hidden (focus mode), this button brings it back in the same spot.
+                    if (!layout.sidebarVisible) {
+                        IconButton(
+                            onClick = { sidebar.setSidebarVisible(true) },
+                            modifier = Modifier.testTag("terminal_sidebar_toggle"),
+                        ) {
                             Icon(Icons.Outlined.Menu, stringResource(R.string.terminal_sidebar_show))
                         }
                     }
