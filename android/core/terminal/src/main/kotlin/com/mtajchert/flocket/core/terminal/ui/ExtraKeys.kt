@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -113,6 +114,9 @@ enum class ExtraKey(
         /** The scrolling part of the row; [Enter] is pinned at the end. */
         val scrolling: List<ExtraKey> = entries.filter { it != Enter }
 
+        /** Keys that share the visible width without scrolling (everything up to the last arrow). */
+        val primary: List<ExtraKey> = listOf(Esc, Tab, Ctrl, Alt, Left, Up, Down, Right)
+
         /** A small gap before these groups (arrows, symbols), as in the design. */
         val groupStarts: Set<ExtraKey> = setOf(Left, Home, Pipe)
     }
@@ -177,26 +181,33 @@ fun ExtraKeysRow(
                 .padding(horizontal = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(
-            modifier = Modifier.weight(1f).horizontalScroll(rememberScrollState()),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            ExtraKey.scrolling.forEach { key ->
-                val sticky = key == ExtraKey.Ctrl || key == ExtraKey.Alt
-                val active = (key == ExtraKey.Ctrl && ctrlActive) || (key == ExtraKey.Alt && altActive)
-                if (key in ExtraKey.groupStarts) Box(Modifier.width(4.dp))
-                KeyCap(
-                    description = key.description,
-                    selected = if (sticky) active else null,
-                    container = if (active) colors.primary else MaterialTheme.flocketColors.key,
-                    content = if (active) colors.onPrimary else colors.onSurface,
-                    onClick = { press(key) },
-                ) {
-                    val arrow = key.arrow
-                    if (arrow != null) {
-                        Icon(arrow.first, null, Modifier.size(22.dp).rotate(arrow.second))
-                    } else {
-                        Text(text = key.label, style = KeyCapText)
+        BoxWithConstraints(Modifier.weight(1f)) {
+            // The primary keys split the visible width (the 4dp gap before the arrows aside); the
+            // rest (Home, End, symbols) follows them in the scroll.
+            val capWidth = ((maxWidth - 4.dp) / ExtraKey.primary.size).coerceIn(30.dp, 48.dp)
+            Row(
+                modifier = Modifier.horizontalScroll(rememberScrollState()),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                ExtraKey.scrolling.forEach { key ->
+                    val sticky = key == ExtraKey.Ctrl || key == ExtraKey.Alt
+                    val active = (key == ExtraKey.Ctrl && ctrlActive) || (key == ExtraKey.Alt && altActive)
+                    if (key in ExtraKey.groupStarts) Box(Modifier.width(4.dp))
+                    KeyCap(
+                        description = key.description,
+                        selected = if (sticky) active else null,
+                        container = if (active) colors.primary else MaterialTheme.flocketColors.key,
+                        content = if (active) colors.onPrimary else colors.onSurface,
+                        minWidth = if (key in ExtraKey.primary) capWidth else 38.dp,
+                        exactWidth = key in ExtraKey.primary,
+                        onClick = { press(key) },
+                    ) {
+                        val arrow = key.arrow
+                        if (arrow != null) {
+                            Icon(arrow.first, null, Modifier.size(22.dp).rotate(arrow.second))
+                        } else {
+                            Text(text = key.label, style = KeyCapText)
+                        }
                     }
                 }
             }
@@ -210,7 +221,7 @@ fun ExtraKeysRow(
                 selected = null,
                 container = colors.surfaceContainerHigh,
                 content = colors.onSurface,
-                minWidth = 40.dp,
+                minWidth = 36.dp,
                 onClick = {
                     haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                     onToggleKeyboard()
@@ -228,7 +239,7 @@ fun ExtraKeysRow(
             selected = null,
             container = colors.primary,
             content = colors.onPrimary,
-            minWidth = 44.dp,
+            minWidth = 40.dp,
             onClick = { press(ExtraKey.Enter) },
         ) {
             Icon(Icons.AutoMirrored.Filled.KeyboardReturn, null, Modifier.size(20.dp))
@@ -236,7 +247,7 @@ fun ExtraKeysRow(
     }
 }
 
-private val KeyCapText = FlocketMono.small.copy(fontSize = 12.5.sp, fontWeight = FontWeight.Medium)
+private val KeyCapText = FlocketMono.small.copy(fontSize = 11.5.sp, fontWeight = FontWeight.Medium)
 
 /** One key: a 36dp cap inside a 48dp-tall touch target that also covers the gaps around it. */
 @Composable
@@ -247,6 +258,7 @@ private fun KeyCap(
     content: Color,
     onClick: () -> Unit,
     minWidth: Dp = 38.dp,
+    exactWidth: Boolean = false,
     label: @Composable () -> Unit,
 ) {
     Box(
@@ -256,17 +268,17 @@ private fun KeyCap(
                 .semantics {
                     contentDescription = description
                     if (selected != null) this.selected = selected
-                }.padding(horizontal = 2.5.dp, vertical = BarPadding),
+                }.padding(horizontal = 1.dp, vertical = BarPadding),
         contentAlignment = Alignment.Center,
     ) {
         Box(
             modifier =
                 Modifier
                     .height(CapHeight)
-                    .widthIn(min = minWidth)
+                    .then(if (exactWidth) Modifier.width(minWidth - 2.dp) else Modifier.widthIn(min = minWidth))
                     .clip(CapShape)
                     .background(container)
-                    .padding(horizontal = 7.dp),
+                    .padding(horizontal = 2.dp),
             contentAlignment = Alignment.Center,
         ) {
             CompositionLocalProvider(LocalContentColor provides content) { label() }

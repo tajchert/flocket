@@ -124,7 +124,8 @@
     <string name="pubkey_instruction">Add this public key to the machine so it accepts this device. Run this there:</string>
     <string name="pubkey_copy_command">Copy command</string>
     <string name="pubkey_copy_key">Copy key</string>
-    <string name="pubkey_share">Share</string>
+    <string name="pubkey_copy_key_description">Copy public key</string>
+    <string name="pubkey_share">Send to computer</string>
     <string name="pubkey_copied">Copied</string>
     <string name="pubkey_share_chooser">Share public key</string>
 
