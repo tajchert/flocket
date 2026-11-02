@@ -96,6 +96,7 @@ class AgentViewTest {
         assertEquals(ShownStatus.Idle, rec(AgentState.Done, 3, seen("0")).childShownStatus())
         assertEquals(ShownStatus.Working, rec(AgentState.Working).childShownStatus())
         assertEquals(ShownStatus.Idle, rec(AgentState.Idle, 3, seen("0")).childShownStatus())
+        assertNull(rec(AgentState.Other).childShownStatus())
     }
 
     @Test
