@@ -10,10 +10,10 @@ import com.mtajchert.flocket.core.data.UserPreferences
 import com.mtajchert.flocket.core.model.BellMode
 import com.mtajchert.flocket.core.model.ClipboardWritePolicy
 import com.mtajchert.flocket.core.model.ConnectionState
-import com.mtajchert.flocket.core.model.HerdrLabels
 import com.mtajchert.flocket.core.model.DesktopLayout
 import com.mtajchert.flocket.core.model.DesktopSpace
 import com.mtajchert.flocket.core.model.DesktopTab
+import com.mtajchert.flocket.core.model.HerdrLabels
 import com.mtajchert.flocket.core.model.LayoutRef
 import com.mtajchert.flocket.core.model.Liveness
 import com.mtajchert.flocket.core.model.MachineInfo

@@ -74,13 +74,13 @@ class TerminalsLogicTest {
         groups.first { it.hostId == SampleHost }.sections.first { it.machine == null }
 
     @Test
-    fun `grouped mode groups rows space then tab and sorts rows by rank`() {
+    fun `grouped mode groups rows space then tab in layout order`() {
         val local = state().local()
         assertEquals(listOf("Flocket", "Docs"), local.spaces.map { it.name })
         assertEquals(listOf("agents", "scratch"), local.spaces[0].tabs.map { it.name })
-        // blocked before working inside the first tab; finished t6 is hidden by default
+        // layout order inside the first tab (no urgency sorting); finished t6 is hidden by default
         assertEquals(
-            listOf("t2", "t1"),
+            listOf("t1", "t2"),
             local.spaces[0]
                 .tabs[0]
                 .items
@@ -96,8 +96,7 @@ class TerminalsLogicTest {
     }
 
     @Test
-    fun `grouped mode orders spaces, tabs and rows by desktop rank, stable`() {
-        // A Working space listed before a Done one: Done ranks higher, so it comes first.
+    fun `grouped mode keeps the layout order of spaces, tabs and rows`() {
         val working =
             space("desktop:w", "Work", null, AgentState.Working, tab("1", "w", "t1", top = AgentState.Working))
         val done = space("desktop:d", "Fin", null, AgentState.Done, tab("1", "d", "t3", top = AgentState.Done))
@@ -115,13 +114,12 @@ class TerminalsLogicTest {
         val ws = Workspace(listOf(working, idleA, done, idleB, multi))
         val local =
             buildUiState(listOf(SampleData.overview.first()), grouped, false) { ws }.local()
-        assertEquals(listOf("Multi", "Fin", "Work", "IdleA", "IdleB"), local.spaces.map { it.name })
-        // inside Multi the blocked tab comes first; inside it blocked t2 before working t1
-        assertEquals(listOf("second", "first"), local.spaces[0].tabs.map { it.name })
+        assertEquals(listOf("Work", "IdleA", "Fin", "IdleB", "Multi"), local.spaces.map { it.name })
+        assertEquals(listOf("first", "second"), local.spaces[4].tabs.map { it.name })
         assertEquals(
             listOf("t2", "t1"),
-            local.spaces[0]
-                .tabs[0]
+            local.spaces[4]
+                .tabs[1]
                 .items
                 .map { it.address },
         )
@@ -571,7 +569,7 @@ class TerminalsLogicTest {
     }
 
     @Test
-    fun `grouped mode keeps sub-agents out of the rows and ranks by urgency with children`() {
+    fun `grouped mode keeps sub-agents out of the rows and keeps the layout order`() {
         val ws =
             Workspace(
                 listOf(
@@ -586,8 +584,15 @@ class TerminalsLogicTest {
                 agent("k", AgentState.Error, parent = "p"),
             )
         val local = buildUiState(listOf(overviewOf(*terminals)), grouped, false, workspaceOf = { ws }).local()
-        assertEquals(listOf("B", "A"), local.spaces.map { it.name })
-        assertEquals(listOf("p"), local.spaces[0].items.map { it.address })
+        assertEquals(listOf("A", "B"), local.spaces.map { it.name })
+        assertEquals(listOf("p"), local.spaces[1].items.map { it.address })
+        assertEquals(
+            ShownStatus.NeedsYou.rank,
+            local.spaces[1]
+                .items
+                .single()
+                .urgency,
+        )
     }
 
     @Test
@@ -723,5 +728,56 @@ class TerminalsLogicTest {
         val spaces = state.local().spaces.mapNotNull { it.withoutPinned() }
         assertEquals(listOf("A"), spaces.map { it.name })
         assertEquals(listOf("y"), spaces.single().items.map { it.address })
+    }
+
+    @Test
+    fun `a remote child never falls back to a local parent of the same relative name`() {
+        // rohan/t7 is finished and so not listed: rohan/t8 must not nest under the local t7.
+        val live = listOf(agent("t7", AgentState.Working), agent("rohan/t8", AgentState.Working, parent = "t7"))
+        val items = itemsWithChildren(live, true, true, null)
+        assertEquals(listOf("t7", "rohan/t8"), items.map { it.address })
+        assertTrue(items.all { it.children.isEmpty() })
+        // with rohan/t7 listed the child nests under it, not under the local t7
+        val nested = itemsWithChildren(live + agent("rohan/t7", AgentState.Idle), true, true, null)
+        assertEquals(listOf("rohan/t8"), nested.first { it.address == "rohan/t7" }.children.map { it.address })
+        assertTrue(nested.first { it.address == "t7" }.children.isEmpty())
+    }
+
+    @Test
+    fun `a terminal leading into a parent cycle nests and only the cycle members are roots`() {
+        val items =
+            itemsWithChildren(
+                listOf(
+                    agent("t", AgentState.Working, parent = "a"),
+                    agent("a", AgentState.Idle, parent = "b"),
+                    agent("b", AgentState.Idle, parent = "a"),
+                ),
+                true,
+                true,
+                null,
+            )
+        assertEquals(listOf("a", "b"), items.map { it.address })
+        assertEquals(listOf("t"), items.first { it.address == "a" }.children.map { it.address })
+    }
+
+    @Test
+    fun `pin and mark unread are not offered for a federated terminal whose machine is not connected`() {
+        val terminals =
+            listOf(
+                agent("rohan/t7", AgentState.Idle, turn = 2, seen = 2),
+                agent("t1", AgentState.Idle, turn = 2, seen = 2),
+            )
+        val items =
+            itemsWithChildren(
+                terminals,
+                true,
+                true,
+                null,
+                machineConnected = { it == null },
+            ).associateBy { it.address }
+        assertFalse(items.getValue("rohan/t7").supportsLabels)
+        assertTrue(items.getValue("t1").supportsLabels)
+        val up = itemsWithChildren(terminals, true, true, null, machineConnected = { true })
+        assertTrue(up.all { it.supportsLabels })
     }
 }

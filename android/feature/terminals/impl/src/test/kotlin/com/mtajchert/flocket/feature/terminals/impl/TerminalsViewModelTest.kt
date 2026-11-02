@@ -89,11 +89,11 @@ class TerminalsViewModelTest {
         .orEmpty()
 
     @Test
-    fun `grouped mode groups by host then by federated machine and sorts rows by desktop rank`() =
+    fun `grouped mode groups by host then by federated machine in layout order`() =
         runTest {
             val state = vm(prefs = grouped()).uiState.value
             assertEquals(listOf(studio, hetzner, pi), state.groups.map { it.hostId })
-            assertEquals(listOf("t2", "t3", "t1", "t4", "t5"), state.addresses(studio)) // blocked, done, working, idle, no status
+            assertEquals(listOf("t1", "t2", "t3", "t4", "t5"), state.addresses(studio)) // layout order, no urgency sorting
             assertEquals(listOf("rohan/t7"), state.addresses(studio, "rohan"))
             assertEquals(
                 MachineState.Connected,

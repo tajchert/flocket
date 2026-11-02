@@ -193,7 +193,7 @@ internal fun buildSections(
                             TabSection(
                                 tab.key,
                                 tab.name,
-                                rows.sortedByDescending { it.urgency },
+                                rows,
                                 tab.number,
                                 tab.layoutRef,
                                 canRename(space.machine),
@@ -203,7 +203,7 @@ internal fun buildSections(
             if (tabs.isEmpty()) {
                 null
             } else {
-                val ordered = tabs.map { it.second }.sortedByDescending { t -> t.items.maxOf { it.urgency } }
+                val ordered = tabs.map { it.second }
                 space.machine to
                     SpaceSection(
                         space.key,
@@ -219,8 +219,7 @@ internal fun buildSections(
                     )
             }
         }
-    val ordered = spaces.sortedByDescending { (_, space) -> space.items.maxOf { it.urgency } }
-    return ordered
+    return spaces
         .groupBy({ it.first }, { it.second })
         .entries
         .sortedBy { if (it.key == null) 0 else 1 }
@@ -317,7 +316,7 @@ internal fun buildUiState(
                     session.supportsLabels,
                     held?.takeIf { it.hostId == host.id },
                     session.placedAddresses(),
-                )
+                ) { m -> m == null || session.machines.firstOrNull { it.name == m }?.state == MachineState.Connected }
             totalTerminals += items.sumOf { 1 + it.children.size }
             val shown = items.filter { it.matches(controls) }
             val sections =
@@ -475,7 +474,7 @@ internal fun SessionState.placedAddresses(): Set<TerminalAddress> {
  * Turns one host's live terminals into rows. A terminal whose `parent` is another live, listed terminal of the
  * host and which is headless (not in [placed]: no desktop pane and no `herdr.space` label, so only the start-folder
  * fallback places it) becomes a [ChildItem] of that parent, depth first like the desktop `tree()`, and gets no
- * row of its own. A parent cycle leaves the terminals involved as ordinary rows. A row's urgency is the highest
+ * row of its own. Only the members of a parent cycle become ordinary rows; a terminal leading into a cycle nests under its parent chain. A row's urgency is the highest
  * of its own and its whole subtree's ranks.
  */
 internal fun itemsWithChildren(
@@ -484,6 +483,8 @@ internal fun itemsWithChildren(
     supportsLabels: Boolean,
     held: OpenTerminal?,
     placed: Set<TerminalAddress> = emptySet(),
+    /** Whether a write to a terminal of this federated machine (null = the host's own) can go out (rule 7). */
+    machineConnected: (String?) -> Boolean = { true },
 ): List<TerminalItem> {
     val byAddress = live.associateBy { it.address.value }
 
@@ -491,7 +492,8 @@ internal fun itemsWithChildren(
         if (t.address in placed) return null
         val p = t.parent?.takeIf { it.isNotBlank() } ?: return null
         val machine = t.address.machine
-        val found = (machine?.takeIf { '/' !in p }?.let { byAddress["$it/$p"] }) ?: byAddress[p]
+        // A remote child's relative parent is on its own machine; never fall back to the local terminal.
+        val found = if (machine != null && '/' !in p) byAddress["$machine/$p"] else byAddress[p]
         return found?.takeIf { it.address != t.address }
     }
 
@@ -499,7 +501,8 @@ internal fun itemsWithChildren(
         val seen = hashSetOf(t.address)
         var cur = parentOf(t) ?: return true
         while (true) {
-            if (!seen.add(cur.address)) return true
+            if (cur.address == t.address) return true
+            if (!seen.add(cur.address)) return false
             cur = parentOf(cur) ?: return false
         }
     }
@@ -526,7 +529,7 @@ internal fun itemsWithChildren(
         }
     return roots.map { t ->
         val isHeld = held != null && held.address == t.address.value
-        val base = t.toItem(writable, supportsLabels, isHeld)
+        val base = t.toItem(writable, supportsLabels && machineConnected(t.address.machine), isHeld)
         val children = subtree(t, 1)
         if (children.isEmpty()) {
             base

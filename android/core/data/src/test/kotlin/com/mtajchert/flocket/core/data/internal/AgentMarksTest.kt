@@ -199,7 +199,13 @@ class AgentMarksTest {
                 val session =
                     FakeCoreSession(
                         endpoint,
-                        SessionState(endpoint, ConnectionState.Online(info()), info(), listOf(rec), machines = machines),
+                        SessionState(
+                            endpoint,
+                            ConnectionState.Online(info()),
+                            info(),
+                            listOf(rec),
+                            machines = machines,
+                        ),
                     )
                 session.labelsHandler = { _, _ -> AppResult.Success(rec) }
                 return AgentMarksImpl(Manager(session)) to session

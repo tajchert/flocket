@@ -393,11 +393,15 @@ class TerminalViewModel
                         // Only a written (or permanently unwritable) turn counts as handled, so a failed
                         // write is tried again after a reconnect.
                         when (val r = agentMarks.markSeen(record.ref)) {
-                            is AppResult.Success -> handled = record.turn
-                            is AppResult.Failure ->
+                            is AppResult.Success -> {
+                                handled = record.turn
+                            }
+
+                            is AppResult.Failure -> {
                                 if (r.error is AppError.Unsupported || r.error is AppError.InvalidInput) {
                                     handled = record.turn
                                 }
+                            }
                         }
                     }
             }
