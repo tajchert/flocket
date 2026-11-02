@@ -65,6 +65,8 @@ data class TerminalUiState(
     val freshShell: Boolean = false,
     val fontSizeSp: Float = 13f,
     val showExtraKeys: Boolean = true,
+    /** Full-screen mode: no top bar or tab strip, a small corner button brings them back. */
+    val topBarHidden: Boolean = false,
     val keepScreenOn: Boolean = true,
     val colorScheme: TerminalColorScheme = TerminalColorScheme.FollowApp,
     val bell: BellMode = BellMode.Haptic,

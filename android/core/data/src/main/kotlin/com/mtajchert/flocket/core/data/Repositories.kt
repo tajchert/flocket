@@ -146,6 +146,11 @@ data class UserPreferences(
     val keepConnectedInBackground: Boolean = true,
     /** How the terminal list is ordered. */
     val terminalSort: TerminalSort = TerminalSort.Priority,
+    /**
+     * The terminal screen hides its top bar and tab strip so the terminal gets the space. App-wide, not
+     * per host: it is a viewing mode the user switches from the screen itself.
+     */
+    val terminalTopBarHidden: Boolean = false,
 )
 
 /**

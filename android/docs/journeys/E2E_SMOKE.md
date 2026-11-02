@@ -20,6 +20,7 @@ the steps that stay manual. How to run them: [TESTING.md](../TESTING.md#device-j
 | 6g sshd link killed, keys typed while down not replayed | `SshLinkJourneyTest` | automated |
 | 7 Smoothness (flood, gfxinfo) | - | manual |
 | 8 Kill, exit banner, Remove | `TerminalJourneyTest` | automated |
+| 9 Full screen: hiding the top bar gives the terminal its rows, the corner button gives them back | `FullScreenJourneyTest` | automated |
 
 ## Prerequisites
 

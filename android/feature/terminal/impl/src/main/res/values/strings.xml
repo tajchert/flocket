@@ -20,6 +20,8 @@
     <string name="terminal_action_kill">Kill</string>
     <string name="terminal_action_keyboard">Show or hide keyboard</string>
     <string name="terminal_action_more">More actions</string>
+    <string name="terminal_action_hide_top_bar">Hide top bar</string>
+    <string name="terminal_action_show_top_bar">Show top bar</string>
     <string name="terminal_space_fallback">Space %1$d</string>
     <plurals name="terminal_next_needs_you">
         <item quantity="one">%1$d other terminal needs you. Open it</item>

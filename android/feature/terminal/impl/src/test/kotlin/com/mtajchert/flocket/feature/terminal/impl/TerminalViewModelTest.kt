@@ -431,6 +431,19 @@ class TerminalViewModelTest {
         }
 
     @Test
+    fun `hiding the top bar is an app-wide preference`() =
+        runTest {
+            val prefs = FakePreferencesRepository()
+            val vm = viewModel(preferences = prefs, settings = FakeHostSettingsRepository(prefs))
+            assertFalse(vm.uiState.value.topBarHidden)
+            vm.setTopBarHidden(true)
+            assertTrue(prefs.preferences.value.terminalTopBarHidden)
+            assertTrue(vm.uiState.value.topBarHidden)
+            vm.setTopBarHidden(false)
+            assertFalse(vm.uiState.value.topBarHidden)
+        }
+
+    @Test
     fun `opening a terminal asks the manager to connect its host`() =
         runTest {
             viewModel()

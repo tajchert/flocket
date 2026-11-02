@@ -67,6 +67,7 @@ class TerminalScreenTest {
             onRenameSave = { clicks += "save" },
             onRenameDismiss = { clicks += "cancelRename" },
             onReply = { clicks += "reply:${it.badge}" },
+            onTopBarHidden = { clicks += "topBarHidden:$it" },
         )
 
     private fun show(state: TerminalUiState) =
@@ -298,6 +299,44 @@ class TerminalScreenTest {
         compose.onNodeWithText("api · Studio Mac").assertExists()
         compose.onNodeWithTag("terminal_next_needs_you").performClick()
         assertEquals(listOf("open:t4"), clicks)
+    }
+
+    @Test
+    fun `the overflow menu hides the top bar`() {
+        show(live)
+        compose.onAllNodes(hasTestTag("terminal_show_top_bar")).assertCountEquals(0)
+        compose.onNodeWithContentDescription("More actions").performClick()
+        compose.onNodeWithText("Hide top bar").performClick()
+        assertEquals(listOf("topBarHidden:true"), clicks)
+    }
+
+    @Test
+    fun `full screen drops the bar and strip, keeps the corner, and brings the bar back`() {
+        compose.setContent {
+            FlocketTheme(dynamicColor = false) {
+                TerminalScreen(
+                    live.copy(topBarHidden = true),
+                    actions,
+                    tabStrip = strip,
+                    header = TerminalHeaderUi("api", 1, 2, "t4"),
+                ) { Box(it) }
+            }
+        }
+        compose.onAllNodesWithText("refactor-auth").assertCountEquals(0)
+        compose.onAllNodesWithContentDescription("More actions").assertCountEquals(0)
+        compose.onAllNodes(hasTestTag("terminal_tab")).assertCountEquals(0)
+        // Other terminals that need the user are still one tap away.
+        compose.onNodeWithTag("terminal_next_needs_you").performClick()
+        compose.onNodeWithContentDescription("Show top bar").performClick()
+        assertEquals(listOf("open:t4", "topBarHidden:false"), clicks)
+    }
+
+    @Test
+    fun `full screen still labels a host that is not online`() {
+        show(live.copy(topBarHidden = true, connection = ConnectionState.Connecting(1), streamConnected = false))
+        compose.onNodeWithTag("terminal_show_top_bar").assertExists()
+        compose.onNodeWithText("Connecting…").assertExists() // the host's badge, as in the title
+        compose.onNodeWithText("Reconnecting…").assertExists()
     }
 
     private fun androidx.compose.ui.test.junit4.ComposeContentTestRule.onAllNodesWithContentDescriptionCount(

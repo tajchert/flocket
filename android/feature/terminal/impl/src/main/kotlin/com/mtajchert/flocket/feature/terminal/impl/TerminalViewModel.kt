@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.mtajchert.flocket.core.common.error.AppError
 import com.mtajchert.flocket.core.common.result.AppResult
+import com.mtajchert.flocket.core.common.result.onFailure
 import com.mtajchert.flocket.core.data.AgentMarks
 import com.mtajchert.flocket.core.data.ApplicationScope
 import com.mtajchert.flocket.core.data.ConnectionManager
@@ -156,6 +157,7 @@ class TerminalViewModel
                     freshShell = loc.freshShell,
                     fontSizeSp = loc.fontSizeSp ?: terminal.fontSizeSp,
                     showExtraKeys = terminal.showExtraKeys,
+                    topBarHidden = prefs.terminalTopBarHidden,
                     keepScreenOn = terminal.keepScreenOn,
                     colorScheme = terminal.colorScheme,
                     bell = terminal.bell,
@@ -587,6 +589,13 @@ class TerminalViewModel
         fun onNotificationPermissionAsked() {
             local.update { it.copy(notificationAsked = true) }
             viewModelScope.launch { preferences.update { it.copy(notificationPermissionAsked = true) } }
+        }
+
+        /** App-wide: every terminal opens the same way until the user switches back. */
+        fun setTopBarHidden(hidden: Boolean) {
+            viewModelScope.launch {
+                preferences.update { it.copy(terminalTopBarHidden = hidden) }.onFailure(::report)
+            }
         }
 
         fun onFontSizeChange(sizeSp: Float) {

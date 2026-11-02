@@ -144,6 +144,13 @@ private fun Shot(
 @Composable
 private fun TerminalLiveScreenshot() = Shot(live)
 
+// Full screen: no top bar or strip; the corner keeps "next needs you" and the button that brings the bar back.
+@PreviewTest
+@PreviewPhone
+@PreviewPhoneDark
+@Composable
+private fun TerminalFullScreenScreenshot() = Shot(live.copy(topBarHidden = true))
+
 // Blocked: number replies above the extra keys, nothing else needs the user.
 @PreviewTest
 @PreviewPhone

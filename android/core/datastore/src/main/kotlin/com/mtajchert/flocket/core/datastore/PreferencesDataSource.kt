@@ -28,6 +28,7 @@ data class StoredPreferences(
     val defaultWorkingDirectory: String = "~",
     /** Terminal list order (enum entry name); unknown or missing values mean Priority in the mapper. */
     val terminalListSort: String = "Priority",
+    val terminalTopBarHidden: Boolean = false,
 )
 
 /** Reads and writes [StoredPreferences] on a Preferences DataStore. Unreadable files reset to defaults. */
@@ -54,6 +55,7 @@ class PreferencesDataSource(
             p[AUTO_CONNECT] = n.autoConnect
             p[DEFAULT_CWD] = n.defaultWorkingDirectory
             p[LIST_SORT] = n.terminalListSort
+            p[TOP_BAR_HIDDEN] = n.terminalTopBarHidden
         }
     }
 
@@ -74,6 +76,7 @@ class PreferencesDataSource(
             autoConnect = this[AUTO_CONNECT] ?: d.autoConnect,
             defaultWorkingDirectory = this[DEFAULT_CWD] ?: d.defaultWorkingDirectory,
             terminalListSort = this[LIST_SORT] ?: d.terminalListSort,
+            terminalTopBarHidden = this[TOP_BAR_HIDDEN] ?: d.terminalTopBarHidden,
         )
     }
 
@@ -92,5 +95,6 @@ class PreferencesDataSource(
         val AUTO_CONNECT = booleanPreferencesKey("auto_connect")
         val DEFAULT_CWD = stringPreferencesKey("default_working_directory")
         val LIST_SORT = stringPreferencesKey("terminal_list_sort")
+        val TOP_BAR_HIDDEN = booleanPreferencesKey("terminal_top_bar_hidden")
     }
 }
