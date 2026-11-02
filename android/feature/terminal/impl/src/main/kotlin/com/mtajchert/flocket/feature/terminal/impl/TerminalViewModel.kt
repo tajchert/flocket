@@ -19,6 +19,7 @@ import com.mtajchert.flocket.core.model.MachineState
 import com.mtajchert.flocket.core.model.TerminalAddress
 import com.mtajchert.flocket.core.model.buildWorkspace
 import com.mtajchert.flocket.core.model.isAgent
+import com.mtajchert.flocket.core.model.shownTitle
 import com.mtajchert.flocket.core.session.AttachMode
 import com.mtajchert.flocket.core.session.AttachRequest
 import com.mtajchert.flocket.core.session.CoreSession
@@ -148,7 +149,7 @@ class TerminalViewModel
                     hostLabel = hostLabel.orEmpty(),
                     machine = address.machine,
                     agentLabel = record?.agentLabel.orEmpty(),
-                    title = programTitle.ifBlank { record?.recordTitle().orEmpty() },
+                    title = shownTitle(programTitle.ifBlank { record?.recordTitle().orEmpty() }),
                     status = record?.status ?: com.mtajchert.flocket.core.model.AgentStatus.Unknown,
                     connection = st?.connection ?: ConnectionState.Idle,
                     phase = ph,

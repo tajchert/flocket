@@ -100,6 +100,7 @@ import com.mtajchert.flocket.core.ui.component.AgentStatusChip
 import com.mtajchert.flocket.core.ui.component.ConnectionStateBadge
 import com.mtajchert.flocket.core.ui.component.NeedYouPill
 import com.mtajchert.flocket.core.ui.component.RenameDialog
+import com.mtajchert.flocket.core.ui.component.WorkingDots
 import com.mtajchert.flocket.core.ui.component.agentStatusStyle
 import com.mtajchert.flocket.core.ui.error.asString
 import com.mtajchert.flocket.core.ui.nav.LocalPaneLayout
@@ -360,8 +361,11 @@ private fun TitleBlock(
 ) {
     val name = state.title.ifBlank { state.agentLabel }.ifBlank { state.address }
     val agent = state.agentLabel.takeIf { it.isNotBlank() && it != name }
+    val working = state.isOnline && (state.status as? AgentStatus.Reported)?.state == AgentState.Working
     Column {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            // Flocket's own mark where the agent's title spinner was (shownTitle drops that one).
+            if (working) WorkingDots(color = MaterialTheme.colorScheme.primary, size = 4.5.dp)
             Text(
                 text = name,
                 style = MaterialTheme.typography.titleMedium.copy(fontSize = 17.sp, fontWeight = FontWeight.Medium),
