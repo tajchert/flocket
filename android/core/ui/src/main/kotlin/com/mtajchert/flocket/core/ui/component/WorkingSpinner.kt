@@ -1,27 +1,20 @@
 package com.mtajchert.flocket.core.ui.component
 
-import androidx.compose.animation.core.withInfiniteAnimationFrameNanos
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.mutableLongStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.MotionDurationScale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import kotlin.coroutines.coroutineContext
 import kotlin.math.PI
 import kotlin.math.cos
 
@@ -68,14 +61,7 @@ fun WorkingSpinner(
     size: Dp = 14.dp,
     strokeWidth: Dp = 2.dp,
 ) {
-    val inspection = LocalInspectionMode.current
-    val frameNanos = remember { mutableLongStateOf(if (inspection) 0L else System.nanoTime()) }
-    if (!inspection) {
-        LaunchedEffect(Unit) {
-            if (coroutineContext[MotionDurationScale]?.scaleFactor == 0f) return@LaunchedEffect
-            while (true) withInfiniteAnimationFrameNanos { frameNanos.longValue = it }
-        }
-    }
+    val frameNanos = rememberAnimationNanos()
     Canvas(
         modifier
             .size(size)
