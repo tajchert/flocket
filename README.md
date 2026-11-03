@@ -148,7 +148,7 @@ These hold on every platform. The full wording is in [AGENTS.md](AGENTS.md).
 Binding decisions are recorded as ADRs in [`docs/decisions/`](docs/decisions/): app
 identity, license, terminal engine, native code with shared fixtures, direct SSH transport,
 the background keep-alive service, fitting a terminal on open, renaming in the desktop layout,
-and device journeys.
+device journeys, and rebuilding desktop mod features natively instead of running mods.
 
 ## <img src="docs/readme/glyph.svg" width="20" height="20"> Repository map
 
