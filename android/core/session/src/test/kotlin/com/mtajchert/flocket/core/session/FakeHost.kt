@@ -18,8 +18,10 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.serialization.json.JsonObject
+import java.io.File
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicInteger
+import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
 
@@ -65,6 +67,9 @@ class FakeHost(
     /** Gate for the n-th (1-based) factory call; ignores cancellation like a blocking SSH connect. */
     val gates = HashMap<Int, CompletableDeferred<Unit>>()
     var configure: (FakeCore) -> Unit = {}
+
+    /** Wraps each transport the factory hands out (e.g. [FakeDirectFileSource.over] for SFTP). */
+    var wrapTransport: (ByteTransport) -> ByteTransport = { it }
     var coreConfig = FakeCoreConfig()
     val calls = AtomicInteger()
 
@@ -78,19 +83,23 @@ class FakeHost(
         core.terminals.addAll(terminals)
         configure(core)
         cores += core
-        return AppResult.Success(TrackingTransport(core.client).also { transports += it })
+        return AppResult.Success(wrapTransport(TrackingTransport(core.client).also { transports += it }))
     }
 
     fun session(
         test: TestScope,
         config: SessionConfig = SessionConfig(random = FixedRandom(0.5)),
         id: String = "h1",
+        usableSpace: (File) -> Long = File::getUsableSpace,
     ) = CoreSessionImpl(
         CoreEndpoint(HostId(id)),
         ::factory,
         test.backgroundScope,
         Clock { test.testScheduler.currentTime },
         config = config,
+        // Download file writes stay on the test dispatcher, so virtual time never jumps while they run.
+        downloadIo = EmptyCoroutineContext,
+        usableSpace = usableSpace,
     )
 }
 
