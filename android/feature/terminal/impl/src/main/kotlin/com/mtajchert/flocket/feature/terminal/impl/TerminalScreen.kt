@@ -37,9 +37,9 @@ import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.ContentPaste
 import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.FitScreen
+import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.Fullscreen
 import androidx.compose.material.icons.outlined.FullscreenExit
-import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.HourglassEmpty
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Keyboard
@@ -661,7 +661,7 @@ private fun EndBanner(
 }
 
 /** Neutral for information, amber when the user has to act, red only for errors. */
-private enum class BannerTone { Neutral, Attention, Error }
+internal enum class BannerTone { Neutral, Attention, Error }
 
 @Composable
 internal fun StateBanner(

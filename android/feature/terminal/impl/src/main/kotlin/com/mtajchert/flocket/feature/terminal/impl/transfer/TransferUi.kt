@@ -36,6 +36,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import com.mtajchert.flocket.core.common.error.AppError
 import com.mtajchert.flocket.core.ui.error.asString
+import com.mtajchert.flocket.feature.terminal.impl.BannerTone
 import com.mtajchert.flocket.feature.terminal.impl.R
 import com.mtajchert.flocket.feature.terminal.impl.StateBanner
 
@@ -147,7 +148,7 @@ fun TransferStrip(
                         stringResource(R.string.terminal_dismiss) to onDismiss,
                         stringResource(R.string.terminal_retry) to onRetry,
                     ),
-                error = true,
+                tone = BannerTone.Attention,
             )
         }
 
@@ -165,7 +166,7 @@ fun TransferStrip(
                         add(stringResource(R.string.terminal_dismiss) to onDismiss)
                         if (phase.error.source.isTransient()) add(stringResource(R.string.terminal_retry) to onRetry)
                     },
-                error = true,
+                tone = BannerTone.Error,
             )
         }
 

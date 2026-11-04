@@ -97,7 +97,7 @@ Known follow-ups:
 agent wants to show you.
 
 Design: [`design/2026-11-01-paste-files-share.md`](design/2026-11-01-paste-files-share.md).
-Decision: [ADR-0007](decisions/0007-transfer-connection-and-agent-shares.md). Wire facts:
+Decision: [ADR-0011](decisions/0011-transfer-connection-and-agent-shares.md). Wire facts:
 SPEC §4.17–§4.20 and §9.2.
 
 - **Paste an image or file:** the terminal's Paste… menu, Ctrl+V or a two-finger tap with
@@ -117,7 +117,7 @@ SPEC §4.17–§4.20 and §9.2.
 Known limits and what is left:
 
 - **Federated transfers stall that machine's terminals** on a slow link, for the whole
-  transfer (measurements in ADR-0007 §4). Lower the cap for remote machines or send large
+  transfer (measurements in ADR-0011 §4). Lower the cap for remote machines or send large
   remote files in chunks.
 - **Files over 8 MB:** needs chunked `file.write` and a chunked read on the core, or a
   ranged `cat`.

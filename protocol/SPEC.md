@@ -33,7 +33,7 @@ Untagged statements are [S]+[W].
 
 One `hc connect` process = one core connection. You can open several (e.g. one for control, one per heavy stream), but one framed connection carrying everything is the intended design.
 
-Exception: file transfers (`terminal.put`, `file.write`, `machine.exec cat`; §4.17–§4.20) carry frames of up to about 10.7 MB (8 MB base64) that would block the terminal traffic on a shared connection. Flocket runs them on a separate, short-lived **transfer connection** (a second `hc connect`, plain mode is enough). See [ADR-0007](../docs/decisions/0007-transfer-connection-and-agent-shares.md).
+Exception: file transfers (`terminal.put`, `file.write`, `machine.exec cat`; §4.17–§4.20) carry frames of up to about 10.7 MB (8 MB base64) that would block the terminal traffic on a shared connection. Flocket runs them on a separate, short-lived **transfer connection** (a second `hc connect`, plain mode is enough). See [ADR-0011](../docs/decisions/0011-transfer-connection-and-agent-shares.md).
 
 ---
 
@@ -606,7 +606,7 @@ Further details from the Herdr.app 0.x bundle (field names and its built-in docs
 
 ### 9.2 `flocket-share` document (Flocket convention, we write it)
 
-Agents running in a herdr terminal tell the Flocket app about files through a document named **`flocket-share`**, one per machine (each core keeps its own; the app reads remote ones with `on`). The helper is `protocol/tools/flocket-share`; decision in [ADR-0007](../docs/decisions/0007-transfer-connection-and-agent-shares.md).
+Agents running in a herdr terminal tell the Flocket app about files through a document named **`flocket-share`**, one per machine (each core keeps its own; the app reads remote ones with `on`). The helper is `protocol/tools/flocket-share`; decision in [ADR-0011](../docs/decisions/0011-transfer-connection-and-agent-shares.md).
 
 Value: `{"v":1,"shares":[<entry>, …]}`, newest first. An entry:
 

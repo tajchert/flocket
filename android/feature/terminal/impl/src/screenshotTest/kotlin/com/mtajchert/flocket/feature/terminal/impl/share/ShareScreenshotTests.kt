@@ -182,6 +182,7 @@ private fun ShareCardOverTerminalScreenshot() =
                     connection = ConnectionState.Online(SampleData.coreInfo),
                     phase = TerminalPhase.Live,
                     streamConnected = true,
+                    isOwner = true,
                     showExtraKeys = false,
                 ),
             actions = TerminalActions(),

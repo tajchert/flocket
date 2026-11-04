@@ -208,7 +208,7 @@ may be retried once.
   link to rohan, which the app does not control. Accept this for v1. A real-core test
   measures whether a remote 8 MB transfer stalls other `rohan/*` terminals, and the
   result is written up in the ADR. If they do stall, a later change lowers the cap for
-  remote machines. Measured: they stall on a slow link for the whole transfer (ADR-0007 §4).
+  remote machines. Measured: they stall on a slow link for the whole transfer (ADR-0011 §4).
 - **Seen state and duplicates.** An entry `id` is random and globally unique, at least
   64 random bits. Seen state and history are keyed by entry id alone, so a machine
   reachable both directly and through federation shows each share once.
@@ -217,7 +217,7 @@ may be retried once.
   show as new.
 - **ADR.** The transfer connection departs from SPEC §1's "one connection carries
   everything", and `flocket-share` is a cross-platform convention. Both are recorded in a
-  new ADR (`docs/decisions/0007-…`) alongside the SPEC change.
+  new ADR (`docs/decisions/0011-…`) alongside the SPEC change.
 
 ## 5. What is left to the builder
 

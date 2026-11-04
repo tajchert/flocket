@@ -43,6 +43,7 @@ private val liveState =
         connection = ConnectionState.Online(SampleData.coreInfo),
         phase = TerminalPhase.Live,
         streamConnected = true,
+        isOwner = true,
     )
 
 @Composable

@@ -1,4 +1,4 @@
-# ADR-0007: Separate transfer connection and agent shares
+# ADR-0011: Separate transfer connection and agent shares
 
 Status: accepted (2026-11-01)
 

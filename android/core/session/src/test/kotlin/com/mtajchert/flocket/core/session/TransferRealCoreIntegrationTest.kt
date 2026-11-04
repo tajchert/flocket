@@ -132,7 +132,7 @@ class TransferRealCoreIntegrationTest {
         }
 
     /**
-     * ADR-0007 §4: does an 8 MiB transfer with a federated machine stall that machine's other terminals?
+     * ADR-0011 §4: does an 8 MiB transfer with a federated machine stall that machine's other terminals?
      * Over a plain pipe link (`--via "sh -c"`), so it is fast and always runs; prints the measurement.
      */
     @Test

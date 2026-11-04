@@ -6,7 +6,7 @@ A POSIX `sh` helper that an agent (or you) runs inside a herdr terminal to show 
 Flocket on your phone: `flocket-share [-m NOTE] PATH…`. It appends an entry to the
 `flocket-share` document of the local herdr-core (convention in
 [`../SPEC.md`](../SPEC.md) §9.2, decision in
-[ADR-0007](../../docs/decisions/0007-transfer-connection-and-agent-shares.md)).
+[ADR-0011](../../docs/decisions/0011-transfer-connection-and-agent-shares.md)).
 
 It needs `hc` (or `herdr-core`, or `$HC_BIN`), `sed`, `od`, `tr`, `wc` and `date`. It
 runs only inside a herdr terminal (`HC_TERMINAL_ID` set).
