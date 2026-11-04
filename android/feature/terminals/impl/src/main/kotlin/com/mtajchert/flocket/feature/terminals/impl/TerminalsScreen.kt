@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
@@ -56,9 +57,11 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -102,7 +105,7 @@ import com.mtajchert.flocket.core.ui.R as CoreUiR
 
 /** Everything the screen can ask for; the route wires it to the ViewModel. Defaults keep previews and tests terse. */
 @Immutable
-class TerminalsActions(
+data class TerminalsActions(
     val onFilter: (TerminalFilter) -> Unit = {},
     val onSort: (TerminalSort) -> Unit = {},
     val onClearFilters: () -> Unit = {},
@@ -142,6 +145,18 @@ fun TerminalsScreen(
     // The host chip selection; a host that has gone away counts as "All".
     var hostFilterValue by rememberSaveable { mutableStateOf<String?>(null) }
     val hostFilter = state.groups.firstOrNull { it.hostId.value == hostFilterValue }?.hostId
+    // A row pinned from this list joins the Pinned group at the top, out of view; once it shows as pinned the list
+    // scrolls up to it. Pins that arrive any other way (another device, a restore) leave the scroll alone.
+    var justPinned by remember { mutableStateOf<String?>(null) }
+    val listActions =
+        remember(actions) {
+            actions.copy(onPin = { item, pin ->
+                justPinned = item.key.takeIf { pin }
+                actions.onPin(item, pin)
+            })
+        }
+    val revealPinned = remember(state.groups, justPinned) { justPinned?.let { state.groups.showsPinned(it) } == true }
+    val onPinnedReveal = { justPinned = null }
     Scaffold(
         modifier = modifier,
         topBar = {
@@ -246,9 +261,18 @@ fun TerminalsScreen(
 
                     else -> {
                         if (priority) {
-                            PriorityList(state, actions, selected, nowMs, dense, hostFilter)
+                            PriorityList(
+                                state,
+                                listActions,
+                                selected,
+                                nowMs,
+                                dense,
+                                hostFilter,
+                                revealPinned,
+                                onPinnedReveal,
+                            )
                         } else {
-                            TerminalList(state, actions, selected, nowMs, dense)
+                            TerminalList(state, listActions, selected, nowMs, dense, revealPinned, onPinnedReveal)
                         }
                     }
                 }
@@ -357,9 +381,21 @@ private fun TerminalList(
     selected: TerminalRoute?,
     nowMs: Long,
     dense: Boolean,
+    revealPinned: Boolean = false,
+    onPinnedReveal: () -> Unit = {},
 ) {
     // Keys of collapsed spaces ("host/space"); saved across rotation and process death.
     var collapsed by rememberSaveable { mutableStateOf(emptySet<String>()) }
+    val listState = rememberLazyListState()
+    // The Pinned group is first: open it and scroll up so a row just pinned is in view.
+    val revealed by rememberUpdatedState(onPinnedReveal)
+    LaunchedEffect(revealPinned) {
+        if (revealPinned) {
+            collapsed = collapsed - PINNED_KEY
+            listState.animateScrollToItem(0)
+            revealed()
+        }
+    }
     // Keys of parents whose sub-agents are folded away.
     var folded by rememberSaveable { mutableStateOf(emptySet<String>()) }
     val pinned = remember(state.groups) { pinnedGroupedRows(state.groups) }
@@ -373,6 +409,7 @@ private fun TerminalList(
         }
     PullToRefreshBox(isRefreshing = state.refreshing, onRefresh = actions.onRefresh) {
         LazyColumn(
+            state = listState,
             contentPadding = PaddingValues(top = 4.dp, bottom = 96.dp),
             verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
@@ -828,9 +865,21 @@ private fun PriorityList(
     nowMs: Long,
     dense: Boolean,
     hostFilter: HostId?,
+    revealPinned: Boolean = false,
+    onPinnedReveal: () -> Unit = {},
 ) {
     // Group keys the user flipped away from their default (Other terminals start collapsed when agents exist, the rest expanded).
     var flipped by rememberSaveable { mutableStateOf(emptySet<String>()) }
+    val listState = rememberLazyListState()
+    // The Pinned group is first: open it and scroll up so a row just pinned is in view.
+    val revealed by rememberUpdatedState(onPinnedReveal)
+    LaunchedEffect(revealPinned) {
+        if (revealPinned) {
+            flipped = flipped - PriorityBucket.Pinned.name
+            listState.animateScrollToItem(0)
+            revealed()
+        }
+    }
     var folded by rememberSaveable { mutableStateOf(emptySet<String>()) }
     val sections = remember(state.groups, hostFilter) { prioritySections(state.groups, hostFilter) }
     val shownGroups = state.groups.filter { hostFilter == null || it.hostId == hostFilter }
@@ -843,6 +892,7 @@ private fun PriorityList(
         }
     PullToRefreshBox(isRefreshing = state.refreshing, onRefresh = actions.onRefresh) {
         LazyColumn(
+            state = listState,
             contentPadding = PaddingValues(top = 4.dp, bottom = 96.dp),
             verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
@@ -930,5 +980,9 @@ private fun PriorityList(
         }
     }
 }
+
+/** Whether the row with [key] is listed as pinned (Grouped and Priority sections both carry their rows in `items`). */
+private fun List<HostGroup>.showsPinned(key: String) =
+    any { g -> g.sections.any { section -> section.items.any { it.key == key && it.pinned } } }
 
 private const val PINNED_KEY = "pinned"

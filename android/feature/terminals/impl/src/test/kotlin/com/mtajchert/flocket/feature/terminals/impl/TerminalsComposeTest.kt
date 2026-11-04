@@ -5,6 +5,9 @@ package com.mtajchert.flocket.feature.terminals.impl
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
@@ -255,6 +258,10 @@ class TerminalsComposeTest {
                         sections =
                             g.sections.map { sec ->
                                 sec.copy(
+                                    spaces =
+                                        sec.spaces.map { sp ->
+                                            sp.copy(tabs = sp.tabs.map { t -> t.copy(items = t.items.map(f)) })
+                                        },
                                     priority =
                                         sec.priority.map { p ->
                                             p.copy(rows = p.rows.map { r -> r.copy(item = f(r.item)) })
@@ -285,6 +292,48 @@ class TerminalsComposeTest {
         rule.onAllNodesWithContentDescription("fix-ci", substring = true)[0].performClick()
         rule.onNodeWithText("Pin to the top").performClick()
         assertEquals("t2" to true, pinned)
+    }
+
+    @Test
+    fun `pinning a row scrolls the priority list up to the Pinned group`() =
+        pinRevealsPinnedGroup(
+            buildUiState(SampleData.overview.take(1), ListControls(), refreshing = false),
+            "refactor-auth",
+        )
+
+    @Test
+    fun `pinning a row scrolls the grouped list up to the Pinned group`() =
+        pinRevealsPinnedGroup(groupedState, "scratch")
+
+    /** Scrolls down to [name], one of the last rows, pins it, and expects the Pinned group at the top in view. */
+    private fun pinRevealsPinnedGroup(
+        start: TerminalsUiState,
+        name: String,
+    ) {
+        var current by mutableStateOf(start.mapItems { it.copy(supportsLabels = true) })
+        val actions =
+            TerminalsActions(onPin = { item, pin ->
+                current = current.mapItems { if (it.key == item.key) it.copy(pinned = pin) else it }
+            })
+        // The row's menu button; priority rows label it with the project too ("Actions for Flocket · docs").
+        val menu =
+            hasContentDescription("Actions for", substring = true) and hasContentDescription(name, substring = true)
+        rule.setContent {
+            FlocketTheme(dynamicColor = false) {
+                CompositionLocalProvider(
+                    LocalPaneLayout provides PaneLayout(),
+                    LocalSidebarToggle provides SidebarToggle { },
+                ) {
+                    // The test window is short, so the bottom rows are out of view of the top of the list.
+                    TerminalsScreen(current, actions, nowMs = SampleData.NOW_MS)
+                }
+            }
+        }
+        rule.onNode(hasScrollToIndexAction()).performScrollToNode(menu)
+        rule.onNode(menu).performClick()
+        rule.onNodeWithText("Pin to the top").performClick()
+        rule.waitForIdle()
+        rule.onNodeWithText("Pinned").assertIsDisplayed()
     }
 
     @Test
