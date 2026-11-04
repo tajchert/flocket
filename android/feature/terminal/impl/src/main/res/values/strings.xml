@@ -138,4 +138,18 @@
     <string name="transfer_no_folder_title">No folder</string>
     <string name="transfer_no_folder_message">This terminal has no known folder to send to.</string>
     <!-- END transfer -->
+    <!-- APK install -->
+    <string name="apk_install_title">Install %1$s?</string>
+    <string name="apk_install_version">Version %1$s</string>
+    <string name="apk_install_action">Install</string>
+    <string name="apk_install_not_now">Not now</string>
+    <string name="apk_permission_title">Allow installs from Flocket</string>
+    <string name="apk_permission_message">To install apps from your laptop, allow Flocket to install unknown apps.</string>
+    <string name="apk_permission_open_settings">Open settings</string>
+    <string name="apk_permission_still_off">Flocket can’t install apps yet</string>
+    <string name="apk_installed">Installed %1$s</string>
+    <string name="apk_install_failed">Couldn’t install %1$s</string>
+    <string name="apk_install_cancelled">Install of %1$s cancelled</string>
+    <string name="apk_invalid">Not a valid app package</string>
+    <!-- END APK install -->
 </resources>

@@ -211,3 +211,16 @@ private fun OverlaysTogetherScreenshot() =
             transfer = TransferPhase.Uploading("screenshot.png"),
         ) { modifier -> Box(modifier.background(Color(0xFF101418))) }
     }
+
+@PreviewTest
+@PreviewPhone
+@PreviewPhoneDark
+@Composable
+private fun ApkInstallDialogScreenshot() =
+    Themed { ApkInstallDialog(ApkInfo("Demo app", "com.example.demo", "1.2.0"), onInstall = {}, onDismiss = {}) }
+
+@PreviewTest
+@PreviewPhone
+@PreviewPhoneDark
+@Composable
+private fun ApkPermissionDialogScreenshot() = Themed { ApkPermissionDialog(onOpenSettings = {}, onDismiss = {}) }
