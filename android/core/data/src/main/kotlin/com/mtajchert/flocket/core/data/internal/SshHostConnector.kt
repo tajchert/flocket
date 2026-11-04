@@ -8,6 +8,8 @@ import com.mtajchert.flocket.core.data.HostTrustRepository
 import com.mtajchert.flocket.core.model.HostAuth
 import com.mtajchert.flocket.core.model.HostId
 import com.mtajchert.flocket.core.protocol.transport.ByteTransport
+import com.mtajchert.flocket.core.protocol.transport.DirectFileReader
+import com.mtajchert.flocket.core.protocol.transport.DirectFileSource
 import com.mtajchert.flocket.core.protocol.transport.SiblingTransportSource
 import com.mtajchert.flocket.core.protocol.transport.TransportException
 import com.mtajchert.flocket.core.security.KeyVault
@@ -43,6 +45,9 @@ internal interface HostConnector {
 internal interface SshLink : CommandRunner {
     suspend fun exec(command: List<String>): ByteTransport
 
+    /** An SFTP reader on this link. Throws `DirectFileException(UNAVAILABLE)` when the host refuses SFTP. */
+    suspend fun openFileReader(): DirectFileReader
+
     suspend fun close()
 }
 
@@ -71,6 +76,8 @@ internal class ConnectorSshOpener(
         private val session: SshSession,
     ) : SshLink {
         override suspend fun exec(command: List<String>): ByteTransport = session.exec(command)
+
+        override suspend fun openFileReader(): DirectFileReader = session.openFileReader()
 
         override suspend fun run(command: List<String>) = session.run(command)
 
@@ -205,7 +212,7 @@ internal class SshHostConnector(
     /**
      * Closes the SSH connection together with its exec channel. Also a [SiblingTransportSource]: a
      * sibling is another exec of the same [command] on the same SSH connection (the session's
-     * transfer connection). Closing a sibling closes only its channel; closing this transport closes
+     * transfer connection). Also a [DirectFileSource]: readers run on the same link and close with it. Closing a sibling closes only its channel; closing this transport closes
      * every sibling and the link.
      */
     private class ClosingTransport(
@@ -213,8 +220,10 @@ internal class SshHostConnector(
         private val link: SshLink,
         private val command: List<String>,
     ) : ByteTransport,
-        SiblingTransportSource {
+        SiblingTransportSource,
+        DirectFileSource {
         private val siblings = CopyOnWriteArrayList<ByteTransport>()
+        private val readers = CopyOnWriteArrayList<DirectFileReader>()
 
         @Volatile
         private var closed = false
@@ -248,11 +257,30 @@ internal class SshHostConnector(
             return sibling
         }
 
+        override suspend fun openFileReader(): DirectFileReader {
+            if (closed) throw TransportException("connection closed")
+            val raw = link.openFileReader()
+            val reader =
+                object : DirectFileReader by raw {
+                    override suspend fun close() {
+                        readers -= this
+                        raw.close()
+                    }
+                }
+            readers += reader
+            if (closed) {
+                runCatching { reader.close() }
+                throw TransportException("connection closed")
+            }
+            return reader
+        }
+
         override suspend fun close() {
             closed = true
             try {
                 inner.close()
             } finally {
+                readers.forEach { runCatching { it.close() } }
                 siblings.forEach { runCatching { it.close() } }
                 link.close()
             }
