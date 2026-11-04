@@ -33,7 +33,7 @@ Untagged statements are [S]+[W].
 
 One `hc connect` process = one core connection. You can open several (e.g. one for control, one per heavy stream), but one framed connection carrying everything is the intended design.
 
-Exception: file transfers (`terminal.put`, `file.write`, `machine.exec cat`; §4.17–§4.20) carry frames of up to about 10.7 MB (8 MB base64) that would block the terminal traffic on a shared connection. Flocket runs them on a separate, short-lived **transfer connection** (a second `hc connect`, plain mode is enough). See [ADR-0011](../docs/decisions/0011-transfer-connection-and-agent-shares.md).
+Exception: file transfers (`terminal.put`, `file.write`, `machine.exec cat`; §4.17–§4.20) carry frames of up to about 10.7 MB (8 MB base64) that would block the terminal traffic on a shared connection. Flocket runs them on a separate, short-lived **transfer connection** (a second `hc connect`, plain mode is enough). See [ADR-0011](../docs/decisions/0011-transfer-connection-and-agent-shares.md). Downloads of agent-shared files may instead use SFTP on the same SSH session, and fall back to chunked `machine.exec` reads (§4.20); see [ADR-0012](../docs/decisions/0012-large-downloads-sftp-chunked.md).
 
 ---
 
@@ -312,7 +312,24 @@ Unsubscribe: send CLOSE on the channel (core echoes empty CLOSE) [W]. Details §
 Verified facts [W 0.1.16]:
 - A **nonzero exit is a result, not an error**: `cat -- /missing` gives `code: 1` and base64 stderr. Only spawn problems are errors (`spawn_failed`).
 - The program is **cancelled when the caller's connection goes away**. A one-shot `printf '<request>\n' | hc connect` returns nothing (EOF = caller gone), so keep stdin open until the reply arrives.
-- Binary download: `argv: ["cat","--",path]`, then decode `stdout`. Check the size first (`wc -c`), and treat `truncated` as a failure, never as a partial file.
+- Binary download: `argv: ["cat","--",path]`, then decode `stdout`, used only for files up to 8 MB (`readFile`); larger files use the chunked read below. Check the size first (`wc -c`), and treat `truncated` as a failure, never as a partial file.
+
+**Chunked binary download (Flocket convention).** Used for files over 8 MB, on the transfer connection:
+- Stat: `machine.exec {argv: ["sh", "-c", STAT, "sh", path], on}` where
+  `STAT = 'stat -c "%s %Y %F" -- "$1" 2>/dev/null || stat -f "%z %m %HT" -- "$1"'`
+  (GNU/busybox, then BSD/macOS). Output `"<size> <mtime> <type words>"`; regular when the type
+  words lower-cased start with `regular`. Non-zero exit → missing.
+- Chunk: `machine.exec {argv: ["dd", "if=" + path, "bs=65536", "skip=" + offset/65536,
+  "count=" + chunk/65536], on, timeout}`. Chunk = **4 MiB** when `machine == null`, **1 MiB** for
+  federated machines (keeps the federation-link stall per call to about a second, ADR-0011 §4).
+  One call at a time.
+- Each chunk: `timed_out` → `Timeout`; `truncated` → `Protocol("chunk truncated")`; `code != 0`
+  → `FileMissing`; decoded length must equal `min(chunk, size - offset)` except when the file
+  shrank, which is `FileChanged`. A chunk that failed with `ConnectionLost` is retried once on a
+  freshly opened transfer connection (existing `transferRead`).
+- Per-call timeout: `CallTimeouts.transfer(chunkBytes)`.
+- `dd` writes its statistics to stderr; ignore stderr on success.
+- Change detection: after the last chunk, stat the file again; a changed size or mtime means `FileChanged`.
 
 ---
 
@@ -621,7 +638,7 @@ Value: `{"v":1,"shares":[<entry>, …]}`, newest first. An entry:
 Rules:
 - Readers ignore unknown fields and entries they cannot parse, and tolerate a missing or `null` document (`{value:null, version:0}`). A value of another shape reads as no shares (the app shows none for that machine).
 - Writers prepend the new entry with compare-and-set (§9) and, on `conflict`, re-read and retry. When the serialised existing value would exceed 64 KiB, or it is not this shape, the writer starts a fresh list holding only the new entry. The app keeps its own history, so dropping old entries is harmless.
-- A file over 8 MB is still listed (the helper only warns); the app refuses to download it.
+- A file over 200 MB is still listed (the helper only warns); the app refuses to download it.
 - hc stores values with **keys sorted alphabetically** [W 0.1.16, `fixtures/transfers-0.1.16.json`]: a value written as `{"v":1,"shares":[…]}` reads back as `{"shares":[…],"v":1}` (entries too: `at`, `id`, `note`, `paths`, `terminal`). The helper's value surgery relies on that read-back prefix `{"shares":[` and suffix `],"v":1}`; readers must not depend on key order.
 
 ---

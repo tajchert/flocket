@@ -16,7 +16,7 @@ herdr terminal; 3 could not reach the core. Every exit-3 message ends with "If y
 running in a sandbox, rerun this command outside it." (including a reply that is missing
 after the update was sent: then the share may or may not have been recorded).
 
-Files over 8 MB are still shared, with a warning on stderr (Flocket refuses to open them).
+Files over 200 MB are still shared, with a warning on stderr (Flocket refuses to open them).
 Bytes in a note that are not valid UTF-8 are dropped; a path that is not valid UTF-8 is
 rejected (exit 1).
 
@@ -36,7 +36,7 @@ Paste this paragraph into your `AGENTS.md` or `CLAUDE.md`
 ([`agent-instruction.md`](agent-instruction.md) holds the exact text; the app bundles it
 byte for byte):
 
-> To show me a file on my phone (an image, text or anything else up to 8 MB), run
+> To show me a file on my phone (an image, text or anything else up to 200 MB), run
 > `flocket-share PATH…` from this terminal, optionally with `-m "short note"`. If it
 > fails because of a sandbox, rerun the same command outside the sandbox.
 

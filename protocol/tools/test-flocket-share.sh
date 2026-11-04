@@ -174,5 +174,16 @@ check "11 TERM cleans up temp dir and fake hc" $(( rc == 3 && left == 0 && alive
 [ -s "$ttmp/pid" ] && kill "$(cat "$ttmp/pid")" 2>/dev/null
 rm -rf "$ttmp"
 
+# 12. a 9 MB file is under the 200 MB limit: shared with no warning
+dd if=/dev/zero of="$work/big.bin" bs=1048576 count=9 >/dev/null 2>&1
+err=$(HC_TERMINAL_ID=t1 sh "$HELPER" "$work/big.bin" 2>&1 >/dev/null)
+rc=$?
+case $err in
+  *warning*) warned=1 ;;
+  *) warned=0 ;;
+esac
+check "12 9 MB file shared without warning" $(( rc == 0 && warned == 0 ? 0 : 1 )) "rc=$rc err=$err"
+rm -f "$work/big.bin"
+
 echo
 if [ $fail -eq 0 ]; then echo "all $pass cases passed"; else echo "$fail failed, $pass passed"; exit 1; fi
