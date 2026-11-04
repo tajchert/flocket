@@ -1,5 +1,6 @@
 package com.mtajchert.flocket.core.session
 
+import com.mtajchert.flocket.core.common.error.AppError
 import com.mtajchert.flocket.core.common.result.AppResult
 import com.mtajchert.flocket.core.model.AgentShare
 import com.mtajchert.flocket.core.model.ConnectionState
@@ -14,6 +15,8 @@ import com.mtajchert.flocket.core.model.TerminalRecord
 import com.mtajchert.flocket.core.model.TerminalTemplate
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.flowOf
+import java.io.File
 
 /**
  * The one authoritative model of a connection to one herdr-core endpoint.
@@ -150,6 +153,20 @@ interface CoreSession {
         machine: String?,
         path: String,
     ): AppResult<ByteArray>
+
+    /**
+     * Streams [path] on [machine] (null = the host's own machine) into [target], up to `MAX_DOWNLOAD_BYTES`:
+     * SFTP on the SSH link when possible, else chunked `machine.exec` reads (ADR-0012, design 2026-11-05 §4.4).
+     * Creates or truncates [target], or continues it when [resume] still matches the remote file. Cold: collecting
+     * starts it, cancelling the collector stops it and leaves the partial file as it is. Never throws; ends with
+     * exactly one [DownloadEvent.Done] or [DownloadEvent.Failed].
+     */
+    fun download(
+        machine: String?,
+        path: String,
+        target: File,
+        resume: DownloadResume? = null,
+    ): Flow<DownloadEvent> = flowOf(DownloadEvent.Failed(AppError.Unsupported("download"), null))
 
     /** Run [argv] on [machine] (`machine.exec`); [mutating] selects at-most-once vs retry-once. */
     suspend fun exec(

@@ -120,6 +120,11 @@ sealed interface AppError {
         val limitBytes: Long,
     ) : AppError
 
+    /** The file changed (size or modification time) while it was downloaded; the copy is discarded. */
+    data class FileChanged(
+        val path: String,
+    ) : AppError
+
     // ---- Device -------------------------------------------------------------------------------
 
     /** Local persistence failed (database, DataStore, file). */

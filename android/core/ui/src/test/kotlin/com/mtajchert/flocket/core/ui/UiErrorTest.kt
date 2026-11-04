@@ -26,6 +26,7 @@ class UiErrorTest {
             AppError.Unsupported("terminal.keys"),
             AppError.FileMissing("/tmp/a.png"),
             AppError.FileTooLarge(8L * 1024 * 1024),
+            AppError.FileChanged("/tmp/a.apk"),
             AppError.Storage("db"),
             AppError.SecureStorageUnavailable(),
             AppError.InvalidInput("port", "range"),
@@ -63,7 +64,16 @@ class UiErrorTest {
         assertEquals(UiText.Res(R.string.error_file_missing_title), missing.title)
         assertNull(missing.primaryAction)
         val tooLarge = AppError.FileTooLarge(8L * 1024 * 1024).toUiError()
-        assertEquals(UiText.Res(R.string.error_file_too_large_message), tooLarge.message)
+        assertEquals(UiText.Res(R.string.error_file_too_large_message, listOf("8 MB")), tooLarge.message)
         assertNull(tooLarge.primaryAction)
+        val big = AppError.FileTooLarge(200L * 1024 * 1024).toUiError()
+        assertEquals(UiText.Res(R.string.error_file_too_large_message, listOf("200 MB")), big.message)
+    }
+
+    @Test
+    fun `a file that changed while downloading offers a retry`() {
+        val changed = AppError.FileChanged("/tmp/a.apk").toUiError()
+        assertEquals(UiText.Res(R.string.error_file_changed_title), changed.title)
+        assertEquals(UiErrorAction.Retry, changed.primaryAction)
     }
 }

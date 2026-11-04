@@ -195,7 +195,16 @@ fun AppError.toUiError(): UiError =
         is AppError.FileTooLarge -> {
             UiError(
                 res(R.string.error_file_too_large_title),
-                res(R.string.error_file_too_large_message),
+                res(R.string.error_file_too_large_message, "${limitBytes / (1024 * 1024)} MB"),
+                source = this,
+            )
+        }
+
+        is AppError.FileChanged -> {
+            UiError(
+                res(R.string.error_file_changed_title),
+                res(R.string.error_file_changed_message),
+                UiErrorAction.Retry,
                 source = this,
             )
         }
