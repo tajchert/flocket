@@ -10,7 +10,7 @@ shared by every platform. Read it first, then the guide for your platform:
 
 | Path | What lives there |
 |---|---|
-| `protocol/` | The herdr-core wire protocol: `SPEC.md`, `hc schema` snapshots, and wire fixtures shared by every platform |
+| `protocol/` | The herdr-core wire protocol: `SPEC.md`, `hc schema` snapshots, and wire fixtures shared by every platform. `protocol/tools/` holds host-side tools (`flocket-share`, its test and the agent instruction text) |
 | `docs/decisions/` | Architecture Decision Records (ADRs). These are binding. Read them before changing architecture. |
 | `docs/ROADMAP.md` | Next milestones: scope, open decisions, and where to start in the code |
 | `docs/design/` | Milestone design documents |

@@ -1,0 +1,179 @@
+#!/bin/sh
+# SPDX-License-Identifier: Apache-2.0
+# flocket-share: show files from this herdr terminal on your phone in Flocket.
+#
+# Usage: flocket-share [-m NOTE] PATH...
+#
+# Appends an entry to the herdr-core document "flocket-share" (see protocol/SPEC.md
+# section 9.2). Runs only inside a herdr terminal (needs HC_TERMINAL_ID).
+# Exit codes: 0 ok; 1 a path is missing or unreadable (nothing is shared);
+#             2 not in a herdr terminal; 3 could not reach the core.
+# POSIX sh plus sed, od, tr, wc, date; no jq or python.
+
+# Byte-transparent tr/sed, and ${#var} counts bytes (the 64 KiB cap is in bytes).
+LC_ALL=C
+export LC_ALL
+
+MAX_BYTES=8388608
+MAX_VALUE=65536
+RETRIES=20
+SANDBOX_HINT="If you are running in a sandbox, rerun this command outside it."
+
+# fail3 MESSAGE: exit 3; every exit-3 message ends with the sandbox hint.
+fail3() { die 3 "$1. $SANDBOX_HINT"; }
+
+die() { code=$1; shift; printf 'flocket-share: %s\n' "$*" >&2; exit "$code"; }
+
+note=
+have_note=0
+while [ $# -gt 0 ]; do
+  case $1 in
+    -m) [ $# -ge 2 ] || die 1 "-m needs a value"; note=$2; have_note=1; shift 2 ;;
+    -h|--help) echo "usage: flocket-share [-m NOTE] PATH..."; exit 0 ;;
+    --) shift; break ;;
+    -?*) die 1 "unknown option $1" ;;
+    *) break ;;
+  esac
+done
+[ $# -gt 0 ] || die 1 "usage: flocket-share [-m NOTE] PATH..."
+
+[ -n "${HC_TERMINAL_ID:-}" ] || die 2 "not inside a herdr terminal (HC_TERMINAL_ID is not set)"
+
+TAB=$(printf '\t')
+CR=$(printf '\r')
+SOH=$(printf '\001')
+
+# utf8 STRING: STRING with bytes that are not valid UTF-8 removed (hc rejects invalid
+# UTF-8). Without iconv, every non-ASCII byte is removed.
+utf8() {
+  if command -v iconv >/dev/null 2>&1; then
+    printf '%s' "$1" | iconv -c -f UTF-8 -t UTF-8 2>/dev/null
+  else
+    printf '%s' "$1" | tr -d '\200-\377'
+  fi
+}
+
+# esc STRING: JSON string body (no quotes). Other control characters and bytes that are
+# not valid UTF-8 are dropped; valid UTF-8 passes unchanged.
+esc() {
+  utf8 "$1" | tr -d '\000-\010\013\014\016-\037' | tr '\n' "$SOH" |
+    sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e "s/$TAB/\\\\t/g" -e "s/$CR/\\\\r/g" -e "s/$SOH/\\\\n/g"
+}
+
+# Check and absolutise every path before touching the core.
+paths_json=
+count=0
+for p in "$@"; do
+  clean=$(printf '%s' "$p" | tr -d '\000-\010\012-\037')
+  [ "$clean" = "$p" ] || die 1 "path contains a newline or control character: not shared"
+  [ -n "$p" ] || die 1 "empty path"
+  [ "$(utf8 "$p")" = "$p" ] || die 1 "path is not valid UTF-8: not shared"
+  [ -f "$p" ] && [ -r "$p" ] || die 1 "not a readable file: $p (nothing was shared)"
+  dir=$(cd -- "$(dirname -- "$p")" 2>/dev/null && pwd) || die 1 "cannot resolve: $p"
+  abs=${dir%/}/$(basename -- "$p")
+  size=$(wc -c <"$p" | tr -d ' ')
+  if [ "$size" -gt "$MAX_BYTES" ]; then
+    printf 'flocket-share: warning: %s is %s bytes; Flocket opens files up to 8 MB\n' "$abs" "$size" >&2
+  fi
+  paths_json=${paths_json:+$paths_json,}\"$(esc "$abs")\"
+  count=$((count + 1))
+done
+
+if [ -n "${HC_BIN:-}" ]; then
+  HC=$HC_BIN
+elif command -v hc >/dev/null 2>&1; then
+  HC=hc
+elif command -v herdr-core >/dev/null 2>&1; then
+  HC=herdr-core
+else
+  fail3 "hc (herdr-core) not found on PATH"
+fi
+
+id=$(od -An -tx1 -N16 /dev/urandom | tr -d ' \n')
+at=$(date +%s)
+entry="{\"id\":\"$id\",\"terminal\":\"$(esc "$HC_TERMINAL_ID")\",\"paths\":[$paths_json]"
+[ "$have_note" -eq 1 ] && [ -n "$note" ] && entry="$entry,\"note\":\"$(esc "$note")\""
+entry="$entry,\"at\":$at}"
+
+# rpc REQUEST: one request; sets $reply to the reply line (empty when none arrived). It must
+# not run in a command substitution, or the signal trap would not be the main shell's. The
+# core cancels work when its caller goes away, so stdin stays open until the reply line
+# has arrived, the connection ended, or RPC_WAIT seconds passed.
+RPC_WAIT=10
+# rpc_cleanup: stop the background hc connect, close the FIFO, remove the temp dir.
+rpc_cleanup() {
+  [ -n "${rpid:-}" ] && kill "$rpid" 2>/dev/null
+  exec 3>&-
+  [ -n "${rdir:-}" ] && rm -rf "$rdir"
+  rpid=
+  rdir=
+}
+rpc() {
+  reply=
+  rdir=$(mktemp -d "${TMPDIR:-/tmp}/flocket-share.XXXXXX") || return 0
+  mkfifo "$rdir/in" || { rm -rf "$rdir"; return 0; }
+  exec 3<>"$rdir/in"
+  rpid=
+  trap 'rpc_cleanup; exit 3' HUP INT TERM
+  "$HC" connect <"$rdir/in" 3>&- >"$rdir/out" 2>/dev/null &
+  rpid=$!
+  printf '%s\n' "$1" >&3
+  waited=0
+  while [ "$waited" -lt $((RPC_WAIT * 10)) ]; do
+    [ "$(wc -l <"$rdir/out")" -gt 0 ] && break
+    kill -0 "$rpid" 2>/dev/null || break
+    sleep 0.1 2>/dev/null || sleep 1
+    waited=$((waited + 1))
+  done
+  exec 3>&-
+  kill "$rpid" 2>/dev/null
+  wait "$rpid" 2>/dev/null
+  reply=$(head -n 1 "$rdir/out")
+  rpc_cleanup
+  trap - HUP INT TERM
+}
+
+unreachable() { fail3 "could not reach the herdr core${1:+ ($1)}"; }
+
+attempt=0
+while [ "$attempt" -lt "$RETRIES" ]; do
+  attempt=$((attempt + 1))
+  rpc '{"jsonrpc":"2.0","id":1,"method":"doc.get","params":{"name":"flocket-share"}}'
+  case $reply in
+    '{"id":1,"jsonrpc":"2.0","result":{"value":'*',"version":'[0-9]*'}}') ;;
+    *) unreachable "unexpected reply to doc.get" ;;
+  esac
+  version=${reply##*'"version":'}
+  version=${version%'}}'}
+  value=${reply#'{"id":1,"jsonrpc":"2.0","result":{"value":'}
+  value=${value%",\"version\":$version}}"}
+
+  # The core stores values with sorted keys: {"shares":[...],"v":1}.
+  new="{\"v\":1,\"shares\":[$entry]}"
+  if [ "${#value}" -le "$MAX_VALUE" ]; then
+    case $value in
+      '{"shares":['*'],"v":1}')
+        rest=${value#'{"shares":['}
+        case $rest in
+          ']'*) ;;
+          *) new="{\"shares\":[$entry,$rest" ;;
+        esac
+        ;;
+    esac
+  fi
+
+  rpc "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"doc.set\",\"params\":{\"name\":\"flocket-share\",\"version\":$version,\"value\":$new}}"
+  case $reply in
+    *'"result":{"version":'*)
+      printf 'shared %s file(s) to Flocket\n' "$count"
+      exit 0
+      ;;
+    *'"kind":"conflict"'*)
+      n=$(od -An -tu1 -N1 /dev/urandom | tr -d ' ')
+      sleep "0.$((n % 10))" 2>/dev/null || sleep 1
+      ;;
+    '') fail3 "no reply to doc.set: the share may or may not have been recorded" ;;
+    *) fail3 "the core refused the update: $reply" ;;
+  esac
+done
+fail3 "gave up after $RETRIES conflicting updates"

@@ -27,9 +27,14 @@ import com.mtajchert.flocket.feature.hosts.impl.edit.HostEditUiState
 import com.mtajchert.flocket.feature.hosts.impl.list.HostsScreen
 import com.mtajchert.flocket.feature.hosts.impl.list.HostsUiState
 import com.mtajchert.flocket.feature.hosts.impl.list.toItem
+import com.mtajchert.flocket.feature.hosts.impl.settings.HelperRow
+import com.mtajchert.flocket.feature.hosts.impl.settings.HelperStatus
 import com.mtajchert.flocket.feature.hosts.impl.settings.HostSettingsCallbacks
 import com.mtajchert.flocket.feature.hosts.impl.settings.HostSettingsScreen
 import com.mtajchert.flocket.feature.hosts.impl.settings.HostSettingsUiState
+import com.mtajchert.flocket.feature.hosts.impl.settings.ShareHelperCallbacks
+import com.mtajchert.flocket.feature.hosts.impl.settings.ShareHelperSection
+import com.mtajchert.flocket.feature.hosts.impl.settings.ShareHelperUiState
 
 private const val NOW = SampleData.NOW_MS
 
@@ -255,3 +260,32 @@ private fun HostDetailCustomSettingsScreenshot() =
             nowMs = NOW,
         )
     }
+
+private val helperPath = "/home/mtajchert/.local/bin/flocket-share"
+
+private val helperState =
+    ShareHelperUiState(
+        online = true,
+        rows =
+            listOf(
+                HelperRow(null, HelperStatus.Installed(helperPath, onPath = true)),
+                HelperRow("rohan", HelperStatus.NotInstalled),
+                HelperRow("pi", HelperStatus.Installed(helperPath, onPath = false)),
+            ),
+        instruction =
+            "To show me a file on my phone (an image, text or anything else up to 8 MB), run " +
+                "`flocket-share PATH…` from this terminal.",
+    )
+
+@PreviewTest
+@PreviewFormFactors
+@PreviewLargeFont
+@PreviewPhoneDark
+@Composable
+private fun ShareHelperSectionScreenshot() = Shot { ShareHelperSection(helperState, ShareHelperCallbacks()) }
+
+@PreviewTest
+@Preview(name = "Phone", showBackground = true, widthDp = 412, heightDp = 600, apiLevel = 36)
+@Composable
+private fun ShareHelperOfflineScreenshot() =
+    Shot { ShareHelperSection(ShareHelperUiState(instruction = helperState.instruction), ShareHelperCallbacks()) }

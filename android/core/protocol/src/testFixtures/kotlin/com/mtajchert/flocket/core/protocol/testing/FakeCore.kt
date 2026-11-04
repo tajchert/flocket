@@ -77,6 +77,8 @@ class FakeCoreConfig(
                 "doc.set",
                 "events.subscribe",
                 "machine.list",
+                "terminal.put",
+                "file.write",
             )
     }
 }
@@ -527,10 +529,37 @@ class FakeCore(
                 }
             }
 
+            "terminal.put" -> {
+                { p ->
+                    val t = p["terminal"]?.jsonPrimitive?.contentOrNull
+                    val name = p["name"]?.jsonPrimitive?.contentOrNull
+                    buildJsonObject {
+                        put("path", "/fake/files/$t/$name")
+                        put("bytes", decodedSize(p))
+                    }
+                }
+            }
+
+            "file.write" -> {
+                { p ->
+                    buildJsonObject {
+                        put("path", p["path"]?.jsonPrimitive?.contentOrNull)
+                        put("bytes", decodedSize(p))
+                    }
+                }
+            }
+
             else -> {
                 { throw FakeRpcError("unknown_method", "unknown method: $method", code = -32601) }
             }
         }
+
+    private fun decodedSize(p: JsonObject): Long =
+        java.util.Base64
+            .getDecoder()
+            .decode(p["data"]?.jsonPrimitive?.contentOrNull.orEmpty())
+            .size
+            .toLong()
 
     companion object {
         /** A minimal valid `Terminal` JSON object for scripting. */

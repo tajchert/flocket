@@ -3,6 +3,7 @@ package com.mtajchert.flocket.core.ui
 import com.mtajchert.flocket.core.common.error.AppError
 import com.mtajchert.flocket.core.testing.SampleData
 import com.mtajchert.flocket.core.ui.error.UiErrorAction
+import com.mtajchert.flocket.core.ui.error.UiText
 import com.mtajchert.flocket.core.ui.error.toUiError
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -23,6 +24,8 @@ class UiErrorTest {
             AppError.Protocol("bad"),
             AppError.OutcomeUnknown("kill"),
             AppError.Unsupported("terminal.keys"),
+            AppError.FileMissing("/tmp/a.png"),
+            AppError.FileTooLarge(8L * 1024 * 1024),
             AppError.Storage("db"),
             AppError.SecureStorageUnavailable(),
             AppError.InvalidInput("port", "range"),
@@ -52,5 +55,15 @@ class UiErrorTest {
     @Test
     fun `unknown outcome offers no automatic retry`() {
         assertNull(AppError.OutcomeUnknown("kill").toUiError().primaryAction)
+    }
+
+    @Test
+    fun `file errors say what happened and offer no retry`() {
+        val missing = AppError.FileMissing("/tmp/a.png").toUiError()
+        assertEquals(UiText.Res(R.string.error_file_missing_title), missing.title)
+        assertNull(missing.primaryAction)
+        val tooLarge = AppError.FileTooLarge(8L * 1024 * 1024).toUiError()
+        assertEquals(UiText.Res(R.string.error_file_too_large_message), tooLarge.message)
+        assertNull(tooLarge.primaryAction)
     }
 }

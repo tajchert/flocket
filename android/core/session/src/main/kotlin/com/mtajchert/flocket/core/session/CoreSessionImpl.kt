@@ -1,9 +1,11 @@
 package com.mtajchert.flocket.core.session
 
 import com.mtajchert.flocket.core.common.error.AppError
+import com.mtajchert.flocket.core.common.error.AppException
 import com.mtajchert.flocket.core.common.logging.Logger
 import com.mtajchert.flocket.core.common.result.AppResult
 import com.mtajchert.flocket.core.common.time.Clock
+import com.mtajchert.flocket.core.model.AgentShare
 import com.mtajchert.flocket.core.model.ConnectionState
 import com.mtajchert.flocket.core.model.CoreEndpoint
 import com.mtajchert.flocket.core.model.CoreInfo
@@ -11,13 +13,16 @@ import com.mtajchert.flocket.core.model.DesktopLayout
 import com.mtajchert.flocket.core.model.HerdrLabels
 import com.mtajchert.flocket.core.model.LayoutRef
 import com.mtajchert.flocket.core.model.Liveness
+import com.mtajchert.flocket.core.model.MAX_TRANSFER_BYTES
 import com.mtajchert.flocket.core.model.MachineInfo
 import com.mtajchert.flocket.core.model.MachineState
+import com.mtajchert.flocket.core.model.PutReceipt
 import com.mtajchert.flocket.core.model.TerminalAddress
 import com.mtajchert.flocket.core.model.TerminalRecord
 import com.mtajchert.flocket.core.model.TerminalTemplate
 import com.mtajchert.flocket.core.protocol.AttachChannel
 import com.mtajchert.flocket.core.protocol.AttachParams
+import com.mtajchert.flocket.core.protocol.CallTimeouts
 import com.mtajchert.flocket.core.protocol.ChannelEnd
 import com.mtajchert.flocket.core.protocol.ConnectionOptions
 import com.mtajchert.flocket.core.protocol.CoreConnection
@@ -26,8 +31,10 @@ import com.mtajchert.flocket.core.protocol.EventSubscription
 import com.mtajchert.flocket.core.protocol.RunParams
 import com.mtajchert.flocket.core.protocol.docGet
 import com.mtajchert.flocket.core.protocol.docSet
+import com.mtajchert.flocket.core.protocol.dto.ExecResult
 import com.mtajchert.flocket.core.protocol.dto.toModel
 import com.mtajchert.flocket.core.protocol.dto.toRecord
+import com.mtajchert.flocket.core.protocol.fileWrite
 import com.mtajchert.flocket.core.protocol.machineExec
 import com.mtajchert.flocket.core.protocol.machineList
 import com.mtajchert.flocket.core.protocol.rpc.RpcException
@@ -35,6 +42,7 @@ import com.mtajchert.flocket.core.protocol.templatesList
 import com.mtajchert.flocket.core.protocol.terminalInterrupt
 import com.mtajchert.flocket.core.protocol.terminalKill
 import com.mtajchert.flocket.core.protocol.terminalLabel
+import com.mtajchert.flocket.core.protocol.terminalPut
 import com.mtajchert.flocket.core.protocol.terminalRead
 import com.mtajchert.flocket.core.protocol.terminalRm
 import com.mtajchert.flocket.core.protocol.terminalRun
@@ -88,6 +96,8 @@ class CoreSessionImpl(
     private class Link(
         val epoch: Long,
         val conn: CoreConnection,
+        /** The transport [conn] runs on; a sibling source opens the transfer connection beside it. */
+        val transport: ByteTransport,
     ) {
         val info: CoreInfo get() = conn.info
 
@@ -96,6 +106,9 @@ class CoreSessionImpl(
 
         /** `machine.list` re-reads ([relistMachines]); guarded by [readLock]. */
         val machineReads = Coalesced()
+
+        /** `flocket-share` reads per machine ([refreshShares]; key null = local); guarded by [readLock]. */
+        val shareReads = HashMap<String?, Coalesced>()
     }
 
     /** One coalesced read on one link: at most one in flight, plus one more if triggered meanwhile. */
@@ -155,6 +168,7 @@ class CoreSessionImpl(
             }
         epochs.incrementAndGet()
         job?.cancelAndJoin()
+        transfers.close()
         synchronized(loopLock) {
             // A start() racing this stop() owns the state now; don't overwrite its Connecting.
             if (loopJob == null) stateFlow.update { it.copy(connection = ConnectionState.Idle) }
@@ -236,7 +250,7 @@ class CoreSessionImpl(
                     return e.toAppError("events.subscribe") to false
                 }
             val machines = if (c.info.supports(CoreInfo.MACHINE_LIST)) fetchMachines(c) else emptyList()
-            val l = Link(epoch, c)
+            val l = Link(epoch, c, transport)
             synchronized(reduceLock) {
                 if (epochs.get() != epoch) return AppError.ConnectionLost to false
                 lastSeq = sub.seq
@@ -252,10 +266,12 @@ class CoreSessionImpl(
                         confirmedAtMs = clock.nowMillis(),
                     )
                 }
+                machines?.let { dropSharesOfRemovedMachines(it) }
             }
             online = l
             publishSizes()
             refreshLayout(l)
+            refreshShares(l)
             refreshMachineLayouts(l)
             logger.info(
                 TAG,
@@ -397,7 +413,10 @@ class CoreSessionImpl(
     private fun refreshMachineLayouts(l: Link) {
         stateFlow.value.machines
             .filter { it.state == MachineState.Connected }
-            .forEach { refreshLayout(l, it.name) }
+            .forEach {
+                refreshLayout(l, it.name)
+                refreshShares(l, it.name)
+            }
     }
 
     /** Publish a fresh machine list read on [l]: drop layouts of machines that left it, read connected ones. */
@@ -408,6 +427,7 @@ class CoreSessionImpl(
         synchronized(reduceLock) {
             if (link.get() !== l) return
             stateFlow.update { it.copy(machines = machines, machineLayouts = it.machineLayouts.onlyFor(machines)) }
+            dropSharesOfRemovedMachines(machines)
         }
     }
 
@@ -442,6 +462,68 @@ class CoreSessionImpl(
                 }
             }
         }
+    }
+
+    // ---- agent shares (`flocket-share` document), kept apart from the layout code ------------------------------
+
+    /** Last good shares per machine (key null = local); guarded by [reduceLock]. Merged into [SessionState.shares]. */
+    private val sharesByMachine = HashMap<String?, List<AgentShare>>()
+
+    /** First successful read per machine; published together with [sharesByMachine]'s merge. Guarded by [reduceLock]. */
+    private val sharesFirstReadAt = HashMap<String?, Long>()
+
+    /** Read `flocket-share` of [machine] on [l]; coalesced per machine like [refreshLayout]. */
+    private fun refreshShares(
+        l: Link,
+        machine: String? = null,
+    ) {
+        val slot = synchronized(readLock) { l.shareReads.getOrPut(machine) { Coalesced() } }
+        coalesced(l, slot) { fetchShares(l, machine) }
+    }
+
+    private suspend fun fetchShares(
+        l: Link,
+        machine: String?,
+    ) {
+        val reply =
+            try {
+                l.conn.docGet(ShareDocumentParser.DOCUMENT, on = machine, timeout = config.readTimeout)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // The last good value stays. Not a user-visible error.
+                val kind = (e as? RpcException)?.kind ?: e.javaClass.simpleName
+                logger.debug(TAG) { "doc.get ${ShareDocumentParser.DOCUMENT} failed: $kind" }
+                return
+            }
+        val shares = ShareDocumentParser.parse(reply.value, machine)
+        synchronized(reduceLock) {
+            if (link.get() !== l) return
+            if (machine != null && stateFlow.value.machines.none { it.name == machine }) return
+            if (shares.isEmpty()) sharesByMachine.remove(machine) else sharesByMachine[machine] = shares
+            sharesFirstReadAt.putIfAbsent(machine, clock.nowMillis() / 1000)
+            publishShares()
+        }
+    }
+
+    /** A removed or renamed machine loses its shares. Call with [reduceLock] held. */
+    private fun dropSharesOfRemovedMachines(machines: List<MachineInfo>) {
+        val names = machines.mapTo(HashSet()) { it.name }
+        val a = sharesByMachine.keys.removeAll { it != null && it !in names }
+        val b = sharesFirstReadAt.keys.removeAll { it != null && it !in names }
+        if (a || b) publishShares()
+    }
+
+    /** Merge all machines: the same id once (local first, then machine name order), newest first. */
+    private fun publishShares() {
+        val merged =
+            sharesByMachine.entries
+                .sortedWith(compareBy(nullsFirst()) { it.key })
+                .flatMap { it.value }
+                .distinctBy { it.id }
+                .sortedWith(compareByDescending<AgentShare> { it.atEpochSeconds }.thenBy { it.id })
+        // One update: a collector never sees a first-read time without the shares of that read.
+        stateFlow.update { it.copy(shares = merged, sharesFirstReadAt = sharesFirstReadAt.toMap()) }
     }
 
     private suspend fun watchdog(c: CoreConnection) {
@@ -497,6 +579,7 @@ class CoreSessionImpl(
             }
             publishSizes()
             refreshLayout(l)
+            refreshShares(l)
             refreshMachineLayouts(l)
         }
     }
@@ -543,6 +626,7 @@ class CoreSessionImpl(
                 // A snapshot carries no documents; a remote machine (re)connecting also sends `missed`, so
                 // re-list machines and re-read every connected machine's document (SPEC §8.5, §10).
                 refreshLayout(l)
+                refreshShares(l)
                 relistMachines(l)
             }
 
@@ -551,6 +635,9 @@ class CoreSessionImpl(
                     val listed = effect.machine == null || state.value.machines.any { it.name == effect.machine }
                     // An unlisted machine (added or renamed without a `missed`) is read once the re-list knows it.
                     if (listed) refreshLayout(l, effect.machine) else relistMachines(l)
+                } else if (effect.name == ShareDocumentParser.DOCUMENT) {
+                    val listed = effect.machine == null || state.value.machines.any { it.name == effect.machine }
+                    if (listed) refreshShares(l, effect.machine) else relistMachines(l)
                 }
             }
 
@@ -998,9 +1085,133 @@ class CoreSessionImpl(
         }
     }
 
+    // ---- file transfers (design 2026-11-01 §4.1) ---------------------------------------------------
+
+    private val transfers =
+        TransferChannel(scope, ::obtainTransport, connectionOptions, config.transferIdleTimeout, logger)
+
+    override suspend fun putFile(
+        address: TerminalAddress,
+        name: String,
+        bytes: ByteArray,
+    ): AppResult<PutReceipt> {
+        if (bytes.size > MAX_TRANSFER_BYTES) return AppResult.Failure(TOO_LARGE_INPUT)
+        return transfer("terminal.put", CoreInfo.TERMINAL_PUT, mutating = true) { c ->
+            val r = c.terminalPut(address.value, name, bytes, CallTimeouts.transfer(bytes.size.toLong()))
+            if (r.path.isBlank()) throw AppException(AppError.Protocol("terminal.put reply without a path"))
+            PutReceipt(r.path, r.bytes)
+        }
+    }
+
+    override suspend fun writeFile(
+        machine: String?,
+        path: String,
+        bytes: ByteArray,
+    ): AppResult<Unit> {
+        if (bytes.size > MAX_TRANSFER_BYTES) return AppResult.Failure(TOO_LARGE_INPUT)
+        return transfer("file.write", CoreInfo.FILE_WRITE, mutating = true) { c ->
+            c.fileWrite(path, bytes, machine, CallTimeouts.transfer(bytes.size.toLong()))
+            Unit
+        }
+    }
+
+    override suspend fun readFile(
+        machine: String?,
+        path: String,
+    ): AppResult<ByteArray> {
+        val wc =
+            when (val r = transferRead { it.machineExec(sizeArgv(path), machine, config.readTimeout) }) {
+                is AppResult.Success -> r.value
+                is AppResult.Failure -> return r
+            }
+        if (wc.timedOut) return AppResult.Failure(AppError.Timeout("machine.exec"))
+        if (wc.code != 0) return AppResult.Failure(AppError.FileMissing(path))
+        val size =
+            decodeBase64(wc.stdout)?.toString(Charsets.UTF_8)?.trim()?.toLongOrNull()
+                ?: return AppResult.Failure(AppError.Protocol("unexpected file size reply"))
+        if (size > MAX_TRANSFER_BYTES) return AppResult.Failure(AppError.FileTooLarge(MAX_TRANSFER_BYTES))
+        val catTimeout = CallTimeouts.transfer(size)
+        val cat =
+            when (val r = transferRead { it.machineExec(listOf("cat", "--", path), machine, catTimeout) }) {
+                is AppResult.Success -> r.value
+                is AppResult.Failure -> return r
+            }
+        if (cat.timedOut) return AppResult.Failure(AppError.Timeout("machine.exec"))
+        if (cat.truncated) return AppResult.Failure(AppError.FileTooLarge(MAX_TRANSFER_BYTES))
+        if (cat.code != 0) return AppResult.Failure(AppError.FileMissing(path))
+        val bytes = decodeBase64(cat.stdout) ?: return AppResult.Failure(AppError.Protocol("bad file data"))
+        logger.debug(TAG) { "downloaded ${bytes.size} bytes" }
+        return AppResult.Success(bytes)
+    }
+
+    override suspend fun exec(
+        machine: String?,
+        argv: List<String>,
+        mutating: Boolean,
+    ): AppResult<ExecOutcome> {
+        if (mutating && state.value.isStale) return AppResult.Failure(AppError.ConnectionLost)
+        val block: suspend (CoreConnection) -> ExecResult = { it.machineExec(argv, machine, config.readTimeout) }
+        val r =
+            if (mutating) {
+                mutate("machine.exec", CoreInfo.MACHINE_EXEC, block)
+            } else {
+                read("machine.exec", CoreInfo.MACHINE_EXEC, block)
+            }
+        val e =
+            when (r) {
+                is AppResult.Success -> r.value
+                is AppResult.Failure -> return r
+            }
+        // The core ended the program after its own timeout: a known outcome, not a lost reply.
+        if (e.timedOut) return AppResult.Failure(AppError.Timeout("machine.exec"))
+        val stdout = decodeBase64(e.stdout) ?: return AppResult.Failure(AppError.Protocol("bad machine.exec stdout"))
+        val stderr = decodeBase64(e.stderr)?.toString(Charsets.UTF_8).orEmpty()
+        return AppResult.Success(ExecOutcome(e.code, stdout, stderr, e.truncated))
+    }
+
+    /** A read on the transfer connection, retried once on a freshly opened one when the link dropped. */
+    private suspend fun <T> transferRead(block: suspend (CoreConnection) -> T): AppResult<T> {
+        val first = transfer("machine.exec", CoreInfo.MACHINE_EXEC, mutating = false, block)
+        if (first !is AppResult.Failure || first.error != AppError.ConnectionLost) return first
+        return transfer("machine.exec", CoreInfo.MACHINE_EXEC, mutating = false, block)
+    }
+
+    /** Needs Online (never stale) and [method]; mutations are at most once (`OutcomeUnknown` after a write). */
+    private suspend fun <T> transfer(
+        operation: String,
+        method: String,
+        mutating: Boolean,
+        block: suspend (CoreConnection) -> T,
+    ): AppResult<T> {
+        val l = link.get() ?: return AppResult.Failure(AppError.ConnectionLost)
+        if (state.value.isStale) return AppResult.Failure(AppError.ConnectionLost)
+        if (!l.info.supports(method)) return AppResult.Failure(AppError.Unsupported(method))
+        return try {
+            AppResult.Success(transfers.use(l.transport, block))
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: AppException) {
+            AppResult.Failure(e.error)
+        } catch (e: Exception) {
+            AppResult.Failure(e.toAppError(operation, mutating))
+        }
+    }
+
+    private fun decodeBase64(s: String): ByteArray? =
+        try {
+            Base64.getDecoder().decode(s)
+        } catch (e: IllegalArgumentException) {
+            null
+        }
+
+    private fun sizeArgv(path: String) = listOf("sh", "-c", "wc -c < \"\$1\"", "sh", path)
+
+    // ---- end of file transfers -----------------------------------------------------------------
+
     companion object {
         private const val TAG = "CoreSession"
         private val HOME_ARGV = listOf("sh", "-c", "printf %s \"\$HOME\"")
+        private val TOO_LARGE_INPUT = AppError.InvalidInput("file", "larger than 8 MB")
 
         /** `doc.get` + `doc.set` rounds for one rename before a `conflict` is reported (SPEC §9.1). */
         private const val RENAME_ATTEMPTS = 3

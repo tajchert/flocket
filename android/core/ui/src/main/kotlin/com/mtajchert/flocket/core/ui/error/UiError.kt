@@ -188,6 +188,18 @@ fun AppError.toUiError(): UiError =
             )
         }
 
+        is AppError.FileMissing -> {
+            UiError(res(R.string.error_file_missing_title), res(R.string.error_file_missing_message), source = this)
+        }
+
+        is AppError.FileTooLarge -> {
+            UiError(
+                res(R.string.error_file_too_large_title),
+                res(R.string.error_file_too_large_message),
+                source = this,
+            )
+        }
+
         is AppError.Storage -> {
             UiError(
                 res(R.string.error_storage_title),

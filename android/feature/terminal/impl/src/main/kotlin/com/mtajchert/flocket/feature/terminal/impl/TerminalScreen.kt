@@ -37,6 +37,7 @@ import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.ContentPaste
 import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.FitScreen
+import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.Fullscreen
 import androidx.compose.material.icons.outlined.FullscreenExit
 import androidx.compose.material.icons.outlined.HourglassEmpty
@@ -47,6 +48,7 @@ import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.PowerSettingsNew
 import androidx.compose.material.icons.outlined.StopCircle
+import androidx.compose.material.icons.outlined.UploadFile
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -74,6 +76,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -106,6 +110,11 @@ import com.mtajchert.flocket.core.ui.error.asString
 import com.mtajchert.flocket.core.ui.nav.LocalPaneLayout
 import com.mtajchert.flocket.core.ui.nav.LocalSidebarToggle
 import com.mtajchert.flocket.core.ui.nav.PaneLayout
+import com.mtajchert.flocket.feature.terminal.impl.share.ShareActions
+import com.mtajchert.flocket.feature.terminal.impl.share.ShareCard
+import com.mtajchert.flocket.feature.terminal.impl.share.SharesUi
+import com.mtajchert.flocket.feature.terminal.impl.transfer.TransferPhase
+import com.mtajchert.flocket.feature.terminal.impl.transfer.TransferStrip
 
 /** Everything the screen can ask for. Defaults are no-ops (previews, screenshot tests). */
 @Immutable
@@ -136,6 +145,12 @@ data class TerminalActions(
     val onReply: (ReplyKey) -> Unit = {},
     /** Full-screen mode: hide (true) or bring back (false) the top bar and tab strip. */
     val onTopBarHidden: (Boolean) -> Unit = {},
+    // BEGIN transfer
+    val onSendToFolder: () -> Unit = {},
+    val onTransferCancel: () -> Unit = {},
+    val onTransferRetry: () -> Unit = {},
+    val onTransferDismiss: () -> Unit = {},
+    // END transfer
 )
 
 /**
@@ -153,6 +168,13 @@ fun TerminalScreen(
     tabStrip: TabStripUi? = null,
     header: TerminalHeaderUi = TerminalHeaderUi(),
     extraKeys: @Composable () -> Unit = {},
+    // --- agent shares (T5) ---
+    shares: SharesUi = SharesUi(),
+    shareActions: ShareActions = ShareActions(),
+    // --- end agent shares ---
+    // BEGIN transfer
+    transfer: TransferPhase = TransferPhase.Idle,
+    // END transfer
     terminal: @Composable (Modifier) -> Unit,
 ) {
     val layout = LocalPaneLayout.current
@@ -162,7 +184,7 @@ fun TerminalScreen(
         tabStrip != null && tabStrip.isVisible && !fullScreen && !(layout.compactHeight && WindowInsets.isImeVisible)
     Scaffold(
         modifier = modifier,
-        topBar = { if (!fullScreen) TerminalTopBar(state, header, actions, showBack) },
+        topBar = { if (!fullScreen) TerminalTopBar(state, header, actions, showBack, shares, shareActions) },
         snackbarHost = { SnackbarHost(snackbarHostState) },
         containerColor = MaterialTheme.colorScheme.surface,
         contentWindowInsets = ScaffoldDefaults.contentWindowInsets.only(paneInsetSides(layout)),
@@ -208,15 +230,35 @@ fun TerminalScreen(
                         Unit
                     }
                 }
+                // Overlays sit over the terminal, never beside it: a layout change would resize the remote
+                // terminal. The chips stay on top (writes are disabled while stale), the share card below them.
                 Column(
-                    Modifier.align(Alignment.TopEnd).padding(8.dp),
+                    Modifier.fillMaxWidth().align(Alignment.TopCenter).padding(8.dp),
                     horizontalAlignment = Alignment.End,
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     if (fullScreen) FullScreenCorner(state, header, actions)
                     if (state.phase == TerminalPhase.Live && !state.streamConnected) ReconnectingChip()
                     if (state.sizeTakenByOther) SizeTakenChip(actions.onFit)
+                    shares.card?.let { ShareCard(it, shareActions, Modifier.align(Alignment.Start)) }
                 }
+                // BEGIN transfer
+                val shape = MaterialTheme.shapes.medium
+                Box(
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(8.dp)
+                        .shadow(6.dp, shape)
+                        .clip(shape),
+                ) {
+                    TransferStrip(
+                        transfer,
+                        actions.onTransferCancel,
+                        actions.onTransferRetry,
+                        actions.onTransferDismiss,
+                    )
+                }
+                // END transfer
             }
             EndBanner(state, actions)
             if (state.showExtraKeys && state.canInteract) {
@@ -308,6 +350,8 @@ private fun TerminalTopBar(
     header: TerminalHeaderUi,
     actions: TerminalActions,
     showBack: Boolean,
+    shares: SharesUi,
+    shareActions: ShareActions,
 ) {
     val layout = LocalPaneLayout.current
     val sidebar = LocalSidebarToggle.current
@@ -345,7 +389,7 @@ private fun TerminalTopBar(
                         Icon(Icons.Outlined.Keyboard, stringResource(R.string.terminal_action_keyboard))
                     }
                 }
-                OverflowMenu(state, actions)
+                OverflowMenu(state, actions, shares, shareActions)
             },
             colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
             windowInsets = TopAppBarDefaults.windowInsets.only(paneInsetSides(layout)),
@@ -409,6 +453,8 @@ private fun TitleBlock(
 private fun OverflowMenu(
     state: TerminalUiState,
     actions: TerminalActions,
+    shares: SharesUi,
+    shareActions: ShareActions,
 ) {
     var open by remember { mutableStateOf(false) }
     Box {
@@ -421,9 +467,21 @@ private fun OverflowMenu(
                 open = false
                 actions.onPaste()
             }
+            // BEGIN transfer
+            MenuItem(Icons.Outlined.UploadFile, R.string.transfer_action_send_to_folder, enabled = live) {
+                open = false
+                actions.onSendToFolder()
+            }
+            // END transfer
             MenuItem(Icons.Outlined.ContentCopy, R.string.terminal_action_copy, enabled = true) {
                 open = false
                 actions.onCopy()
+            }
+            if (shares.all.isNotEmpty()) {
+                MenuItem(Icons.Outlined.FolderOpen, R.string.share_action_shared_files, enabled = true) {
+                    open = false
+                    shareActions.onShowSheet()
+                }
             }
             MenuItem(Icons.Outlined.StopCircle, R.string.terminal_action_interrupt, enabled = live) {
                 open = false
@@ -603,10 +661,10 @@ private fun EndBanner(
 }
 
 /** Neutral for information, amber when the user has to act, red only for errors. */
-private enum class BannerTone { Neutral, Attention, Error }
+internal enum class BannerTone { Neutral, Attention, Error }
 
 @Composable
-private fun StateBanner(
+internal fun StateBanner(
     icon: ImageVector,
     text: String,
     actions: List<Pair<String, () -> Unit>> = emptyList(),

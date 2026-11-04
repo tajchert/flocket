@@ -31,6 +31,7 @@ class HostSettingsCallbacks(
     val onBack: () -> Unit = {},
     val onResetAll: () -> Unit = {},
     val terminal: TerminalSettingsCallbacks = TerminalSettingsCallbacks(),
+    val shareHelper: ShareHelperCallbacks = ShareHelperCallbacks(),
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -39,6 +40,7 @@ fun HostSettingsScreen(
     state: HostSettingsUiState,
     callbacks: HostSettingsCallbacks,
     modifier: Modifier = Modifier,
+    shareHelper: ShareHelperUiState = ShareHelperUiState(),
 ) {
     Scaffold(
         modifier = modifier,
@@ -85,6 +87,7 @@ fun HostSettingsScreen(
                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                         )
                         TerminalSettingsForm(state.form, callbacks.terminal)
+                        ShareHelperSection(shareHelper, callbacks.shareHelper)
                     }
                 }
             }

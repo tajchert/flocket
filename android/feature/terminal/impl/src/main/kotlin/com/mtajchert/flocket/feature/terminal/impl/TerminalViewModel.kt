@@ -10,6 +10,7 @@ import com.mtajchert.flocket.core.data.ApplicationScope
 import com.mtajchert.flocket.core.data.ConnectionManager
 import com.mtajchert.flocket.core.data.HostSettingsRepository
 import com.mtajchert.flocket.core.data.PreferencesRepository
+import com.mtajchert.flocket.core.data.ShareSeenRepository
 import com.mtajchert.flocket.core.model.ClipboardWritePolicy
 import com.mtajchert.flocket.core.model.ConnectionState
 import com.mtajchert.flocket.core.model.HostId
@@ -33,6 +34,9 @@ import com.mtajchert.flocket.core.ui.error.toRenameText
 import com.mtajchert.flocket.core.ui.error.toUiError
 import com.mtajchert.flocket.core.ui.error.unreachableRenameText
 import com.mtajchert.flocket.feature.terminal.api.TerminalRoute
+import com.mtajchert.flocket.feature.terminal.impl.share.ShareController
+import com.mtajchert.flocket.feature.terminal.impl.transfer.TerminalTransfers
+import com.mtajchert.flocket.feature.terminal.impl.transfer.UriSource
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedFactory
 import dagger.assisted.AssistedInject
@@ -86,7 +90,11 @@ class TerminalViewModel
         private val hostSettings: HostSettingsRepository,
         private val agentMarks: AgentMarks,
         controllerFactory: TerminalControllerFactory,
+        uriSource: UriSource,
         @ApplicationScope private val appScope: CoroutineScope,
+        // --- agent shares (T5) ---
+        shareSeen: ShareSeenRepository,
+        // --- end agent shares ---
     ) : ViewModel() {
         @AssistedFactory
         interface Factory {
@@ -109,6 +117,19 @@ class TerminalViewModel
 
         /** A person is looking: app in the foreground and this pane drawn (see [setLooking]). */
         private val looking = MutableStateFlow(false)
+        // BEGIN transfer
+
+        /** Paste an image or file, send a file to the folder (state for the strip and dialog). */
+        val transfers =
+            TerminalTransfers(
+                scope = viewModelScope,
+                address = address,
+                session = { session.value },
+                uris = uriSource,
+                paste = { controller.paste(it) },
+                notify = { send(TerminalScreenEvent.Message(it)) },
+            )
+        // END transfer
 
         @Volatile private var stream: TerminalStream? = null
 
@@ -130,6 +151,22 @@ class TerminalViewModel
         )
 
         private val sessionState: Flow<SessionState?> = session.flatMapLatest { it?.state ?: flowOf(null) }
+
+        // --- agent shares (T5): all logic lives in share/ShareController ---
+        val shares: ShareController =
+            ShareController(
+                scope = viewModelScope,
+                hostId = hostId,
+                address = address,
+                feed =
+                    sessionState
+                        .map { it?.shares.orEmpty() to it?.sharesFirstReadAt.orEmpty() }
+                        .distinctUntilChanged(),
+                session = { session.value },
+                seen = shareSeen,
+                pasteText = ::paste,
+            )
+        // --- end agent shares ---
 
         private val controllerState =
             combine(controller.connected, controller.isOwner, controller.title) { c, o, t -> Triple(c, o, t) }

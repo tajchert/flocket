@@ -26,4 +26,10 @@ object DataStoreModule {
     fun providePreferencesDataSource(
         @ApplicationContext context: Context,
     ): PreferencesDataSource = PreferencesDataSource(context.userPreferencesStore)
+
+    @Provides
+    @Singleton
+    fun provideShareSeenDataSource(
+        @ApplicationContext context: Context,
+    ): ShareSeenDataSource = ShareSeenDataSource(context.userPreferencesStore)
 }

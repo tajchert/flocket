@@ -12,6 +12,7 @@ This is a self-contained Gradle project. Protocol docs and wire fixtures live in
 - Rename spaces and tabs from the list and the tab strip; names are written to the desktop's `herdr-app` layout ([ADR-0008](../docs/decisions/0008-rename-in-desktop-layout.md)).
 - New agent from a template or command; send text, interrupt, kill and remove with at-most-once semantics.
 - Interactive terminal powered by libghostty: IME, hardware keyboard, extra-keys row, pinch zoom, scrollback, copy/paste; passive attach that never resizes another viewer's terminal until you interact.
+- Files: paste an image or file into a terminal (clipboard, photo or file picker; up to 8 MB, the path is typed for the agent), send a file to the terminal's folder, and see files agents share with `flocket-share` (card on the terminal, image/text viewer, Save, Share, paste path). Host settings install the helper and copy the agent instruction ([ADR-0011](../docs/decisions/0011-transfer-connection-and-agent-shares.md)).
 - Survives rotation, fold/unfold, process death and network changes; a short foreground service keeps an open terminal connected for ~3 minutes in the background (opt-out, [ADR-0006](../docs/decisions/0006-background-short-service.md)).
 - Phone, foldable and tablet layouts (list-detail), light/dark/dynamic color.
 - Settings: app defaults with per-host overrides (font, terminal colors, extra keys, clipboard policy, auto-connect, default folder).

@@ -3,6 +3,7 @@ package com.mtajchert.flocket.core.terminal.ui
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
+import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -51,6 +52,7 @@ fun TerminalSurface(
     fontSizeSp: Float = TerminalView.DEFAULT_FONT_SP,
     onFontSizeChange: (Float) -> Unit = {},
     onClipboardWriteRequest: (String) -> Unit = {},
+    onPasteImage: ((Uri, String?) -> Unit)? = null,
     bellHaptics: Boolean = true,
     reconnectingLabel: String? = "Reconnecting…",
     state: TerminalSurfaceState = remember { TerminalSurfaceState() },
@@ -61,6 +63,7 @@ fun TerminalSurface(
     val clipboardRequest by rememberUpdatedState(onClipboardWriteRequest)
     val bellEnabled by rememberUpdatedState(bellHaptics)
     val activity = LocalContext.current.findActivity()
+    val pasteImage by rememberUpdatedState(onPasteImage)
     LifecycleStartEffect(controller) {
         controller.setVisible(true)
         // A rotation or fold stops and recreates the activity; that is not leaving the screen, so
@@ -83,7 +86,14 @@ fun TerminalSurface(
     }
     LaunchedEffect(controller, theme) { controller.setTheme(theme) }
     Box(modifier) {
-        TerminalAndroidView(controller, theme, fontSizeSp, state) { fontChange(it) }
+        TerminalAndroidView(controller, theme, fontSizeSp, state, hasImagePaste = pasteImage != null, onPasteImage = {
+            uri,
+            mime,
+            ->
+            pasteImage?.invoke(uri, mime)
+        }) {
+            fontChange(it)
+        }
         if (!connected && reconnectingLabel != null) {
             // The retained screen keeps rendering underneath; the core sends a fresh paint on reattach.
             Text(
@@ -108,6 +118,8 @@ private fun TerminalAndroidView(
     theme: TerminalTheme,
     fontSizeSp: Float,
     state: TerminalSurfaceState,
+    hasImagePaste: Boolean,
+    onPasteImage: (Uri, String?) -> Unit,
     onFontSizeChange: (Float) -> Unit,
 ) {
     val fontChange by rememberUpdatedState(onFontSizeChange)
@@ -128,6 +140,7 @@ private fun TerminalAndroidView(
             view.fontSizeSp = fontSizeSp
             view.selectionColor = selectionColor
             view.onFontSizeChange = { fontChange(it) }
+            view.onPasteImage = if (hasImagePaste) onPasteImage else null
         },
         onReset = { view ->
             view.bind(controller)

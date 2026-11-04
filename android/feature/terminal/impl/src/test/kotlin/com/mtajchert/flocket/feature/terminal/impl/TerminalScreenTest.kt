@@ -25,6 +25,9 @@ import com.mtajchert.flocket.core.ui.nav.LocalPaneLayout
 import com.mtajchert.flocket.core.ui.nav.LocalSidebarToggle
 import com.mtajchert.flocket.core.ui.nav.PaneLayout
 import com.mtajchert.flocket.core.ui.nav.SidebarToggle
+import com.mtajchert.flocket.feature.terminal.impl.share.ShareActions
+import com.mtajchert.flocket.feature.terminal.impl.share.ShareItem
+import com.mtajchert.flocket.feature.terminal.impl.share.SharesUi
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -80,7 +83,7 @@ class TerminalScreenTest {
         // With the extra keys off the keyboard toggle lives in the top bar.
         show(live.copy(isOwner = true, showExtraKeys = false))
         compose.onNodeWithContentDescription("Show or hide keyboard").performClick()
-        listOf("Paste", "Copy screen text", "Interrupt", "Kill").forEach { item ->
+        listOf("Paste…", "Copy screen text", "Interrupt", "Kill").forEach { item ->
             compose.onNodeWithContentDescription("More actions").performClick()
             compose.onNodeWithText(item).performClick()
         }
@@ -114,7 +117,8 @@ class TerminalScreenTest {
         show(live.copy(streamConnected = false))
         compose.onNodeWithText("Reconnecting…").assertExists()
         compose.onNodeWithContentDescription("More actions").performClick()
-        compose.onNodeWithText("Paste").assertIsNotEnabled()
+        compose.onNodeWithText("Paste…").assertIsNotEnabled()
+        compose.onNodeWithText("Send file to folder…").assertIsNotEnabled()
         compose.onNodeWithText("Interrupt").assertIsNotEnabled()
     }
 
@@ -346,4 +350,45 @@ class TerminalScreenTest {
         androidx.compose.ui.test
             .hasContentDescription(description),
     ).assertCountEquals(count)
+
+    // --- agent shares (T5) ---
+    private val share = ShareItem("s1", listOf("/work/out/report.md"), null, "Done", 0)
+
+    @Test
+    fun `shared files item appears only when there are shares`() {
+        compose.setContent {
+            FlocketTheme(dynamicColor = false) { TerminalScreen(live, actions) { Box(it) } }
+        }
+        compose.onNodeWithContentDescription("More actions").performClick()
+        compose.onAllNodesWithText("Shared files").assertCountEquals(0)
+    }
+
+    @Test
+    fun `share card opens and dismisses, menu lists shared files`() {
+        val seen = mutableListOf<String>()
+        val shareActions =
+            ShareActions(
+                onOpen = { seen += "open:$it" },
+                onDismiss = { seen += "dismiss:$it" },
+                onShowSheet = { seen += "sheet" },
+            )
+        compose.setContent {
+            FlocketTheme(dynamicColor = false) {
+                TerminalScreen(
+                    live,
+                    actions,
+                    shares = SharesUi(card = share, all = listOf(share)),
+                    shareActions = shareActions,
+                ) {
+                    Box(it)
+                }
+            }
+        }
+        compose.onNodeWithText("Shared report.md").assertExists()
+        compose.onNodeWithText("Open").performClick()
+        compose.onNodeWithText("Dismiss").performClick()
+        compose.onNodeWithContentDescription("More actions").performClick()
+        compose.onNodeWithText("Shared files").performClick()
+        assertEquals(listOf("open:s1", "dismiss:s1", "sheet"), seen)
+    }
 }

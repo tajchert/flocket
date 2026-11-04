@@ -1,0 +1,182 @@
+{
+  "hc_version": "hc 0.1.16",
+  "note": "Captured against an isolated flocket-test-* session; the session and its files were removed afterwards. The home directory is replaced by <home>.",
+  "terminal_put": {
+    "request": {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "method": "terminal.put",
+      "params": {
+        "terminal": "t1",
+        "name": "my shot.png",
+        "data": "iVBORw0KGgpoZWxsbw=="
+      }
+    },
+    "response": {
+      "id": 1,
+      "jsonrpc": "2.0",
+      "result": {
+        "bytes": 13,
+        "path": "<home>/.local/state/herdr-core/flocket-test-fx1/files/t1/my_shot.png"
+      }
+    }
+  },
+  "exec_cat_binary": {
+    "request": {
+      "jsonrpc": "2.0",
+      "id": 2,
+      "method": "machine.exec",
+      "params": {
+        "argv": [
+          "cat",
+          "--",
+          "/tmp/flocket-fx/shot.png"
+        ]
+      }
+    },
+    "response": {
+      "id": 2,
+      "jsonrpc": "2.0",
+      "result": {
+        "code": 0,
+        "ms": 2,
+        "signal": null,
+        "stderr": "",
+        "stdout": "iVBORw0KGgpoZWxsbw==",
+        "timed_out": false,
+        "truncated": false
+      }
+    }
+  },
+  "exec_cat_missing": {
+    "request": {
+      "jsonrpc": "2.0",
+      "id": 3,
+      "method": "machine.exec",
+      "params": {
+        "argv": [
+          "cat",
+          "--",
+          "/tmp/flocket-fx/missing.png"
+        ]
+      }
+    },
+    "response": {
+      "id": 3,
+      "jsonrpc": "2.0",
+      "result": {
+        "code": 1,
+        "ms": 2,
+        "signal": null,
+        "stderr": "Y2F0OiAvdG1wL2Zsb2NrZXQtZngvbWlzc2luZy5wbmc6IE5vIHN1Y2ggZmlsZSBvciBkaXJlY3RvcnkK",
+        "stdout": "",
+        "timed_out": false,
+        "truncated": false
+      }
+    }
+  },
+  "file_write": {
+    "request": {
+      "jsonrpc": "2.0",
+      "id": 4,
+      "method": "file.write",
+      "params": {
+        "path": "/tmp/flocket-fx/out/my file.txt",
+        "data": "aGVsbG8K"
+      }
+    },
+    "response": {
+      "id": 4,
+      "jsonrpc": "2.0",
+      "result": {
+        "bytes": 6,
+        "path": "/tmp/flocket-fx/out/my file.txt"
+      }
+    }
+  },
+  "doc_get_unwritten": {
+    "request": {
+      "jsonrpc": "2.0",
+      "id": 5,
+      "method": "doc.get",
+      "params": {
+        "name": "flocket-share"
+      }
+    },
+    "response": {
+      "id": 5,
+      "jsonrpc": "2.0",
+      "result": {
+        "value": null,
+        "version": 0
+      }
+    }
+  },
+  "doc_get_after_two_helper_runs": {
+    "request": {
+      "jsonrpc": "2.0",
+      "id": 6,
+      "method": "doc.get",
+      "params": {
+        "name": "flocket-share"
+      }
+    },
+    "response": {
+      "id": 6,
+      "jsonrpc": "2.0",
+      "result": {
+        "value": {
+          "shares": [
+            {
+              "at": 1793543314,
+              "id": "6a4b7b243560e26b4da60d12de74d9f8",
+              "note": "second, with \"quotes\"",
+              "paths": [
+                "/tmp/flocket-fx/shot.png"
+              ],
+              "terminal": "t1"
+            },
+            {
+              "at": 1793543311,
+              "id": "0e4e3e43ef36d56a2603d73693c566be",
+              "note": "first",
+              "paths": [
+                "/tmp/flocket-fx/shot.png"
+              ],
+              "terminal": "t1"
+            }
+          ],
+          "v": 1
+        },
+        "version": 2
+      }
+    }
+  },
+  "doc_set_stale_conflict": {
+    "request": {
+      "jsonrpc": "2.0",
+      "id": 7,
+      "method": "doc.set",
+      "params": {
+        "name": "flocket-share",
+        "version": 0,
+        "value": {
+          "v": 1,
+          "shares": []
+        }
+      }
+    },
+    "response": {
+      "error": {
+        "code": -32000,
+        "data": {
+          "hint": "read doc.get and retry with its version",
+          "kind": "conflict"
+        },
+        "message": "document \"flocket-share\" is at version 2, not 0"
+      },
+      "id": 7,
+      "jsonrpc": "2.0"
+    }
+  }
+}

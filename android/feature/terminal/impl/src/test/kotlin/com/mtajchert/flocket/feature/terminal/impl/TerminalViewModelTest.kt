@@ -1,5 +1,6 @@
 package com.mtajchert.flocket.feature.terminal.impl
 
+import android.net.Uri
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.viewmodel.initializer
@@ -31,11 +32,13 @@ import com.mtajchert.flocket.core.testing.FakeCoreSession
 import com.mtajchert.flocket.core.testing.FakeHostRepository
 import com.mtajchert.flocket.core.testing.FakeHostSettingsRepository
 import com.mtajchert.flocket.core.testing.FakePreferencesRepository
+import com.mtajchert.flocket.core.testing.FakeShareSeenRepository
 import com.mtajchert.flocket.core.testing.FakeTerminalStream
 import com.mtajchert.flocket.core.testing.MainDispatcherRule
 import com.mtajchert.flocket.core.testing.SampleData
 import com.mtajchert.flocket.core.ui.error.UiText
 import com.mtajchert.flocket.feature.terminal.api.TerminalRoute
+import com.mtajchert.flocket.feature.terminal.impl.transfer.UriSource
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.awaitCancellation
@@ -99,7 +102,9 @@ class TerminalViewModelTest {
                         engineDispatcher = dispatcher,
                     )
                 },
+                uriSource = NoUriSource,
                 appScope = CoroutineScope(dispatcher),
+                shareSeen = FakeShareSeenRepository(),
             )
         val provided =
             ViewModelProvider.create(
@@ -398,7 +403,9 @@ class TerminalViewModelTest {
                             awaitCancellation()
                         }, UnconfinedTestDispatcher(testScheduler))
                     },
+                    NoUriSource,
                     CoroutineScope(UnconfinedTestDispatcher(testScheduler)),
+                    FakeShareSeenRepository(),
                 )
             backgroundScope.launch { vm.uiState.collect {} }
             advanceUntilIdle()
@@ -796,4 +803,14 @@ class TerminalViewModelTest {
             advanceUntilIdle()
             assertEquals(1, marks.seen.size)
         }
+}
+
+/** The terminal ViewModel tests never pick a file. */
+private object NoUriSource : UriSource {
+    override suspend fun describe(uri: Uri) = AppResult.Failure(AppError.FileMissing(""))
+
+    override suspend fun read(
+        uri: Uri,
+        maxBytes: Long,
+    ) = AppResult.Failure(AppError.FileMissing(""))
 }

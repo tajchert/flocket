@@ -17,6 +17,7 @@ import com.mtajchert.flocket.core.testing.FakeConnectionManager
 import com.mtajchert.flocket.core.testing.FakeHostRepository
 import com.mtajchert.flocket.core.testing.FakeHostSettingsRepository
 import com.mtajchert.flocket.core.testing.FakePreferencesRepository
+import com.mtajchert.flocket.core.testing.FakeShareSeenRepository
 import com.mtajchert.flocket.core.testing.FakeTerminalStream
 import com.mtajchert.flocket.core.testing.SampleData
 import com.mtajchert.flocket.feature.terminal.api.TerminalRoute
@@ -53,6 +54,7 @@ class TerminalRotationTest {
                         TerminalController({ c, r -> FakeTerminalEngine(c, r) }, FakeTerminalEngine.DEFAULT_THEME)
                     },
                     appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+                    shareSeen = FakeShareSeenRepository(),
                 )
             }
         }

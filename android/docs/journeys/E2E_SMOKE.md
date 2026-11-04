@@ -83,6 +83,62 @@ revoke it with `adb -s <serial> shell pm revoke com.mtajchert.flocket.debug andr
 Clean up: `HC_SESSION=flocket-e2e TMPDIR=/tmp hc server stop`, `dev-sshd.sh stop`,
 `adb -s emulator-5580 emu kill`; check that `hc ls` (default session) is unchanged.
 
+## Files journey (paste, send to folder, agent shares)
+
+Same harness and safety rules as above, with the host connected and a terminal open in an
+owned session. Put a test image on the emulator first:
+`adb -s emulator-5580 push shot.png /sdcard/Pictures/` (then open Photos once, or run
+`adb -s emulator-5580 shell am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE -d file:///sdcard/Pictures/shot.png`).
+Real agents need their own login on the machine; run them in a terminal started with
+`HC_SESSION=flocket-e2e TMPDIR=/tmp hc run --bg --no-parent --name agent --cwd /tmp/e2e-files -- claude`
+(or `-- codex`), never in your own herdr session.
+
+9. **Install the helper.** Hosts → the host → settings → "Show files from agents": "This
+   host" says "Not installed" (or "Installed at …"). Install → "Installed at
+   ~/.local/bin/flocket-share"; `ls -l ~/.local/bin/flocket-share` on the machine shows an
+   executable file. If `~/.local/bin` is not on PATH, the PATH warning shows. "Copy
+   instruction" copies the text of `protocol/tools/agent-instruction.md`.
+   Skip Install if a real `flocket-share` is already there and you don't want it replaced.
+10. **Paste an image for an agent.** In the `agent` terminal running Claude Code: overflow →
+    Paste… → Choose photo → `shot.png`. The strip shows "Uploading shot.png…", then the
+    path `<state>/files/<tN>/shot.png` is typed at the prompt, not submitted. Add "what is in
+    this image?" and Enter: Claude Code attaches the image (it shows `[Image #1]` or reads
+    the file) and describes it. Repeat with Codex: it must open the file (its read of the
+    path shows in the transcript) and describe it. Record whether each agent treated the
+    pasted path as an attachment or as text it had to read.
+11. **Paste from the clipboard.** Copy an image in another app (for example Photos →
+    Share → Copy), then Ctrl+V on a hardware keyboard or a two-finger tap in the terminal:
+    the same upload and typed path. With text on the clipboard, it pastes text as before.
+12. **Unknown outcome.** Start a paste of a large photo and, during "Uploading…", kill the
+    app's `sshd-session` (see the safety rules). Expected: "… may not have been uploaded.
+    Nothing was pasted." and nothing typed; after the reconnect nothing is uploaded again
+    by itself.
+13. **Send to folder.** Overflow → "Send file to folder…" → choose a file. The dialog shows
+    the terminal's folder and the file name → Send → "Sent to <path>"; `ls` in the terminal
+    shows it. Send the same file again: "… already exists in this folder." with Replace.
+14. **Agent share → card → viewer.** In a shell terminal (or ask the agent):
+    `flocket-share -m "chart" shot.png notes.md`. Within a second a card "Shared 2 files"
+    shows on that terminal (not on others). Open → "Choose a file" → `shot.png` shows the
+    image preview, `notes.md` the text. Save → the system "Save to" dialog → "Saved", and
+    the file is in Downloads with the same bytes. Share → the Android share sheet with the
+    file. "Paste path into terminal" types its absolute path. Overflow → "Shared files"
+    lists the share; after it is opened, reconnecting does not show the card again.
+    Also share a path containing a space (`cp shot.png "My Report.png"; flocket-share "My Report.png"`):
+    "Paste path into terminal" types `…/My\ Report.png ` with the space escaped.
+    Share opened late: with the app already installed for more than 10 minutes and no share
+    seen yet, run `flocket-share` from a terminal. The card must still show, even if the
+    terminal screen is only opened 10+ minutes after the app first read the (empty) list.
+    An entry older than 10 minutes before that first read stays hidden.
+15. **Federated share (optional).** With a federated machine (`hc machine add …`), run
+    `flocket-share` in one of its terminals: the card shows on `rohan/tN` and the viewer
+    says "Machine rohan".
+16. **Sandbox.** In Codex with its default sandbox, ask it to run `flocket-share shot.png`:
+    it fails with "… rerun this command outside it." and asks to rerun outside the sandbox;
+    after approval the card shows.
+
+Clean up as above, plus `rm ~/.local/bin/flocket-share` if step 9 installed it and it was
+not there before.
+
 ## Results, 2026-11-01
 
 hc 0.1.15; emulator `pixel` (sdk_gphone64_arm64, Android 16, API 36); debug build of `test/e2e`.

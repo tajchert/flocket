@@ -33,6 +33,8 @@ Untagged statements are [S]+[W].
 
 One `hc connect` process = one core connection. You can open several (e.g. one for control, one per heavy stream), but one framed connection carrying everything is the intended design.
 
+Exception: file transfers (`terminal.put`, `file.write`, `machine.exec cat`; §4.17–§4.20) carry frames of up to about 10.7 MB (8 MB base64) that would block the terminal traffic on a shared connection. Flocket runs them on a separate, short-lived **transfer connection** (a second `hc connect`, plain mode is enough). See [ADR-0011](../docs/decisions/0011-transfer-connection-and-agent-shares.md).
+
 ---
 
 ## 2. Plain mode (NDJSON JSON-RPC 2.0)
@@ -283,7 +285,34 @@ Unsubscribe: send CLOSE on the channel (core echoes empty CLOSE) [W]. Details §
 
 ### 4.16 Other methods (not needed by the app)
 
-`terminal.wait`, `terminal.put` (upload ≤ 8 MB base64 file beside a terminal; returns `{path, bytes}`; useful later for image paste), `machine.exec`, `file.read/write/edit`, `machine.add/connect/rename/rm`, `server.stop/restart`. `$/cancelRequest {id}` (no reply) only aborts a running `machine.exec`.
+`terminal.wait`, `file.edit`, `machine.add/connect/rename/rm`, `server.stop/restart`. `$/cancelRequest {id}` (no reply) only aborts a running `machine.exec`.
+
+### 4.17 `terminal.put`
+
+`terminal.put {terminal, name, data}` → `{path, bytes}` [W 0.1.16, `fixtures/transfers-0.1.16.json`]. Writes a file beside a live terminal, on the terminal's machine, for its program to read (a pasted image). It types nothing: paste the path yourself.
+
+- `terminal`: `t7`, a name, or a federated `machine/t7`. `name`: the file name. `data`: base64, at most 8 MB raw.
+- The name is **sanitised**: `my shot.png` becomes `my_shot.png`, so the returned path is safe to paste. A suffix is added when the name is taken.
+- `path` is `<state>/files/<tN>/<name>` (for example `~/.local/state/herdr-core/<session>/files/t1/my_shot.png`), as the terminal's machine sees it. The folder is removed with the terminal.
+- Errors: `not_found`, `machine_unknown`, `finished` (terminal exited), `invalid_params`.
+- A mutation: never retry. A connection lost after the request was written is an unknown outcome.
+
+### 4.18 `file.write`
+
+`file.write {path, data, cwd?, on?}` → `{path, bytes}`. Writes a file here or on machine `on`, creating missing folders. The swap is atomic (a reader sees old or new). It **overwrites**, keeps an existing file's mode and follows a symlink. `data`: base64, at most 8 MB raw. `path` is absolute, or relative to `cwd` (default: the core's, or that machine's home with `on`). Errors: `invalid_params`, `io`, `machine_unknown`, `unavailable`, `needs_update`. A mutation: never retry.
+
+### 4.19 `file.read`
+
+`file.read {path, cwd?, on?, offset?, limit?}` returns lines of a **text** file (at most 8 MB); errors `not_found`, `not_text`, `io`, `invalid_params`, `machine_unknown`, `unavailable`, `needs_update`. Flocket does not use it for downloads, because binary files give `not_text`: use `machine.exec cat` (§4.20).
+
+### 4.20 `machine.exec`
+
+`machine.exec {argv? | line?, cwd?, env?, input?, on?, timeout?}` → `{code: i32|null, signal: i32|null, ms, stdout, stderr, timed_out, truncated}`. Runs one program on the core's host or on machine `on`, without a terminal. `argv` runs as given (no shell), `line` runs in that machine's `sh -c`. `stdout` and `stderr` are **base64**: stdout keeps the first 8 MB, stderr the first 1 MB, and `truncated` is true when more was written. `timeout` defaults to 60 s (at most 600).
+
+Verified facts [W 0.1.16]:
+- A **nonzero exit is a result, not an error**: `cat -- /missing` gives `code: 1` and base64 stderr. Only spawn problems are errors (`spawn_failed`).
+- The program is **cancelled when the caller's connection goes away**. A one-shot `printf '<request>\n' | hc connect` returns nothing (EOF = caller gone), so keep stdin open until the reply arrives.
+- Binary download: `argv: ["cat","--",path]`, then decode `stdout`. Check the size first (`wc -c`), and treat `truncated` as a failure, never as a partial file.
 
 ---
 
@@ -574,6 +603,26 @@ Further details from the Herdr.app 0.x bundle (field names and its built-in docs
 - A node may carry `"type"`: `"row"`, `"column"`, `"stack"` or `"block"`. `size` is `{"weight": n}` or `{"px": n}`. `active` names the shown child of a `stack`. Content kinds seen besides `terminal` and `mod`: `agent`, `context`, `tab` (treat all unknown kinds as non-terminal panes).
 - Focus, zoom and the selected space/tab are per screen (the desktop's `view.json`), not in the document: the `active` chain is the best available hint for the focused pane.
 - Unnamed spaces are shown after their first terminal's live folder (repo, else folder, `~` at home); unnamed tabs by their 1-based place. A terminal with labels `herdr.space=<id>`/`herdr.tab=<id>` is adopted into that space/tab (a new tab when `herdr.tab` is missing).
+
+### 9.2 `flocket-share` document (Flocket convention, we write it)
+
+Agents running in a herdr terminal tell the Flocket app about files through a document named **`flocket-share`**, one per machine (each core keeps its own; the app reads remote ones with `on`). The helper is `protocol/tools/flocket-share`; decision in [ADR-0011](../docs/decisions/0011-transfer-connection-and-agent-shares.md).
+
+Value: `{"v":1,"shares":[<entry>, …]}`, newest first. An entry:
+
+| Field | Type | Meaning |
+|---|---|---|
+| `id` | string | 32 lowercase hex characters (128 random bits). Globally unique: the app keys seen state and history by `id` alone. |
+| `terminal` | string | The writer's `HC_TERMINAL_ID` (machine-local, e.g. `t3`). The app builds the address from the machine the document lives on (`rohan` + `t3` = `rohan/t3`). |
+| `paths` | string[] | Absolute paths on that machine. |
+| `note` | string? | Optional short note. |
+| `at` | u64 | Unix seconds. |
+
+Rules:
+- Readers ignore unknown fields and entries they cannot parse, and tolerate a missing or `null` document (`{value:null, version:0}`). A value of another shape reads as no shares (the app shows none for that machine).
+- Writers prepend the new entry with compare-and-set (§9) and, on `conflict`, re-read and retry. When the serialised existing value would exceed 64 KiB, or it is not this shape, the writer starts a fresh list holding only the new entry. The app keeps its own history, so dropping old entries is harmless.
+- A file over 8 MB is still listed (the helper only warns); the app refuses to download it.
+- hc stores values with **keys sorted alphabetically** [W 0.1.16, `fixtures/transfers-0.1.16.json`]: a value written as `{"v":1,"shares":[…]}` reads back as `{"shares":[…],"v":1}` (entries too: `at`, `id`, `note`, `paths`, `terminal`). The helper's value surgery relies on that read-back prefix `{"shares":[` and suffix `],"v":1}`; readers must not depend on key order.
 
 ---
 
