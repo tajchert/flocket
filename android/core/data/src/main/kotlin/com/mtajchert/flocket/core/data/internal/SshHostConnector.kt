@@ -212,8 +212,9 @@ internal class SshHostConnector(
     /**
      * Closes the SSH connection together with its exec channel. Also a [SiblingTransportSource]: a
      * sibling is another exec of the same [command] on the same SSH connection (the session's
-     * transfer connection). Also a [DirectFileSource]: readers run on the same link and close with it. Closing a sibling closes only its channel; closing this transport closes
-     * every sibling and the link.
+     * transfer connection). Closing a sibling closes only its channel; closing this transport closes
+     * every sibling, every reader and the link. Also a [DirectFileSource]: readers (SFTP) run on the
+     * same link.
      */
     private class ClosingTransport(
         private val inner: ByteTransport,

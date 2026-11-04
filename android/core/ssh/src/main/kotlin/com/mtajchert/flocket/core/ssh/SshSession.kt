@@ -40,9 +40,25 @@ class SshSession internal constructor(
     /** Opens an SFTP channel for reading files. Any failure to open it is [DirectFileException] `UNAVAILABLE`. */
     suspend fun openFileReader(): DirectFileReader =
         withContext(Dispatchers.IO) {
+            // SFTPEngine opens the session channel itself and leaks it when init fails, so track it.
+            var started: net.schmizz.sshj.connection.channel.direct.Session? = null
+            val factory =
+                object : net.schmizz.sshj.connection.channel.direct.SessionFactory {
+                    override fun startSession() = client.startSession().also { started = it }
+
+                    override fun getRemoteSocketAddress() = client.remoteSocketAddress
+                }
             try {
-                SshSftpReader(client.newSFTPClient())
+                val engine =
+                    net.schmizz.sshj.sftp
+                        .SFTPEngine(factory)
+                        .init()
+                SshSftpReader(
+                    net.schmizz.sshj.sftp
+                        .SFTPClient(engine),
+                )
             } catch (e: Exception) {
+                runCatching { started?.close() }
                 if (e is CancellationException) throw e
                 throw DirectFileException(DirectFileException.Reason.UNAVAILABLE, "sftp unavailable: ${e.message}", e)
             }

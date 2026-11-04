@@ -36,6 +36,8 @@ class SshSftpTest {
     private val sessions = mutableListOf<SshSession>()
     private val closes = AtomicInteger()
     private val closed = CountDownLatch(1)
+    private var readHook: () -> Unit = {}
+    private lateinit var lastServer: TestSshServer
 
     @Before
     fun setUp() {
@@ -57,7 +59,11 @@ class SshSftpTest {
                     closes.incrementAndGet()
                     closed.countDown()
                 },
-            ).also { servers += it }
+                onSftpRead = { readHook() },
+            ).also {
+                servers += it
+                lastServer = it
+            }
         val verifier =
             HostKeyVerifier { _, _, type, fp ->
                 if (type == s.hostKeyType &&
@@ -163,6 +169,10 @@ class SshSftpTest {
             } catch (e: DirectFileException) {
                 assertEquals(DirectFileException.Reason.UNAVAILABLE, e.reason)
             }
+            // The failed attempt must not leave its session channel open on the shared connection.
+            val deadline = System.currentTimeMillis() + 5_000
+            while (lastServer.openChannels.get() > 0 && System.currentTimeMillis() < deadline) Thread.sleep(20)
+            assertEquals(0, lastServer.openChannels.get())
         }
 
     @Test
@@ -208,6 +218,29 @@ class SshSftpTest {
             assertTrue(blocked.await(10, TimeUnit.SECONDS))
             withTimeout(2_000) { job.cancelAndJoin() }
             assertTrue("server saw no close", closed.await(5, TimeUnit.SECONDS))
+        }
+
+    @Test
+    fun `cancel during a slow server read ends with CancellationException, not an IO error`() =
+        runBlocking {
+            write("slow.bin", random(4 * 1024 * 1024))
+            val entered = CountDownLatch(1)
+            readHook = {
+                entered.countDown()
+                Thread.sleep(8_000)
+            }
+            val r = reader()
+            val job = async(Dispatchers.Default) { r.copyTo("/slow.bin", 0, ByteArrayOutputStream()) {} }
+            assertTrue(entered.await(10, TimeUnit.SECONDS))
+            val start = System.nanoTime()
+            job.cancel()
+            try {
+                withTimeout(2_000) { job.await() }
+                fail("expected cancellation")
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                // expected
+            }
+            assertTrue("took too long", System.nanoTime() - start < 2_500_000_000L)
         }
 
     @Test

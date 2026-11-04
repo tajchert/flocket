@@ -23,8 +23,12 @@ class TestSshServer(
     private val authorizedFingerprints: Set<String> = emptySet(),
     sftpRoot: java.nio.file.Path? = null,
     onSftpClose: () -> Unit = {},
+    onSftpRead: () -> Unit = {},
 ) : AutoCloseable {
     val authAttempts = AtomicInteger()
+
+    /** Channels the server currently has open. */
+    val openChannels = AtomicInteger()
     private val hostKeyPair =
         KeyPairGenerator.getInstance("EC").apply { initialize(256) }.generateKeyPair()
     val hostFingerprint: String = SshKeys.fingerprint(hostKeyPair.public)
@@ -45,6 +49,20 @@ class TestSshServer(
                     org.apache.sshd.common.config.keys.KeyUtils
                         .getFingerPrint(key) in authorizedFingerprints
                 }
+            addChannelListener(
+                object : org.apache.sshd.common.channel.ChannelListener {
+                    override fun channelOpenSuccess(channel: org.apache.sshd.common.channel.Channel) {
+                        openChannels.incrementAndGet()
+                    }
+
+                    override fun channelClosed(
+                        channel: org.apache.sshd.common.channel.Channel,
+                        reason: Throwable?,
+                    ) {
+                        openChannels.decrementAndGet()
+                    }
+                },
+            )
             commandFactory = CommandFactory { _: ChannelSession, cmd: String -> ScriptedCommand(cmd) }
             if (sftpRoot != null) {
                 fileSystemFactory =
@@ -61,6 +79,16 @@ class TestSshServer(
                                         localHandle: org.apache.sshd.sftp.server.Handle,
                                         thrown: Throwable?,
                                     ) = onSftpClose()
+
+                                    override fun reading(
+                                        session: org.apache.sshd.server.session.ServerSession,
+                                        remoteHandle: String,
+                                        localHandle: org.apache.sshd.sftp.server.FileHandle,
+                                        offset: Long,
+                                        data: ByteArray,
+                                        dataOffset: Int,
+                                        dataLen: Int,
+                                    ) = onSftpRead()
                                 },
                             )
                         },

@@ -10,6 +10,7 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import net.schmizz.sshj.sftp.FileMode
 import net.schmizz.sshj.sftp.OpenMode
 import net.schmizz.sshj.sftp.RemoteFile
@@ -34,6 +35,7 @@ class SshSftpReader internal constructor(
                 val attrs = sftp.statExistence(path) ?: return@withContext null
                 RemoteFileStat(attrs.size, attrs.mtime, attrs.type == FileMode.Type.REGULAR)
             } catch (e: Exception) {
+                currentCoroutineContext().ensureActive()
                 throw map(e, "stat")
             }
         }
@@ -49,6 +51,7 @@ class SshSftpReader internal constructor(
                 try {
                     runInterruptible { sftp.open(path, EnumSet.of(OpenMode.READ)) }
                 } catch (e: Exception) {
+                    currentCoroutineContext().ensureActive()
                     throw map(e, "open")
                 }
             var input: java.io.InputStream? = null
@@ -71,11 +74,18 @@ class SshSftpReader internal constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                // sshj wraps an interrupt in SFTPException/ConnectionException: a cancel must win.
+                currentCoroutineContext().ensureActive()
                 throw map(e, "read")
             } finally {
+                // Bounded: a dead link must not hold the caller; the channel then goes with the connection.
                 withContext(NonCancellable) {
-                    runCatching { input?.close() }
-                    runCatching { file.close() }
+                    withTimeoutOrNull(CLOSE_TIMEOUT_MS) {
+                        runInterruptible {
+                            runCatching { input?.close() }
+                            runCatching { file.close() }
+                        }
+                    }
                 }
             }
         }
@@ -130,5 +140,6 @@ class SshSftpReader internal constructor(
     private companion object {
         const val MAX_UNCONFIRMED_READS = 64
         const val BLOCK = 64 * 1024
+        const val CLOSE_TIMEOUT_MS = 2_000L
     }
 }
