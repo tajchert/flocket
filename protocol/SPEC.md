@@ -314,7 +314,7 @@ Verified facts [W 0.1.16]:
 - The program is **cancelled when the caller's connection goes away**. A one-shot `printf '<request>\n' | hc connect` returns nothing (EOF = caller gone), so keep stdin open until the reply arrives.
 - Binary download: `argv: ["cat","--",path]`, then decode `stdout`, used only for files up to 8 MB (`readFile`); larger files use the chunked read below. Check the size first (`wc -c`), and treat `truncated` as a failure, never as a partial file.
 
-**Chunked binary download (Flocket convention).** Used for files over 8 MB, on the transfer connection:
+**Chunked binary download (Flocket convention).** Used (on the transfer connection) for files on federated machines, and whenever SFTP on the SSH session is unavailable or cannot read the file (ADR-0012):
 - Stat: `machine.exec {argv: ["sh", "-c", STAT, "sh", path], on}` where
   `STAT = 'stat -c "%s %Y %F" -- "$1" 2>/dev/null || stat -f "%z %m %HT" -- "$1"'`
   (GNU/busybox, then BSD/macOS). Output `"<size> <mtime> <type words>"`; regular when the type
@@ -323,13 +323,13 @@ Verified facts [W 0.1.16]:
   "count=" + chunk/65536], on, timeout}`. Chunk = **4 MiB** when `machine == null`, **1 MiB** for
   federated machines (keeps the federation-link stall per call to about a second, ADR-0011 §4).
   One call at a time.
-- Each chunk: `timed_out` → `Timeout`; `truncated` → `Protocol("chunk truncated")`; `code != 0`
-  → `FileMissing`; decoded length must equal `min(chunk, size - offset)` except when the file
-  shrank, which is `FileChanged`. A chunk that failed with `ConnectionLost` is retried once on a
-  freshly opened transfer connection (existing `transferRead`).
-- Per-call timeout: `CallTimeouts.transfer(chunkBytes)`.
+- Each chunk: `timed_out` → a timeout; `truncated` → failure (never a partial file); `code != 0`
+  → missing or unreadable; a decoded length other than `min(chunk, size - offset)` → the file
+  changed (start over). A chunk lost to a dropped connection may be retried once on a fresh
+  transfer connection (it is a read).
+- Give each call a `timeout` that scales with the chunk size.
 - `dd` writes its statistics to stderr; ignore stderr on success.
-- Change detection: after the last chunk, stat the file again; a changed size or mtime means `FileChanged`.
+- Change detection: after the last chunk, stat the file again; a changed size or mtime means the file changed while downloading: discard it.
 
 ---
 
