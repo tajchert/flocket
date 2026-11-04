@@ -135,7 +135,7 @@ Public API on `CoreSession`:
 fun download(machine: String?, path: String, target: java.io.File, resume: DownloadResume? = null): Flow<DownloadEvent>
 
 sealed interface DownloadEvent {
-    data class Started(val size: Long, val method: DownloadMethod, val resume: DownloadResume) : DownloadEvent
+    data class Started(val size: Long, val method: DownloadMethod, val resume: DownloadResume, val resumedFrom: Long) : DownloadEvent
     data class Progress(val bytes: Long, val size: Long) : DownloadEvent
     data class Done(val size: Long, val method: DownloadMethod) : DownloadEvent
     /** [resume] is non-null when the partial file can be continued with it. */
