@@ -14,7 +14,7 @@
 LC_ALL=C
 export LC_ALL
 
-MAX_BYTES=8388608
+MAX_BYTES=209715200
 MAX_VALUE=65536
 RETRIES=20
 SANDBOX_HINT="If you are running in a sandbox, rerun this command outside it."
@@ -73,7 +73,7 @@ for p in "$@"; do
   abs=${dir%/}/$(basename -- "$p")
   size=$(wc -c <"$p" | tr -d ' ')
   if [ "$size" -gt "$MAX_BYTES" ]; then
-    printf 'flocket-share: warning: %s is %s bytes; Flocket opens files up to 8 MB\n' "$abs" "$size" >&2
+    printf 'flocket-share: warning: %s is %s bytes; Flocket cannot open files over 200 MB\n' "$abs" "$size" >&2
   fi
   paths_json=${paths_json:+$paths_json,}\"$(esc "$abs")\"
   count=$((count + 1))

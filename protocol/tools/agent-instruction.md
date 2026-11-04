@@ -1,1 +1,1 @@
-To show me a file on my phone (an image, text or anything else up to 8 MB), run `flocket-share PATH…` from this terminal, optionally with `-m "short note"`. If it fails because of a sandbox, rerun the same command outside the sandbox.
+To show me a file on my phone (an image, text or anything else up to 200 MB), run `flocket-share PATH…` from this terminal, optionally with `-m "short note"`. If it fails because of a sandbox, rerun the same command outside the sandbox.
