@@ -14,10 +14,15 @@ import java.security.KeyPairGenerator
 import java.security.PublicKey
 import java.util.concurrent.atomic.AtomicInteger
 
-/** Embedded MINA sshd with scripted exec commands: `echo`, `banner`, `missing`, `chunks`. */
+/**
+ * Embedded MINA sshd with scripted exec commands: `echo`, `banner`, `missing`, `chunks`.
+ * With [sftpRoot] it also serves the sftp subsystem rooted there; [onSftpClose] runs for each closed file handle.
+ */
 class TestSshServer(
     private val password: String = "pw",
     private val authorizedFingerprints: Set<String> = emptySet(),
+    sftpRoot: java.nio.file.Path? = null,
+    onSftpClose: () -> Unit = {},
 ) : AutoCloseable {
     val authAttempts = AtomicInteger()
     private val hostKeyPair =
@@ -41,6 +46,26 @@ class TestSshServer(
                         .getFingerPrint(key) in authorizedFingerprints
                 }
             commandFactory = CommandFactory { _: ChannelSession, cmd: String -> ScriptedCommand(cmd) }
+            if (sftpRoot != null) {
+                fileSystemFactory =
+                    org.apache.sshd.common.file.virtualfs
+                        .VirtualFileSystemFactory(sftpRoot)
+                subsystemFactories =
+                    listOf(
+                        org.apache.sshd.sftp.server.SftpSubsystemFactory().apply {
+                            addSftpEventListener(
+                                object : org.apache.sshd.sftp.server.SftpEventListener {
+                                    override fun closed(
+                                        session: org.apache.sshd.server.session.ServerSession,
+                                        remoteHandle: String,
+                                        localHandle: org.apache.sshd.sftp.server.Handle,
+                                        thrown: Throwable?,
+                                    ) = onSftpClose()
+                                },
+                            )
+                        },
+                    )
+            }
         }
 
     init {

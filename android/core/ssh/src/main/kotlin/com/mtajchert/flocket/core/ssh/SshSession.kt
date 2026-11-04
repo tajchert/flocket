@@ -1,5 +1,7 @@
 package com.mtajchert.flocket.core.ssh
 
+import com.mtajchert.flocket.core.protocol.transport.DirectFileException
+import com.mtajchert.flocket.core.protocol.transport.DirectFileReader
 import com.mtajchert.flocket.core.protocol.transport.TransportException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
@@ -32,6 +34,17 @@ class SshSession internal constructor(
                 runCatching { session.close() }
                 if (e is CancellationException) throw e
                 throw TransportException("could not start command: ${e.message}", e)
+            }
+        }
+
+    /** Opens an SFTP channel for reading files. Any failure to open it is [DirectFileException] `UNAVAILABLE`. */
+    suspend fun openFileReader(): DirectFileReader =
+        withContext(Dispatchers.IO) {
+            try {
+                SshSftpReader(client.newSFTPClient())
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                throw DirectFileException(DirectFileException.Reason.UNAVAILABLE, "sftp unavailable: ${e.message}", e)
             }
         }
 
