@@ -89,9 +89,19 @@ fun ShareOverlays(
         LaunchedEffect(result) {
             message(
                 when (result) {
-                    is ApkInstallResult.Installed -> resources.getString(R.string.apk_installed, result.label)
-                    is ApkInstallResult.Failed -> resources.getString(R.string.apk_install_failed, result.label)
-                    is ApkInstallResult.Cancelled -> resources.getString(R.string.apk_install_cancelled, result.label)
+                    is ApkInstallResult.Installed -> {
+                        resources.getString(R.string.apk_installed, result.label)
+                    }
+
+                    is ApkInstallResult.Failed -> {
+                        result.message?.takeIf { it.isNotBlank() }?.let {
+                            resources.getString(R.string.apk_install_failed_reason, result.label, it)
+                        } ?: resources.getString(R.string.apk_install_failed, result.label)
+                    }
+
+                    is ApkInstallResult.Cancelled -> {
+                        resources.getString(R.string.apk_install_cancelled, result.label)
+                    }
                 },
             )
             actions.onInstallResultShown()
@@ -165,6 +175,7 @@ private fun ShareViewerDialog(
         val f = installFile
         val info = installInfo
         if (f != null && info != null) {
+            actions.onInstallStarted()
             scope.launch {
                 val result = withContext(Dispatchers.IO) { ApkInstall.install(context, f, info) }
                 if (result is AppResult.Failure) {

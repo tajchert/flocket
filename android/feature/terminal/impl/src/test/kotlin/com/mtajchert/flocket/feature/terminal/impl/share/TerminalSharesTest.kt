@@ -467,7 +467,14 @@ class TerminalSharesTest {
     fun `storage failure leaves no part file`() =
         runTest {
             shares.value = listOf(share("a"))
-            session.downloadHandler = { _, _, _, _ -> flowOf(DownloadEvent.Failed(AppError.Storage("full"), null)) }
+            session.downloadHandler = { _, _, target, _ ->
+                flow {
+                    emit(started())
+                    target.parentFile?.mkdirs()
+                    target.writeText("some")
+                    emit(DownloadEvent.Failed(AppError.Storage("full"), null))
+                }
+            }
             val c = controller()
             c.open("a")
             runCurrent()
@@ -543,6 +550,110 @@ class TerminalSharesTest {
                         ?.file as FileLoad.Loaded
                 ).askInstall,
             )
+        }
+
+    @Test
+    fun `reopening a cached apk does not ask again`() =
+        runTest {
+            shares.value = listOf(share("a", paths = arrayOf("/work/out/app.apk")))
+            writes("PK")
+            val c = controller()
+            c.open("a")
+            runCurrent()
+            c.closeViewer()
+            session.downloadHandler = { _, _, _, _ -> flowOf(started(from = 5), done()) }
+            c.open("a")
+            runCurrent()
+            val loaded =
+                c.ui.value.viewer
+                    ?.file as FileLoad.Loaded
+            assertFalse(loaded.askInstall)
+        }
+
+    @Test
+    fun `reopening after a non-resumable failure tries again`() =
+        runTest {
+            shares.value = listOf(share("a"))
+            session.downloadHandler = { _, p, _, _ -> flowOf(DownloadEvent.Failed(AppError.FileMissing(p), null)) }
+            val c = controller()
+            c.open("a")
+            runCurrent()
+            c.closeViewer()
+            writes("hello")
+            c.open("a")
+            runCurrent()
+            assertEquals(2, session.transferCalls.size)
+            assertTrue(
+                c.ui.value.viewer
+                    ?.file is FileLoad.Loaded,
+            )
+        }
+
+    @Test
+    fun `offline recheck of a cached file still shows it`() =
+        runTest {
+            shares.value = listOf(share("a"))
+            writes("hello")
+            val c = controller()
+            c.open("a")
+            runCurrent()
+            c.closeViewer()
+            session.downloadHandler = { _, _, _, _ -> flowOf(DownloadEvent.Failed(AppError.ConnectionLost, null)) }
+            c.open("a")
+            runCurrent()
+            val loaded =
+                c.ui.value.viewer
+                    ?.file as FileLoad.Loaded
+            assertEquals("hello", loaded.file.readText())
+            assertFalse(partOf().exists())
+            // A changed file is discarded.
+            session.downloadHandler = { _, _, _, _ -> flowOf(DownloadEvent.Failed(AppError.FileChanged("/p"), null)) }
+            c.closeViewer()
+            c.open("a")
+            runCurrent()
+            assertTrue(
+                c.ui.value.viewer
+                    ?.file is FileLoad.Failed,
+            )
+        }
+
+    @Test
+    fun `tapping a share that is downloading opens its progress`() =
+        runTest {
+            shares.value = listOf(share("m", paths = arrayOf("/a/x.bin", "/a/y.txt")))
+            session.downloadHandler = { _, _, _, _ ->
+                flow {
+                    emit(started(100))
+                    awaitCancellation()
+                }
+            }
+            val c = controller()
+            c.open("m")
+            c.openFile("/a/x.bin")
+            runCurrent()
+            c.closeViewer()
+            c.open("m")
+            runCurrent()
+            assertTrue(
+                c.ui.value.viewer
+                    ?.file is FileLoad.Loading,
+            )
+            assertEquals(1, session.transferCalls.size)
+        }
+
+    @Test
+    fun `only the controller that started an install shows its result`() =
+        runTest {
+            val c = controller()
+            ApkInstallEvents.emit(ApkInstallResult.Installed("X"))
+            runCurrent()
+            assertNull(c.ui.value.installResult)
+            c.installStarted()
+            ApkInstallEvents.emit(ApkInstallResult.Installed("X"))
+            runCurrent()
+            assertEquals(ApkInstallResult.Installed("X"), c.ui.value.installResult)
+            c.installResultShown()
+            assertNull(c.ui.value.installResult)
         }
 
     @Test

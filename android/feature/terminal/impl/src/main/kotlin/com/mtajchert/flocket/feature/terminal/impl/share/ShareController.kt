@@ -60,6 +60,9 @@ class ShareController(
     private val installResult = MutableStateFlow<ApkInstallResult?>(null)
     private var job: Job? = null
 
+    /** This controller started an install and waits for its result (the event bus is process-wide). */
+    private var installPending = false
+
     /** Tokens of finished files, so opening one again only checks it on the laptop (lost with the process). */
     private val finished = mutableMapOf<Pair<String?, String>, DownloadResume>()
 
@@ -107,7 +110,14 @@ class ShareController(
     init {
         // Collected here, not in the composable: the system install dialog stops the activity, and the result has
         // no replay.
-        scope.launch { ApkInstallEvents.results.collect { installResult.value = it } }
+        scope.launch {
+            ApkInstallEvents.results.collect {
+                if (installPending) {
+                    installPending = false
+                    installResult.value = it
+                }
+            }
+        }
         scope.launch { seen.seen.collect { seenIds.value = it } }
         scope.launch {
             feed.collect { (list, at) ->
@@ -138,7 +148,12 @@ class ShareController(
         val share = processed.value.firstOrNull { it.id == id && it.address == address }?.toItem() ?: return
         local.update { it.copy(sheetOpen = false, viewer = share, shown = null) }
         scope.launch { seen.markSeen(listOf(id)) }
-        share.paths.singleOrNull()?.let { openFile(it) }
+        val running = current.value?.takeIf { it.shareId == share.id && it.state is FileLoad.Loading }
+        if (running != null) {
+            local.update { it.copy(shown = running.path) }
+        } else {
+            share.paths.singleOrNull()?.let { openFile(it) }
+        }
     }
 
     /**
@@ -149,21 +164,16 @@ class ShareController(
         val share = local.value.viewer ?: return
         val cur = current.value
         local.update { it.copy(shown = path) }
-        if (cur != null && cur.shareId == share.id && cur.path == path &&
-            (cur.state is FileLoad.Loading || cur.state is FileLoad.Failed)
-        ) {
+        val waiting = (cur?.state as? FileLoad.Failed)?.canResume == true
+        if (cur != null && cur.shareId == share.id && cur.path == path && (cur.state is FileLoad.Loading || waiting)) {
             return
         }
-        discard()
+        val drop = discard()
         val target = ShareFiles.target(sharesRoot, share.id, baseName(path))
-        val part = ShareFiles.partOf(target)
-        val token = finished[share.machine to path]
-        val reuse = token?.takeIf { target.exists() }
         start(
-            Current(share.id, share.machine, path, target, part, FileLoad.Loading(path)),
-            reuse,
-            reuseTarget =
-                reuse != null,
+            Current(share.id, share.machine, path, target, ShareFiles.partOf(target), FileLoad.Loading(path)),
+            drop,
+            null,
         )
     }
 
@@ -172,20 +182,27 @@ class ShareController(
         val cur = current.value ?: return
         val token = cur.resume ?: return
         if (cur.state !is FileLoad.Failed) return
-        start(cur.copy(state = FileLoad.Loading(cur.path), resume = null), token, reuseTarget = false)
+        start(cur.copy(state = FileLoad.Loading(cur.path), resume = null), null, token)
     }
 
     /** Starts the download of the failed file again from zero. */
     fun retry() {
         val cur = current.value ?: return
-        discard()
-        start(cur.copy(state = FileLoad.Loading(cur.path), resume = null), null, reuseTarget = false)
+        val drop = discard()
+        start(cur.copy(state = FileLoad.Loading(cur.path), resume = null), drop, null)
     }
 
     /** Stops the download, deletes the partial file, and goes back to the list or closes the viewer. */
     fun cancelDownload() {
         val cur = current.value
-        discard()
+        val previous = job
+        val drop = discard()
+        // Later starts wait for this, so a late delete never hits a new download's part file.
+        job =
+            scope.launch(io) {
+                previous?.join()
+                drop?.delete()
+            }
         if (cur != null) finished.remove(cur.machine to cur.path)
         current.value = null
         local.update { l ->
@@ -207,27 +224,38 @@ class ShareController(
         }
     }
 
+    /** An install was handed to the system; its result is for this screen. */
+    fun installStarted() {
+        installPending = true
+    }
+
     fun installResultShown() {
         installResult.value = null
     }
 
-    /** Ends the running download and drops the partial file of an unfinished one. */
-    private fun discard() {
+    /** Ends the running download; returns the partial file to delete (not yet deleted: that is IO). */
+    private fun discard(): File? {
         job?.cancel()
-        job = null
-        val cur = current.value ?: return
-        if (cur.state !is FileLoad.Loaded) cur.part.delete()
+        val cur = current.value ?: return null
+        return if (cur.state !is FileLoad.Loaded) cur.part else null
     }
 
+    /**
+     * [drop] is a stale partial file to delete first. [resumeToken] continues [Current.part]; with none, a finished
+     * file of this share is re-checked (its target becomes the part and the engine decides) or a fresh download starts.
+     */
     private fun start(
         cur: Current,
-        token: DownloadResume?,
-        reuseTarget: Boolean,
+        drop: File?,
+        resumeToken: DownloadResume?,
     ) {
         current.value = cur
         val key = cur.machine to cur.path
+        val previous = job
         job =
             scope.launch {
+                previous?.join()
+
                 fun update(block: (Current) -> Current) =
                     current.update {
                         if (it?.path == cur.path &&
@@ -238,12 +266,20 @@ class ShareController(
                             it
                         }
                     }
+                var token: DownloadResume? = resumeToken
+                var reused = false
                 val prepared =
                     withContext(io) {
                         try {
+                            drop?.delete()
+                            val finishedToken = finished[key]
+                            if (resumeToken == null && finishedToken != null && cur.target.exists()) {
+                                token = finishedToken
+                                reused = true
+                            }
                             ShareFiles.prune(sharesRoot, nowSeconds() * 1000, keep = setOf(cur.target, cur.part))
                             cur.part.parentFile?.mkdirs()
-                            if (reuseTarget) {
+                            if (reused) {
                                 Files.move(cur.target.toPath(), cur.part.toPath(), StandardCopyOption.REPLACE_EXISTING)
                             } else if (token == null) {
                                 cur.part.delete()
@@ -268,10 +304,14 @@ class ShareController(
                     return@launch
                 }
                 var started: DownloadResume? = token
+                var startedSeen = false
+                var downloaded = true
                 flow.collect { ev ->
                     when (ev) {
                         is DownloadEvent.Started -> {
                             started = ev.resume
+                            startedSeen = true
+                            downloaded = ev.resumedFrom < ev.size
                             update { it.copy(state = FileLoad.Loading(cur.path, ev.resumedFrom, ev.size)) }
                         }
 
@@ -304,7 +344,7 @@ class ShareController(
                                                 cur.path,
                                                 cur.target,
                                                 ev.size,
-                                                askInstall = shows && ApkInstall.isApk(cur.target.name),
+                                                askInstall = shows && downloaded && ApkInstall.isApk(cur.target.name),
                                             ),
                                         resume = null,
                                     )
@@ -325,6 +365,32 @@ class ShareController(
                         }
 
                         is DownloadEvent.Failed -> {
+                            val gone = ev.error is AppError.FileMissing || ev.error is AppError.FileChanged
+                            if (reused && !startedSeen && !gone) {
+                                // The laptop could not be asked: the cached copy is still the file we had.
+                                val restored =
+                                    withContext(io) {
+                                        try {
+                                            Files.move(
+                                                cur.part.toPath(),
+                                                cur.target.toPath(),
+                                                StandardCopyOption.REPLACE_EXISTING,
+                                            )
+                                            true
+                                        } catch (e: IOException) {
+                                            false
+                                        }
+                                    }
+                                if (restored) {
+                                    update {
+                                        it.copy(
+                                            state = FileLoad.Loaded(cur.path, cur.target, cur.target.length()),
+                                            resume = null,
+                                        )
+                                    }
+                                    return@collect
+                                }
+                            }
                             val resumable = ev.resume
                             if (resumable == null) {
                                 finished.remove(key)

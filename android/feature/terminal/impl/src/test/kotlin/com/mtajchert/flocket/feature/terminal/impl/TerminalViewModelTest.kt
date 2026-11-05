@@ -63,6 +63,8 @@ import com.mtajchert.flocket.core.ui.R as UiR
 class TerminalViewModelTest {
     @get:Rule val main = MainDispatcherRule()
 
+    @get:Rule val shareTmp = org.junit.rules.TemporaryFolder()
+
     private val hosts = FakeHostRepository(SampleData.hosts)
     private val manager =
         FakeConnectionManager(hosts, initialState = { host ->
@@ -411,7 +413,7 @@ class TerminalViewModelTest {
                     NoUriSource,
                     CoroutineScope(UnconfinedTestDispatcher(testScheduler)),
                     FakeShareSeenRepository(),
-                    ShareDirectory(java.io.File(System.getProperty("java.io.tmpdir"), "flocket-vm-test-shares")),
+                    ShareDirectory(shareTmp.newFolder()),
                 )
             backgroundScope.launch { vm.uiState.collect {} }
             advanceUntilIdle()

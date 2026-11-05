@@ -17,6 +17,7 @@ data class ShareActions(
     val onResume: () -> Unit = {},
     val onRetry: () -> Unit = {},
     val onInstallPromptShown: () -> Unit = {},
+    val onInstallStarted: () -> Unit = {},
     val onInstallResultShown: () -> Unit = {},
     /** The Install button of an APK; the overlays supply the platform part. */
     val onInstall: () -> Unit = {},
@@ -36,6 +37,7 @@ data class ShareActions(
                 onResume = c::resume,
                 onRetry = c::retry,
                 onInstallPromptShown = c::installPromptShown,
+                onInstallStarted = c::installStarted,
                 onInstallResultShown = c::installResultShown,
             )
     }

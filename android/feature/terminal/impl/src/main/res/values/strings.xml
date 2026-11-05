@@ -154,6 +154,7 @@
     <string name="apk_permission_still_off">Flocket can’t install apps yet</string>
     <string name="apk_installed">Installed %1$s</string>
     <string name="apk_install_failed">Couldn’t install %1$s</string>
+    <string name="apk_install_failed_reason">Couldn’t install %1$s: %2$s</string>
     <string name="apk_install_cancelled">Install of %1$s cancelled</string>
     <string name="apk_invalid">Not a valid app package</string>
     <!-- END APK install -->
