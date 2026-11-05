@@ -81,7 +81,8 @@ class TerminalSharesTest {
     private fun partOf(
         shareId: String = "a",
         name: String = "a.txt",
-    ) = File(File(root, shareId), "$name.part")
+        path: String = "/work/out/$name",
+    ) = ShareFiles.partOf(ShareFiles.target(root, shareId, null, path))
 
     private fun TestScope.controller(
         address: String = "t3",
@@ -222,7 +223,7 @@ class TerminalSharesTest {
                 c.ui.value.viewer
                     ?.file as FileLoad.Loaded
             assertEquals("hello", file.file.readText())
-            assertEquals(File(File(root, "a"), "a.txt"), file.file)
+            assertEquals(ShareFiles.target(root, "a", null, "/work/out/a.txt"), file.file)
             assertFalse(partOf().exists())
             assertFalse("not an APK", file.askInstall)
             assertTrue("opening marks it seen", c.ui.value.card == null)
@@ -308,7 +309,7 @@ class TerminalSharesTest {
             c.open("m")
             c.openFile("/a/x.bin")
             runCurrent()
-            val xPart = partOf("m", "x.bin")
+            val xPart = partOf("m", "x.bin", "/a/x.bin")
             assertTrue(xPart.exists())
             c.backToList()
             c.openFile("/a/y.txt")
@@ -518,6 +519,54 @@ class TerminalSharesTest {
                         ?.file as FileLoad.Loaded
                 ).file.readText(),
             )
+        }
+
+    @Test
+    fun `same base name in one share keeps separate files`() =
+        runTest {
+            shares.value = listOf(share("a", "t3", null, now - 30, "/a/app.apk", "/b/app.apk"))
+            val content = mapOf("/a/app.apk" to "AAAAAAAA", "/b/app.apk" to "bb")
+            session.downloadHandler = { _, path, target, r ->
+                flow {
+                    val bytes = content.getValue(path)
+                    val token = DownloadResume(null, path, bytes.length.toLong(), 100)
+                    emit(DownloadEvent.Started(bytes.length.toLong(), DownloadMethod.SFTP, token, 0))
+                    // Like the engine: with a matching token, the existing file is trusted as a prefix.
+                    if (r != token || target.length() != bytes.length.toLong()) {
+                        target.parentFile?.mkdirs()
+                        target.writeText(bytes)
+                    }
+                    emit(DownloadEvent.Done(bytes.length.toLong(), DownloadMethod.SFTP))
+                }
+            }
+            val c = controller()
+            c.open("a")
+            runCurrent()
+            c.openFile("/a/app.apk")
+            runCurrent()
+            val first =
+                (
+                    c.ui.value.viewer
+                        ?.file as FileLoad.Loaded
+                ).file
+            c.openFile("/b/app.apk")
+            runCurrent()
+            val second =
+                (
+                    c.ui.value.viewer
+                        ?.file as FileLoad.Loaded
+                ).file
+            c.openFile("/a/app.apk")
+            runCurrent()
+            val third =
+                (
+                    c.ui.value.viewer
+                        ?.file as FileLoad.Loaded
+                ).file
+            assertEquals("AAAAAAAA", third.readText())
+            assertEquals("bb", second.readText())
+            assertEquals(first.parentFile, third.parentFile)
+            assertFalse(first.parentFile == second.parentFile)
         }
 
     @Test

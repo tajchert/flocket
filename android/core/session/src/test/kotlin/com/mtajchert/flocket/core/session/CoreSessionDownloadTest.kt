@@ -549,6 +549,22 @@ class CoreSessionDownloadTest {
         }
 
     @Test
+    fun `only a refused subsystem marks sftp unavailable for the link`() =
+        runTest {
+            put(MIB)
+            sftp.openFailure = DirectFileException(DirectFileException.Reason.IO, "channel hiccup")
+            val s = online(sftpHost())
+            repeat(2) {
+                assertEquals(
+                    DownloadEvent.Done(MIB.toLong(), DownloadMethod.CHUNKED),
+                    s.download(null, path, target()).toList().last(),
+                )
+            }
+            assertEquals(2, sftp.opens.get()) // not remembered: SFTP is tried again
+            s.stop()
+        }
+
+    @Test
     fun `sftp denied falls back to chunked`() =
         runTest {
             val bytes = put(MIB)

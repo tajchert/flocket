@@ -169,7 +169,7 @@ class ShareController(
             return
         }
         val drop = discard()
-        val target = ShareFiles.target(sharesRoot, share.id, baseName(path))
+        val target = ShareFiles.target(sharesRoot, share.id, share.machine, path)
         start(
             Current(share.id, share.machine, path, target, ShareFiles.partOf(target), FileLoad.Loading(path)),
             drop,
