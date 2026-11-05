@@ -39,7 +39,9 @@ StrictModes no
 AllowUsers $(id -un)
 # hc refuses long socket paths (macOS TMPDIR); give sessions a short one.
 SetEnv TMPDIR=/tmp
-LogLevel INFO
+# SFTP for file downloads; the download journeys switch this line off to exercise the chunked fallback.
+Subsystem sftp internal-sftp
+LogLevel VERBOSE
 EOF
     if [[ -f "$STATE_DIR/sshd.pid" ]] && kill -0 "$(cat "$STATE_DIR/sshd.pid")" 2>/dev/null; then
       echo "already running (pid $(cat "$STATE_DIR/sshd.pid"))"

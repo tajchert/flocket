@@ -21,6 +21,7 @@ the steps that stay manual. How to run them: [TESTING.md](../TESTING.md#device-j
 | 7 Smoothness (flood, gfxinfo) | - | manual |
 | 8 Kill, exit banner, Remove | `TerminalJourneyTest` | automated |
 | 9 Full screen: hiding the top bar gives the terminal its rows, the corner button gives them back | `FullScreenJourneyTest` | automated |
+| 17a-d, 18 Large share: progress and Done with the same SHA-256 (SFTP and chunked), cancel leaves no `.part`, terminal echo during the download, APK share → install prompt → system confirmation | `DownloadJourneyTest` | automated |
 
 ## Prerequisites
 
@@ -135,6 +136,20 @@ Real agents need their own login on the machine; run them in a terminal started 
 16. **Sandbox.** In Codex with its default sandbox, ask it to run `flocket-share shot.png`:
     it fails with "… rerun this command outside it." and asks to rerun outside the sandbox;
     after approval the card shows.
+
+17. **Large file share (200 MiB limit).** `head -c 150000000 /dev/urandom > big.bin; flocket-share big.bin`
+    (the 17a-d cases are in `DownloadJourneyTest`). Open → progress bar with "x of y" and Cancel;
+    Done shows Save and Share. Manual only:
+    - (e) **Background over 3 min during a download.** Start a download of a file that takes
+      more than 3 minutes (a throttled link), press Home and wait 4 minutes. On return the
+      viewer says the download failed with Resume; Resume continues from the partial bytes and the
+      final file has the same SHA-256 as on the laptop.
+    - (f) **Wi-Fi off mid-download** → Failed + Resume → Wi-Fi on → Resume completes.
+    - (g) **Rebuild the file during the download** (`touch big.bin` is enough): "The file changed",
+      no partial left, Try again downloads it whole.
+18. **APK share.** `flocket-share app-debug.apk` → Done → "Install <label>?" → Install. First time
+    the app asks to allow unknown apps; Open settings → allow → back → the system installer
+    confirmation → "Installed <label>". With the permission denied it says Flocket can't install apps yet.
 
 Clean up as above, plus `rm ~/.local/bin/flocket-share` if step 9 installed it and it was
 not there before.
