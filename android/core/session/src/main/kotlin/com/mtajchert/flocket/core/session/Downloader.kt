@@ -90,7 +90,8 @@ internal class Downloader(
         onStarted: (DownloadResume) -> Unit,
     ): DownloadEvent.Done {
         host.unavailable()?.let { fail(it) }
-        val (remote, found) = choose(machine, path)
+        val (chosen, found) = choose(machine, path)
+        var remote = chosen
         try {
             val first = found ?: fail(AppError.FileMissing(path))
             if (!first.isRegularFile) fail(AppError.InvalidInput("file", "not a regular file"))
@@ -105,15 +106,36 @@ internal class Downloader(
                 send(DownloadEvent.Progress(size, size))
                 return DownloadEvent.Done(size, method)
             }
-            val offset = remote.alignOffset(if (existing > size) 0 else existing)
-            val out = open(target, offset, size)
+            var offset = remote.alignOffset(if (existing > size) 0 else existing)
+            var out = open(target, offset, size)
             val begin = clock.nowMillis()
             try {
                 onStarted(token)
                 send(DownloadEvent.Started(size, method, token, offset))
-                val progress = ProgressThrottle(this@run, offset, size)
+                var progress = ProgressThrottle(this@run, offset, size)
                 try {
-                    remote.copy(offset, size, out, progress::advance)
+                    try {
+                        remote.copy(offset, size, out, progress::advance)
+                    } catch (e: DirectFileException) {
+                        // SFTP stat can work where open is denied (e.g. macOS privacy folders): `hc` may still
+                        // read the file, so continue with chunks, if nothing was written yet.
+                        if (remote !is Sftp || out.count != 0L || !e.isNotReadable()) throw e
+                        logger.debug(TAG) { "sftp cannot open the file (${e.reason}), using chunks" }
+                        val chunked = Chunked(machine, path)
+                        val same = chunked.stat()
+                        if (same == null || !same.isRegularFile || same.size != size ||
+                            same.mtimeSeconds != first.mtimeSeconds
+                        ) {
+                            fail(AppError.FileMissing(path))
+                        }
+                        withContext(NonCancellable) { remote.close() }
+                        remote = chunked
+                        out.closeQuietly()
+                        offset = chunked.alignOffset(offset)
+                        out = open(target, offset, size)
+                        progress = ProgressThrottle(this@run, offset, size)
+                        chunked.copy(offset, size, out, progress::advance)
+                    }
                     out.close()
                 } catch (e: CancellationException) {
                     throw e
@@ -130,9 +152,11 @@ internal class Downloader(
                 ) {
                     fail(AppError.FileChanged(path))
                 }
-                logger.debug(TAG) { "download $method: $size bytes from $offset in ${clock.nowMillis() - begin} ms" }
+                logger.debug(
+                    TAG,
+                ) { "download ${remote.method}: $size bytes from $offset in ${clock.nowMillis() - begin} ms" }
                 send(DownloadEvent.Progress(size, size))
-                return DownloadEvent.Done(size, method)
+                return DownloadEvent.Done(size, remote.method)
             } finally {
                 out.closeQuietly()
             }
@@ -407,6 +431,9 @@ internal class Downloader(
             }
         }
     }
+
+    private fun DirectFileException.isNotReadable() =
+        reason == DirectFileException.Reason.DENIED || reason == DirectFileException.Reason.MISSING
 
     /** A known [AppError] that ends the download. */
     private class DownloadFailure(

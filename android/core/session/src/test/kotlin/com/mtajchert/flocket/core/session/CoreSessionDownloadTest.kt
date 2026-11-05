@@ -565,6 +565,22 @@ class CoreSessionDownloadTest {
         }
 
     @Test
+    fun `sftp denied at open of copy falls back to chunked`() =
+        runTest {
+            val bytes = put(MIB)
+            sftp.deniedAtOpen += path
+            val host = sftpHost()
+            val s = online(host)
+            val events = s.download(null, path, target()).toList()
+            assertEquals(DownloadEvent.Done(MIB.toLong(), DownloadMethod.CHUNKED), events.last())
+            assertArrayEquals(bytes, target().readBytes())
+            assertEquals(listOf(path to 0L), sftp.copies)
+            assertEquals(1, sftp.closes.get())
+            assertTrue(host.dds().isNotEmpty())
+            s.stop()
+        }
+
+    @Test
     fun `missing in sftp but present in core falls back to chunked`() =
         runTest {
             val bytes = put(MIB)

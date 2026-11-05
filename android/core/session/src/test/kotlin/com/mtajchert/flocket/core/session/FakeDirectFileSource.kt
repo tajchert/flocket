@@ -48,6 +48,9 @@ class FakeDirectFileSource(
     /** Paths whose `stat` and `copyTo` are `DENIED` (macOS privacy rules for `sftp-server`). */
     val denied: MutableSet<String> = ConcurrentHashMap.newKeySet()
 
+    /** Paths whose `stat` works but `copyTo` is `DENIED` at once (open refused). */
+    val deniedAtOpen: MutableSet<String> = ConcurrentHashMap.newKeySet()
+
     /** Paths SFTP cannot see (its view differs from the core's). */
     val hidden: MutableSet<String> = ConcurrentHashMap.newKeySet()
 
@@ -92,7 +95,9 @@ class FakeDirectFileSource(
         ): Long {
             check(!closed) { "reader closed" }
             copies += path to offset
-            if (path in denied) throw DirectFileException(DirectFileException.Reason.DENIED, "denied")
+            if (path in denied || path in deniedAtOpen) {
+                throw DirectFileException(DirectFileException.Reason.DENIED, "denied")
+            }
             val f = files[path]
             if (f == null || path in hidden) throw DirectFileException(DirectFileException.Reason.MISSING, "missing")
             val bytes = f.bytes
