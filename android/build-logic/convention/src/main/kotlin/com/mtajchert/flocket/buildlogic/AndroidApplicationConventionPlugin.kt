@@ -18,8 +18,8 @@ class AndroidApplicationConventionPlugin : Plugin<Project> {
                 configureAndroidCommon(this)
                 defaultConfig {
                     targetSdk = versionInt("targetSdk")
-                    versionCode = 10
-                    versionName = "0.3.0"
+                    versionCode = 11
+                    versionName = "0.4.0"
                     vectorDrawables.useSupportLibrary = true
                 }
                 buildTypes {
