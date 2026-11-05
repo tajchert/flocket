@@ -777,6 +777,6 @@ class CoreSessionDownloadTest {
 
     private companion object {
         const val MIB = 1024 * 1024
-        const val STAT_SCRIPT = "stat -c \"%s %Y %F\" -- \"\$1\" 2>/dev/null || stat -f \"%z %m %HT\" -- \"\$1\""
+        const val STAT_SCRIPT = "stat -L -c \"%s %Y %F\" -- \"\$1\" 2>/dev/null || stat -L -f \"%z %m %HT\" -- \"\$1\""
     }
 }

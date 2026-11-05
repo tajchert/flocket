@@ -433,7 +433,7 @@ internal class Downloader(
         private const val TAG = "Downloader"
 
         /** GNU/busybox `stat`, then BSD/macOS: prints `<size> <mtime> <type words>` for `$1`. */
-        const val STAT = "stat -c \"%s %Y %F\" -- \"\$1\" 2>/dev/null || stat -f \"%z %m %HT\" -- \"\$1\""
+        const val STAT = "stat -L -c \"%s %Y %F\" -- \"\$1\" 2>/dev/null || stat -L -f \"%z %m %HT\" -- \"\$1\""
 
         /** `dd` block size; chunked offsets are multiples of it. */
         const val BLOCK = 65_536L

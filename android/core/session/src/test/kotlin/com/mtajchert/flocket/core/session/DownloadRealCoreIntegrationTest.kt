@@ -56,6 +56,25 @@ class DownloadRealCoreIntegrationTest {
             }
         }
 
+    @Test
+    fun `chunked download follows a symlink to a regular file`() =
+        runBlocking {
+            withTimeout(60.seconds) {
+                val s = hc.newSession()
+                s.start()
+                s.awaitOnline()
+                val real = File(hc.workDir, "real.bin").apply { writeBytes(Random.nextBytes(100_000)) }
+                val link = File(hc.workDir, "link.bin")
+                java.nio.file.Files
+                    .createSymbolicLink(link.toPath(), real.toPath())
+                val target = File(hc.workDir, "out-link/link.bin.part")
+                val events = s.download(null, link.absolutePath, target).toList()
+                assertEquals(events.toString(), DownloadEvent.Done(100_000, DownloadMethod.CHUNKED), events.last())
+                assertEquals(sha256(real), sha256(target))
+                s.stop()
+            }
+        }
+
     private fun sha256(f: File): String =
         MessageDigest.getInstance("SHA-256").digest(f.readBytes()).joinToString("") { "%02x".format(it) }
 
