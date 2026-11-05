@@ -58,7 +58,7 @@
     <string name="error_file_too_large_title">File too large</string>
     <string name="error_file_too_large_message">Flocket can transfer files up to %1$s.</string>
     <string name="error_file_changed_title">The file changed</string>
-    <string name="error_file_changed_message">It changed on the host while downloading. Try again.</string>
+    <string name="error_file_changed_message">It changed on your laptop while downloading. Try again.</string>
     <string name="error_storage_title">Couldn’t save</string>
     <string name="error_storage_message">Flocket couldn’t read or write its data on this device.</string>
     <string name="error_secure_storage_title">Secure storage unavailable</string>

@@ -273,7 +273,7 @@ private val helperState =
                 HelperRow("pi", HelperStatus.Installed(helperPath, onPath = false)),
             ),
         instruction =
-            "To show me a file on my phone (an image, text or anything else up to 8 MB), run " +
+            "To show me a file on my phone (an image, text or anything else up to 200 MB), run " +
                 "`flocket-share PATH…` from this terminal.",
     )
 
