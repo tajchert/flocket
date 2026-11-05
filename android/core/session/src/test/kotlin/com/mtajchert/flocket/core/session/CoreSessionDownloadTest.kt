@@ -1,9 +1,12 @@
 package com.mtajchert.flocket.core.session
 
 import com.mtajchert.flocket.core.common.error.AppError
+import com.mtajchert.flocket.core.model.ConnectionState
 import com.mtajchert.flocket.core.model.MAX_DOWNLOAD_BYTES
 import com.mtajchert.flocket.core.protocol.testing.FakeCore
 import com.mtajchert.flocket.core.protocol.testing.FakeCoreConfig
+import com.mtajchert.flocket.core.protocol.transport.DirectFileException
+import com.mtajchert.flocket.core.protocol.transport.TransportException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancelAndJoin
@@ -21,7 +24,6 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Rule
@@ -57,6 +59,11 @@ class CoreSessionDownloadTest {
     }
 
     private fun TestScope.host() = FakeHost(backgroundScope).apply { configure = { it.serveFiles() } }
+
+    private val sftp = FakeDirectFileSource(files)
+
+    /** A host whose main transport also reads files over (fake) SFTP. */
+    private fun TestScope.sftpHost() = host().apply { wrapTransport = sftp::over }
 
     private suspend fun TestScope.online(
         host: FakeHost,
@@ -470,6 +477,217 @@ class CoreSessionDownloadTest {
             val s = online(host)
             val events = s.download(null, path, target()).toList()
             assertEquals(listOf(DownloadEvent.Failed(AppError.Unsupported("machine.exec"), null)), events)
+            s.stop()
+        }
+
+    // ---- SFTP ------------------------------------------------------------------------------------
+
+    @Test
+    fun `sftp happy path writes the file and reports SFTP`() =
+        runTest {
+            val bytes = put(3 * MIB + 5)
+            val host = sftpHost()
+            val s = online(host)
+            val size = bytes.size.toLong()
+            val events = s.download(null, path, target()).toList()
+            val token = DownloadResume(null, path, size, 1_700_000_000)
+            assertEquals(DownloadEvent.Started(size, DownloadMethod.SFTP, token, 0), events.first())
+            val progress = events.filterIsInstance<DownloadEvent.Progress>()
+            assertTrue(progress.size >= 2)
+            assertEquals(DownloadEvent.Progress(size, size), events[events.size - 2])
+            assertEquals(DownloadEvent.Done(size, DownloadMethod.SFTP), events.last())
+            assertArrayEquals(bytes, target().readBytes())
+            assertTrue(host.execs().isEmpty()) // no stat, no dd on any core
+            assertEquals(listOf(path, path), sftp.stats) // start and end
+            assertEquals(listOf(path to 0L), sftp.copies)
+            assertEquals(1, sftp.opens.get())
+            assertEquals(1, sftp.closes.get())
+            s.stop()
+        }
+
+    @Test
+    fun `sftp unavailable falls back to chunked and is remembered`() =
+        runTest {
+            val bytes = put(MIB)
+            sftp.openFailure = DirectFileException(DirectFileException.Reason.UNAVAILABLE, "no subsystem")
+            val host = sftpHost()
+            val s = online(host)
+            assertEquals(
+                DownloadEvent.Done(MIB.toLong(), DownloadMethod.CHUNKED),
+                s.download(null, path, target()).toList().last(),
+            )
+            assertArrayEquals(bytes, target().readBytes())
+            assertEquals(
+                DownloadEvent.Done(MIB.toLong(), DownloadMethod.CHUNKED),
+                s.download(null, path, target()).toList().last(),
+            )
+            assertEquals(1, sftp.opens.get())
+            // A new link tries SFTP again.
+            host.cores[0].dropConnection()
+            s.awaitConnection { it !is ConnectionState.Online }
+            s.awaitOnline()
+            sftp.openFailure = null
+            assertEquals(
+                DownloadEvent.Done(MIB.toLong(), DownloadMethod.SFTP),
+                s.download(null, path, target()).toList().last(),
+            )
+            assertEquals(2, sftp.opens.get())
+            s.stop()
+        }
+
+    @Test
+    fun `sftp denied falls back to chunked`() =
+        runTest {
+            val bytes = put(MIB)
+            sftp.denied += path
+            val host = sftpHost()
+            val s = online(host)
+            val events = s.download(null, path, target()).toList()
+            assertEquals(DownloadMethod.CHUNKED, events.started().method)
+            assertEquals(DownloadEvent.Done(MIB.toLong(), DownloadMethod.CHUNKED), events.last())
+            assertArrayEquals(bytes, target().readBytes())
+            assertEquals(1, sftp.closes.get())
+            assertTrue(sftp.copies.isEmpty())
+            s.stop()
+        }
+
+    @Test
+    fun `missing in sftp but present in core falls back to chunked`() =
+        runTest {
+            val bytes = put(MIB)
+            sftp.hidden += path
+            val host = sftpHost()
+            val s = online(host)
+            val events = s.download(null, path, target()).toList()
+            assertEquals(DownloadEvent.Done(MIB.toLong(), DownloadMethod.CHUNKED), events.last())
+            assertArrayEquals(bytes, target().readBytes())
+            assertEquals(1, host.dds().size)
+            s.stop()
+        }
+
+    @Test
+    fun `missing everywhere fails with FileMissing`() =
+        runTest {
+            val host = sftpHost()
+            val s = online(host)
+            val events = s.download(null, "/srv/gone.apk", target()).toList()
+            assertEquals(listOf(DownloadEvent.Failed(AppError.FileMissing("/srv/gone.apk"), null)), events)
+            assertEquals(listOf("/srv/gone.apk"), sftp.stats)
+            assertEquals(1, host.stats().size)
+            assertEquals(1, sftp.closes.get())
+            s.stop()
+        }
+
+    @Test
+    fun `federated machine never uses sftp`() =
+        runTest {
+            put(MIB)
+            val host = sftpHost()
+            val s = online(host)
+            val events = s.download("rohan", path, target()).toList()
+            assertEquals(DownloadEvent.Done(MIB.toLong(), DownloadMethod.CHUNKED), events.last())
+            assertEquals(0, sftp.opens.get())
+            s.stop()
+        }
+
+    @Test
+    fun `sftp resume continues at the exact partial length`() =
+        runTest {
+            val bytes = put(3 * MIB)
+            target().parentFile.mkdirs()
+            target().writeBytes(bytes.copyOf(MIB + 1000))
+            val host = sftpHost()
+            val s = online(host)
+            val token = DownloadResume(null, path, bytes.size.toLong(), 1_700_000_000)
+            val events = s.download(null, path, target(), token).toList()
+            assertEquals(MIB + 1000L, events.started().resumedFrom)
+            assertEquals(listOf(path to MIB + 1000L), sftp.copies)
+            assertEquals(DownloadEvent.Done(bytes.size.toLong(), DownloadMethod.SFTP), events.last())
+            assertArrayEquals(bytes, target().readBytes())
+            s.stop()
+        }
+
+    @Test
+    fun `sftp resume of a complete file is Done without data calls`() =
+        runTest {
+            val bytes = put(MIB)
+            target().parentFile.mkdirs()
+            target().writeBytes(bytes)
+            val host = sftpHost()
+            val s = online(host)
+            val size = bytes.size.toLong()
+            val token = DownloadResume(null, path, size, 1_700_000_000)
+            val events = s.download(null, path, target(), token).toList()
+            assertEquals(
+                listOf(
+                    DownloadEvent.Started(size, DownloadMethod.SFTP, token, size),
+                    DownloadEvent.Progress(size, size),
+                    DownloadEvent.Done(size, DownloadMethod.SFTP),
+                ),
+                events,
+            )
+            assertTrue(sftp.copies.isEmpty())
+            assertEquals(1, sftp.stats.size)
+            assertEquals(1, sftp.closes.get())
+            s.stop()
+        }
+
+    @Test
+    fun `sftp file changed during the copy fails with FileChanged`() =
+        runTest {
+            put(2 * MIB)
+            sftp.afterBlock = { copied -> if (copied == MIB.toLong()) files[path]!!.mtimeSeconds += 1 }
+            val host = sftpHost()
+            val s = online(host)
+            val events = s.download(null, path, target()).toList()
+            assertEquals(DownloadEvent.Failed(AppError.FileChanged(path), null), events.last())
+            s.stop()
+        }
+
+    @Test
+    fun `sftp link drop mid-file fails with a resume token`() =
+        runTest {
+            put(2 * MIB)
+            sftp.afterBlock = { copied -> if (copied == MIB.toLong()) throw TransportException("link gone") }
+            val host = sftpHost()
+            val s = online(host)
+            val events = s.download(null, path, target()).toList()
+            assertEquals(DownloadEvent.Failed(AppError.ConnectionLost, events.started().resume), events.last())
+            assertEquals(MIB.toLong(), target().length())
+            assertEquals(1, sftp.closes.get())
+            s.stop()
+        }
+
+    @Test
+    fun `progress is throttled`() =
+        runTest {
+            val bytes = put(40 * MIB)
+            sftp.blockSize = 4096
+            val host = sftpHost()
+            val s = online(host)
+            val events = s.download(null, path, target()).toList()
+            val progress = events.filterIsInstance<DownloadEvent.Progress>()
+            assertTrue("${progress.size} progress events", progress.size <= 40 + 2)
+            assertEquals(DownloadEvent.Progress(bytes.size.toLong(), bytes.size.toLong()), progress.last())
+            assertEquals(DownloadEvent.Done(bytes.size.toLong(), DownloadMethod.SFTP), events.last())
+            s.stop()
+        }
+
+    @Test
+    fun `sftp cancel closes the reader and emits no Failed`() =
+        runTest {
+            put(2 * MIB)
+            val held = CompletableDeferred<Unit>()
+            sftp.afterBlock = { copied -> if (copied == MIB.toLong()) held.await() }
+            val host = sftpHost()
+            val s = online(host)
+            val events = CopyOnWriteArrayList<DownloadEvent>()
+            val job = launch { s.download(null, path, target()).collect { events += it } }
+            eventually("half copied") { target().length() == MIB.toLong() }
+            job.cancelAndJoin()
+            assertEquals(1, sftp.closes.get())
+            assertTrue(events.none { it is DownloadEvent.Failed || it is DownloadEvent.Done })
+            assertEquals(MIB.toLong(), target().length())
             s.stop()
         }
 

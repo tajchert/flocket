@@ -8,6 +8,9 @@ import com.mtajchert.flocket.core.model.MAX_DOWNLOAD_BYTES
 import com.mtajchert.flocket.core.protocol.CallTimeouts
 import com.mtajchert.flocket.core.protocol.dto.ExecResult
 import com.mtajchert.flocket.core.protocol.toAppError
+import com.mtajchert.flocket.core.protocol.transport.DirectFileException
+import com.mtajchert.flocket.core.protocol.transport.DirectFileReader
+import com.mtajchert.flocket.core.protocol.transport.DirectFileSource
 import com.mtajchert.flocket.core.protocol.transport.RemoteFileStat
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
@@ -29,6 +32,12 @@ internal interface DownloadHost {
     /** Why a download cannot start now (not Online, or stale), or null. */
     fun unavailable(): AppError?
 
+    /** The link's SFTP, unless it is not an SSH link or this link already refused the subsystem. */
+    fun directFileSource(): DirectFileSource?
+
+    /** [source] refused SFTP: use chunks until the session reconnects. */
+    fun sftpRefused(source: DirectFileSource)
+
     /** `machine.exec` on the transfer connection, retried once on a fresh one after a drop. */
     suspend fun exec(
         argv: List<String>,
@@ -39,7 +48,8 @@ internal interface DownloadHost {
 
 /**
  * [CoreSession.download] (design 2026-11-05 §4.4, ADR-0012): stats the remote file, streams it into the
- * target with chunked `machine.exec` reads (`dd`), and checks with a second stat that it did not change.
+ * target over SFTP on the host's own machine when the link offers it, else with chunked `machine.exec`
+ * reads (`dd`), and checks with a second stat that it did not change.
  */
 internal class Downloader(
     private val host: DownloadHost,
@@ -62,6 +72,11 @@ internal class Downloader(
                     run(machine, path, target, resume) { started = it }
                 } catch (e: DownloadFailure) {
                     DownloadEvent.Failed(e.error, started.takeIf { e.error.resumable() })
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    // Never throws to the collector (e.g. a local file the app may not read).
+                    DownloadEvent.Failed(AppError.Unexpected(e), started)
                 }
             send(end)
         }
@@ -74,9 +89,9 @@ internal class Downloader(
         onStarted: (DownloadResume) -> Unit,
     ): DownloadEvent.Done {
         host.unavailable()?.let { fail(it) }
-        val remote: Remote = Chunked(machine, path)
+        val (remote, found) = choose(machine, path)
         try {
-            val first = remote.stat() ?: fail(AppError.FileMissing(path))
+            val first = found ?: fail(AppError.FileMissing(path))
             if (!first.isRegularFile) fail(AppError.InvalidInput("file", "not a regular file"))
             if (first.size > MAX_DOWNLOAD_BYTES) fail(AppError.FileTooLarge(MAX_DOWNLOAD_BYTES))
             val size = first.size
@@ -123,6 +138,50 @@ internal class Downloader(
         }
     }
 
+    /** Method choice (design §4.4): SFTP when it can see [path], else chunks; the stat is null when missing. */
+    private suspend fun choose(
+        machine: String?,
+        path: String,
+    ): Pair<Remote, RemoteFileStat?> {
+        val source = if (machine == null) host.directFileSource() else null
+        source?.let { sftp(it, path) }?.let { return it }
+        val chunked = Chunked(machine, path)
+        return chunked to chunked.stat()
+    }
+
+    /** An SFTP reader that sees [path] and its stat, or null to fall back to chunks (refused, denied, not seen). */
+    private suspend fun sftp(
+        source: DirectFileSource,
+        path: String,
+    ): Pair<Remote, RemoteFileStat>? {
+        val reader =
+            try {
+                source.openFileReader()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (e is DirectFileException && e.reason == DirectFileException.Reason.UNAVAILABLE) {
+                    host.sftpRefused(source)
+                }
+                logger.debug(TAG) { "sftp not available (${e.javaClass.simpleName}), using chunks" }
+                return null
+            }
+        val remote = Sftp(reader, path)
+        var keep = false
+        try {
+            val stat = reader.stat(path)
+            if (stat == null) logger.debug(TAG) { "sftp does not see the file, using chunks" }
+            return stat?.let { remote to it }.also { keep = it != null }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            logger.debug(TAG) { "sftp stat failed (${e.javaClass.simpleName}), using chunks" }
+            return null
+        } finally {
+            if (!keep) withContext(NonCancellable) { remote.close() }
+        }
+    }
+
     /** Checks free space, truncates [target] to [offset] and opens it for append. */
     private suspend fun open(
         target: File,
@@ -165,6 +224,56 @@ internal class Downloader(
         fun errorOf(e: Exception): AppError = e.toAppError("download")
 
         suspend fun close() {}
+    }
+
+    /** One SFTP channel on the host link, for this download only. */
+    private class Sftp(
+        private val reader: DirectFileReader,
+        private val path: String,
+    ) : Remote {
+        override val method = DownloadMethod.SFTP
+
+        override suspend fun stat(): RemoteFileStat? =
+            try {
+                reader.stat(path)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                throw DownloadFailure(errorOf(e))
+            }
+
+        override suspend fun copy(
+            offset: Long,
+            size: Long,
+            out: OutputStream,
+            onBytes: (Int) -> Unit,
+        ) {
+            reader.copyTo(path, offset, out, onBytes)
+        }
+
+        override fun errorOf(e: Exception): AppError =
+            when {
+                e !is DirectFileException -> {
+                    e.toAppError("sftp")
+                }
+
+                e.reason == DirectFileException.Reason.DENIED || e.reason == DirectFileException.Reason.MISSING -> {
+                    AppError.FileMissing(path)
+                }
+
+                else -> {
+                    AppError.ConnectionLost
+                }
+            }
+
+        override suspend fun close() {
+            try {
+                reader.close()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+            }
+        }
     }
 
     /** `stat` and `dd` slices over `machine.exec` (SPEC §4.20), one call at a time. */

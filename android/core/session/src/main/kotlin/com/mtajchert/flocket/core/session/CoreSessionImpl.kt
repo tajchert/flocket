@@ -49,6 +49,7 @@ import com.mtajchert.flocket.core.protocol.terminalRun
 import com.mtajchert.flocket.core.protocol.terminalSend
 import com.mtajchert.flocket.core.protocol.toAppError
 import com.mtajchert.flocket.core.protocol.transport.ByteTransport
+import com.mtajchert.flocket.core.protocol.transport.DirectFileSource
 import com.mtajchert.flocket.core.protocol.wire.ProtocolException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -118,6 +119,10 @@ class CoreSessionImpl(
 
         /** `flocket-share` reads per machine ([refreshShares]; key null = local); guarded by [readLock]. */
         val shareReads = HashMap<String?, Coalesced>()
+
+        /** This link refused SFTP: downloads use chunks until the next link (ADR-0012 §3). */
+        @Volatile
+        var sftpUnavailable = false
     }
 
     /** One coalesced read on one link: at most one in flight, plus one more if triggered meanwhile. */
@@ -1212,6 +1217,13 @@ class CoreSessionImpl(
             object : DownloadHost {
                 override fun unavailable() =
                     if (link.get() == null || state.value.isStale) AppError.ConnectionLost else null
+
+                override fun directFileSource() =
+                    link.get()?.takeUnless { it.sftpUnavailable }?.transport as? DirectFileSource
+
+                override fun sftpRefused(source: DirectFileSource) {
+                    link.get()?.takeIf { it.transport === source }?.sftpUnavailable = true
+                }
 
                 override suspend fun exec(
                     argv: List<String>,
