@@ -17,6 +17,7 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.channels.ProducerScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.channelFlow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
@@ -79,7 +80,7 @@ internal class Downloader(
                     DownloadEvent.Failed(AppError.Unexpected(e), started)
                 }
             send(end)
-        }
+        }.flowOn(io) // the whole download (base64 decode, file writes) runs off the collector's thread
 
     private suspend fun ProducerScope<DownloadEvent>.run(
         machine: String?,
@@ -97,7 +98,7 @@ internal class Downloader(
             val size = first.size
             val method = remote.method
             val token = DownloadResume(machine, path, size, first.mtimeSeconds)
-            val existing = if (resume == token) local { if (target.isFile) target.length() else 0L } else 0L
+            val existing = if (resume == token && target.isFile) target.length() else 0L
             if (resume == token && existing == size) {
                 onStarted(token)
                 send(DownloadEvent.Started(size, method, token, size))
@@ -113,10 +114,12 @@ internal class Downloader(
                 val progress = ProgressThrottle(this@run, offset, size)
                 try {
                     remote.copy(offset, size, out, progress::advance)
-                    local { out.close() }
+                    out.close()
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
+                    // The file grew past its size (SFTP copies to EOF): the final check would fail anyway.
+                    if (out.overflowed) fail(AppError.FileChanged(path))
                     if (out.error != null) fail(AppError.Storage(WRITE_FAILED))
                     if (e is DownloadFailure) throw e
                     fail(remote.errorOf(e))
@@ -131,7 +134,7 @@ internal class Downloader(
                 send(DownloadEvent.Progress(size, size))
                 return DownloadEvent.Done(size, method)
             } finally {
-                withContext(NonCancellable) { local { out.closeQuietly() } }
+                out.closeQuietly()
             }
         } finally {
             withContext(NonCancellable) { remote.close() }
@@ -182,25 +185,26 @@ internal class Downloader(
         }
     }
 
-    /** Checks free space, truncates [target] to [offset] and opens it for append. */
-    private suspend fun open(
+    /**
+     * Checks free space, truncates [target] to [offset] and opens it for append, taking at most `size - offset`
+     * bytes. Blocking on purpose (the flow runs on `io`): no suspension point between opening the stream and
+     * the caller's `finally`, so a cancellation can never leak it.
+     */
+    private fun open(
         target: File,
         offset: Long,
         size: Long,
-    ): LocalOutput =
-        local {
-            val dir = target.absoluteFile.parentFile
-            dir.mkdirs()
-            if (usableSpace(dir) < size - offset + FREE_SPACE_MARGIN) fail(AppError.Storage("not enough space"))
-            try {
-                RandomAccessFile(target, "rw").use { it.setLength(offset) }
-                LocalOutput(FileOutputStream(target, true))
-            } catch (e: IOException) {
-                fail(AppError.Storage(WRITE_FAILED))
-            }
+    ): LocalOutput {
+        val dir = target.absoluteFile.parentFile
+        dir.mkdirs()
+        if (usableSpace(dir) < size - offset + FREE_SPACE_MARGIN) fail(AppError.Storage("not enough space"))
+        return try {
+            RandomAccessFile(target, "rw").use { it.setLength(offset) }
+            LocalOutput(FileOutputStream(target, true), limit = size - offset)
+        } catch (e: IOException) {
+            fail(AppError.Storage(WRITE_FAILED))
         }
-
-    private suspend fun <T> local(block: () -> T): T = withContext(io) { block() }
+    }
 
     /** One way of reading the remote file. */
     private interface Remote {
@@ -261,6 +265,11 @@ internal class Downloader(
                     AppError.FileMissing(path)
                 }
 
+                // A server-side read error while the link is up: not a lost connection (still resumable).
+                e.reason == DirectFileException.Reason.IO -> {
+                    AppError.Unexpected(e)
+                }
+
                 else -> {
                     AppError.ConnectionLost
                 }
@@ -310,7 +319,7 @@ internal class Downloader(
                 if (r.code != 0) fail(AppError.FileMissing(path))
                 val bytes = decode(r.stdout) ?: fail(AppError.Protocol("bad file data"))
                 if (bytes.size.toLong() != minOf(chunk, size - at)) fail(AppError.FileChanged(path))
-                local { out.write(bytes) }
+                out.write(bytes)
                 at += bytes.size
                 onBytes(bytes.size)
             }
@@ -337,22 +346,29 @@ internal class Downloader(
 
         fun advance(n: Int) {
             bytes += n
+            if (bytes >= size) return // the caller always sends the final Progress(size, size) itself
             val now = clock.nowMillis()
             if (bytes - sentBytes < PROGRESS_STEP && now - sentAt < PROGRESS_INTERVAL_MS) return
             sentBytes = bytes
             sentAt = now
-            // Lossy on purpose: a slow collector misses intermediate steps, never the final one.
+            // Lossy on purpose: a slow collector misses intermediate steps, never the final one (sent by the caller).
             events.trySend(DownloadEvent.Progress(bytes, size))
         }
     }
 
-    /** The target file: counts what was written and remembers a local write failure. */
+    /**
+     * The target file: counts what was written, remembers a local write failure, and refuses bytes past [limit]
+     * (a file that grows during the download), setting [overflowed].
+     */
     private class LocalOutput(
         private val out: OutputStream,
+        private val limit: Long,
     ) : OutputStream() {
         var count = 0L
             private set
         var error: IOException? = null
+            private set
+        var overflowed = false
             private set
 
         override fun write(b: Int) = write(byteArrayOf(b.toByte()), 0, 1)
@@ -362,6 +378,10 @@ internal class Downloader(
             off: Int,
             len: Int,
         ) {
+            if (count + len > limit) {
+                overflowed = true
+                throw IOException("more bytes than the file had")
+            }
             try {
                 out.write(b, off, len)
             } catch (e: IOException) {

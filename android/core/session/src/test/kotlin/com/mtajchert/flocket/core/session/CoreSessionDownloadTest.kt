@@ -1,18 +1,26 @@
 package com.mtajchert.flocket.core.session
 
 import com.mtajchert.flocket.core.common.error.AppError
+import com.mtajchert.flocket.core.common.logging.Logger
+import com.mtajchert.flocket.core.common.result.AppResult
+import com.mtajchert.flocket.core.common.time.Clock
 import com.mtajchert.flocket.core.model.ConnectionState
 import com.mtajchert.flocket.core.model.MAX_DOWNLOAD_BYTES
+import com.mtajchert.flocket.core.protocol.dto.ExecResult
 import com.mtajchert.flocket.core.protocol.testing.FakeCore
 import com.mtajchert.flocket.core.protocol.testing.FakeCoreConfig
 import com.mtajchert.flocket.core.protocol.transport.DirectFileException
+import com.mtajchert.flocket.core.protocol.transport.DirectFileSource
 import com.mtajchert.flocket.core.protocol.transport.TransportException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
@@ -32,10 +40,13 @@ import org.junit.rules.TemporaryFolder
 import java.io.File
 import java.util.Base64
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.random.Random
+import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class CoreSessionDownloadTest {
     @get:Rule
     val tmp = TemporaryFolder()
@@ -167,6 +178,8 @@ class CoreSessionDownloadTest {
             assertEquals(0L, started.resumedFrom)
             assertEquals(DownloadEvent.Done(bytes.size.toLong(), DownloadMethod.CHUNKED), events.last())
             assertEquals(DownloadEvent.Progress(bytes.size.toLong(), bytes.size.toLong()), events[events.size - 2])
+            // Exactly one final Progress, even though the last chunk crosses the 1 MiB step.
+            assertEquals(1, events.count { it == DownloadEvent.Progress(bytes.size.toLong(), bytes.size.toLong()) })
             assertArrayEquals(bytes, target().readBytes())
             val dds = host.dds()
             assertEquals(listOf("0", "64", "128"), dds.map { it.argv().arg("skip") })
@@ -672,6 +685,77 @@ class CoreSessionDownloadTest {
             assertEquals(DownloadEvent.Done(bytes.size.toLong(), DownloadMethod.SFTP), events.last())
             s.stop()
         }
+
+    @Test
+    fun `sftp copy of a growing file stops at the size and fails with FileChanged`() =
+        runTest {
+            // SFTP's stat says 2 MiB, but copyTo delivers 3 MiB (the file grew).
+            files[path] = FakeRemoteFile(Random(1).nextBytes(3 * MIB), statSize = 2L * MIB)
+            val host = sftpHost()
+            val s = online(host)
+            val events = s.download(null, path, target()).toList()
+            assertEquals(DownloadEvent.Failed(AppError.FileChanged(path), null), events.last())
+            assertTrue("target ${target().length()} bytes", target().length() <= 2L * MIB)
+            assertEquals(1, sftp.closes.get())
+            s.stop()
+        }
+
+    @Test
+    fun `sftp read error on the host is not ConnectionLost and keeps the token`() =
+        runTest {
+            put(2 * MIB)
+            val ioError = DirectFileException(DirectFileException.Reason.IO, "read failed")
+            sftp.afterBlock = { copied -> if (copied == MIB.toLong()) throw ioError }
+            val host = sftpHost()
+            val s = online(host)
+            val events = s.download(null, path, target()).toList()
+            assertEquals(DownloadEvent.Failed(AppError.Unexpected(ioError), events.started().resume), events.last())
+            s.stop()
+        }
+
+    @Test
+    fun `the download runs on the io context, never on the collector's thread`() {
+        val main = Executors.newSingleThreadExecutor { Thread(it, "fake-main") }.asCoroutineDispatcher()
+        val io = Executors.newSingleThreadExecutor { Thread(it, "fake-io") }.asCoroutineDispatcher()
+        val bytes = Random(3).nextBytes(5 * MIB)
+        val threads = CopyOnWriteArrayList<String>()
+        val host =
+            object : DownloadHost {
+                override fun unavailable(): AppError? = null
+
+                override fun directFileSource() = null
+
+                override fun sftpRefused(source: DirectFileSource) = Unit
+
+                override suspend fun exec(
+                    argv: List<String>,
+                    on: String?,
+                    timeout: Duration,
+                ): AppResult<ExecResult> {
+                    // The reply is decoded and written where this returns to.
+                    threads += Thread.currentThread().name
+                    val out =
+                        if (argv.first() == "sh") {
+                            "${bytes.size} 1700000000 regular file".toByteArray()
+                        } else {
+                            val from = argv.arg("skip").toInt() * 65_536
+                            bytes.copyOfRange(from, minOf(bytes.size, from + 4 * MIB))
+                        }
+                    return AppResult.Success(ExecResult(stdout = Base64.getEncoder().encodeToString(out), code = 0))
+                }
+            }
+        val downloader = Downloader(host, Clock.System, Logger.None, 15.seconds, io, File::getUsableSpace)
+        try {
+            val events = runBlocking(main) { downloader.download(null, path, target(), null).toList() }
+            assertEquals(DownloadEvent.Done(bytes.size.toLong(), DownloadMethod.CHUNKED), events.last())
+            assertArrayEquals(bytes, target().readBytes())
+            assertEquals(4, threads.size) // stat, 2 chunks, stat
+            assertTrue("$threads", threads.all { it.startsWith("fake-io") })
+        } finally {
+            main.close()
+            io.close()
+        }
+    }
 
     @Test
     fun `sftp cancel closes the reader and emits no Failed`() =
