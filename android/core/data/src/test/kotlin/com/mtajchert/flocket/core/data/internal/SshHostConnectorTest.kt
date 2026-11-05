@@ -7,6 +7,9 @@ import com.mtajchert.flocket.core.model.DeviceKey
 import com.mtajchert.flocket.core.model.HostAuth
 import com.mtajchert.flocket.core.model.PinnedHostKey
 import com.mtajchert.flocket.core.protocol.transport.ByteTransport
+import com.mtajchert.flocket.core.protocol.transport.DirectFileReader
+import com.mtajchert.flocket.core.protocol.transport.DirectFileSource
+import com.mtajchert.flocket.core.protocol.transport.RemoteFileStat
 import com.mtajchert.flocket.core.protocol.transport.SiblingTransportSource
 import com.mtajchert.flocket.core.protocol.transport.TransportException
 import com.mtajchert.flocket.core.security.KeyVault
@@ -58,6 +61,27 @@ class SshHostConnectorTest {
             commands += command
             return T().also { execs += it }
         }
+
+        val readers = mutableListOf<R>()
+
+        class R : DirectFileReader {
+            var closedR = 0
+
+            override suspend fun stat(path: String): RemoteFileStat? = null
+
+            override suspend fun copyTo(
+                path: String,
+                offset: Long,
+                out: java.io.OutputStream,
+                onBytes: (Int) -> Unit,
+            ) = 0L
+
+            override suspend fun close() {
+                closedR++
+            }
+        }
+
+        override suspend fun openFileReader(): DirectFileReader = R().also { readers += it }
 
         override suspend fun run(command: List<String>) =
             if (hcFound) CommandResult("/opt/bin/hc\n", "", 0) else CommandResult("", "nope", 1)
@@ -265,6 +289,29 @@ class SshHostConnectorTest {
                 fail("a closed transport must not open siblings")
             } catch (e: TransportException) {
                 assertEquals(3, link.execs.size)
+            }
+        }
+
+    @Test
+    fun `ClosingTransport is a DirectFileSource and closes readers with the link`() =
+        runBlocking {
+            val main = openTrusted()
+            assertTrue(main is DirectFileSource)
+            val source = main as DirectFileSource
+            val first = source.openFileReader()
+            source.openFileReader()
+            assertEquals(2, link.readers.size)
+            first.close()
+            assertEquals(1, link.readers[0].closedR)
+            assertEquals(0, link.readers[1].closedR)
+            main.close()
+            assertEquals(1, link.readers[1].closedR)
+            assertTrue(link.closed)
+            try {
+                source.openFileReader()
+                fail("a closed transport must not open readers")
+            } catch (e: TransportException) {
+                assertEquals(2, link.readers.size)
             }
         }
 }

@@ -14,12 +14,21 @@ import java.security.KeyPairGenerator
 import java.security.PublicKey
 import java.util.concurrent.atomic.AtomicInteger
 
-/** Embedded MINA sshd with scripted exec commands: `echo`, `banner`, `missing`, `chunks`. */
+/**
+ * Embedded MINA sshd with scripted exec commands: `echo`, `banner`, `missing`, `chunks`.
+ * With [sftpRoot] it also serves the sftp subsystem rooted there; [onSftpClose] runs for each closed file handle.
+ */
 class TestSshServer(
     private val password: String = "pw",
     private val authorizedFingerprints: Set<String> = emptySet(),
+    sftpRoot: java.nio.file.Path? = null,
+    onSftpClose: () -> Unit = {},
+    onSftpRead: () -> Unit = {},
 ) : AutoCloseable {
     val authAttempts = AtomicInteger()
+
+    /** Channels the server currently has open. */
+    val openChannels = AtomicInteger()
     private val hostKeyPair =
         KeyPairGenerator.getInstance("EC").apply { initialize(256) }.generateKeyPair()
     val hostFingerprint: String = SshKeys.fingerprint(hostKeyPair.public)
@@ -40,7 +49,51 @@ class TestSshServer(
                     org.apache.sshd.common.config.keys.KeyUtils
                         .getFingerPrint(key) in authorizedFingerprints
                 }
+            addChannelListener(
+                object : org.apache.sshd.common.channel.ChannelListener {
+                    override fun channelOpenSuccess(channel: org.apache.sshd.common.channel.Channel) {
+                        openChannels.incrementAndGet()
+                    }
+
+                    override fun channelClosed(
+                        channel: org.apache.sshd.common.channel.Channel,
+                        reason: Throwable?,
+                    ) {
+                        openChannels.decrementAndGet()
+                    }
+                },
+            )
             commandFactory = CommandFactory { _: ChannelSession, cmd: String -> ScriptedCommand(cmd) }
+            if (sftpRoot != null) {
+                fileSystemFactory =
+                    org.apache.sshd.common.file.virtualfs
+                        .VirtualFileSystemFactory(sftpRoot)
+                subsystemFactories =
+                    listOf(
+                        org.apache.sshd.sftp.server.SftpSubsystemFactory().apply {
+                            addSftpEventListener(
+                                object : org.apache.sshd.sftp.server.SftpEventListener {
+                                    override fun closed(
+                                        session: org.apache.sshd.server.session.ServerSession,
+                                        remoteHandle: String,
+                                        localHandle: org.apache.sshd.sftp.server.Handle,
+                                        thrown: Throwable?,
+                                    ) = onSftpClose()
+
+                                    override fun reading(
+                                        session: org.apache.sshd.server.session.ServerSession,
+                                        remoteHandle: String,
+                                        localHandle: org.apache.sshd.sftp.server.FileHandle,
+                                        offset: Long,
+                                        data: ByteArray,
+                                        dataOffset: Int,
+                                        dataLen: Int,
+                                    ) = onSftpRead()
+                                },
+                            )
+                        },
+                    )
+            }
         }
 
     init {
