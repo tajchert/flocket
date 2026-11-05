@@ -8,6 +8,7 @@ import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -23,6 +24,7 @@ import java.io.File
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.random.Random
+import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
 /**
@@ -158,6 +160,34 @@ class TransferRealCoreIntegrationTest {
             measureFederatedStall("10 Mbit", via = "sh ${via.absolutePath}")
         }
 
+    /** ADR-0012 measurements: a 200 MiB chunked (1 MiB) download from rohan over a pipe link. `FLOCKET_SLOW=1`. */
+    @Test
+    fun `a 200 MiB download from a federated machine over a pipe link and the stall of its terminals`() =
+        runBlocking {
+            assumeTrue("set FLOCKET_SLOW=1 to measure 200 MiB", System.getenv("FLOCKET_SLOW") == "1")
+            measureFederatedStall("pipe", via = "sh -c", downloadBytes = 200 shl 20, timeout = 300.seconds)
+        }
+
+    /** The same over a 10 Mbit/s link (about 3 minutes). `FLOCKET_SLOW=1`. */
+    @Test
+    fun `a 200 MiB download from a federated machine over a 10 Mbit link and the stall of its terminals`() =
+        runBlocking {
+            assumeTrue("set FLOCKET_SLOW=1 to measure 200 MiB", System.getenv("FLOCKET_SLOW") == "1")
+            val throttle =
+                "perl -e '\$|=1; while (sysread(STDIN, \$b, 16384)) { syswrite(STDOUT, \$b); " +
+                    "select(undef, undef, undef, length(\$b) / $LINK_BYTES_PER_SECOND) }'"
+            val via =
+                File(hc.workDir, "slow-link.sh").apply {
+                    writeText("#!/bin/sh\n$throttle | sh -c \"\$1\" | $throttle\n")
+                }
+            measureFederatedStall(
+                "10 Mbit",
+                via = "sh ${via.absolutePath}",
+                downloadBytes = 200 shl 20,
+                timeout = 600.seconds,
+            )
+        }
+
     /**
      * A `rohan` terminal and a local one print a line every 20 ms; a third `rohan` terminal runs `cat` and
      * is typed into every 100 ms. Records the largest gap between the tickers' output chunks and the
@@ -167,7 +197,9 @@ class TransferRealCoreIntegrationTest {
     private suspend fun measureFederatedStall(
         link: String,
         via: String,
-    ) = withTimeout(90.seconds) {
+        downloadBytes: Int? = null,
+        timeout: Duration = 90.seconds,
+    ) = withTimeout(timeout) {
         hc.addRemoteMachine("rohan", via)
         val s = online()
         val onRohan = s.exec("rohan", listOf("sh", "-c", "printf %s \"\$HC_SESSION\""), mutating = false).getOrThrow()
@@ -182,27 +214,50 @@ class TransferRealCoreIntegrationTest {
         val localChunks = arrivals(s, local.address).second
         val (echoStream, echoChunks) = arrivals(s, echo.address)
         waitFor { remoteChunks.size > 20 && localChunks.size > 20 && echoStream.connected.value }
-        val size = MAX_TRANSFER_BYTES.toInt()
+        val size = downloadBytes ?: MAX_TRANSFER_BYTES.toInt()
         val file = File(hc.workDir, "big.bin").apply { writeBytes(Random.nextBytes(size)) }
-        val upload = Random.nextBytes(size)
+        val upload = if (downloadBytes == null) Random.nextBytes(size) else ByteArray(0)
 
         val windows =
-            listOf(
-                "baseline" to suspend { delay(2_000) },
-                "readFile 8 MiB" to
-                    suspend { assertEquals(size, s.readFile("rohan", file.absolutePath).getOrThrow().size) },
-                "writeFile 8 MiB" to
-                    suspend { s.writeFile("rohan", File(hc.workDir, "up.bin").absolutePath, upload).getOrThrow() },
-            )
+            if (downloadBytes != null) {
+                listOf(
+                    "baseline" to suspend { delay(2_000) },
+                    "download ${downloadBytes shr 20} MiB" to
+                        suspend {
+                            val target = File(hc.workDir, "out/big.bin.part")
+                            val events = s.download("rohan", file.absolutePath, target).toList()
+                            assertEquals(DownloadEvent.Done(size.toLong(), DownloadMethod.CHUNKED), events.last())
+                            assertArrayEquals(file.readBytes(), target.readBytes())
+                        },
+                )
+            } else {
+                listOf(
+                    "baseline" to suspend { delay(2_000) },
+                    "readFile 8 MiB" to
+                        suspend { assertEquals(size, s.readFile("rohan", file.absolutePath).getOrThrow().size) },
+                    "writeFile 8 MiB" to
+                        suspend { s.writeFile("rohan", File(hc.workDir, "up.bin").absolutePath, upload).getOrThrow() },
+                )
+            }
         for ((name, block) in windows) {
             val (w, echoMs) = typing(echoStream, echoChunks) { window(block) }
             println(
-                "FederatedTransferStall [$link] $name ${(w.last - w.first) / 1_000_000} ms: max output gap " +
+                "FederatedTransferStall [$link] $name ${(w.last - w.first) / 1_000_000} ms" +
+                    (
+                        if (downloadBytes !=
+                            null
+                        ) {
+                            ", ${"%.2f".format(size / 1e6 / ((w.last - w.first) / 1e9))} MB/s"
+                        } else {
+                            ""
+                        }
+                    ) +
+                    ": max output gap " +
                     "rohan ${maxGapMs(remoteChunks, w)} ms, local ${maxGapMs(localChunks, w)} ms; " +
                     "slowest rohan echo $echoMs ms",
             )
         }
-        assertArrayEquals(upload, File(hc.workDir, "up.bin").readBytes())
+        if (downloadBytes == null) assertArrayEquals(upload, File(hc.workDir, "up.bin").readBytes())
         s.stop()
     }
 

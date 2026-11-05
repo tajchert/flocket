@@ -98,6 +98,7 @@ device_reset() {
   A shell 'svc wifi enable; svc data enable; cmd connectivity airplane-mode disable;' \
     'settings put system accelerometer_rotation 0; settings put system user_rotation 0;' \
     'input keyevent KEYCODE_WAKEUP; wm dismiss-keyguard;' \
+    "appops set $APP_ID REQUEST_INSTALL_PACKAGES allow;" \
     'for i in 1 2 3 4 5 6 7 8 9 10; do ping -c1 -W1 10.0.2.2 && break; sleep 1; done' >/dev/null 2>&1 || true
 }
 
