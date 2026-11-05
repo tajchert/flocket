@@ -38,6 +38,7 @@ import com.mtajchert.flocket.core.testing.MainDispatcherRule
 import com.mtajchert.flocket.core.testing.SampleData
 import com.mtajchert.flocket.core.ui.error.UiText
 import com.mtajchert.flocket.feature.terminal.api.TerminalRoute
+import com.mtajchert.flocket.feature.terminal.impl.share.ShareDirectory
 import com.mtajchert.flocket.feature.terminal.impl.transfer.UriSource
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -105,6 +106,10 @@ class TerminalViewModelTest {
                 uriSource = NoUriSource,
                 appScope = CoroutineScope(dispatcher),
                 shareSeen = FakeShareSeenRepository(),
+                shareDirectory =
+                    ShareDirectory(
+                        java.io.File(System.getProperty("java.io.tmpdir"), "flocket-vm-test-shares"),
+                    ),
             )
         val provided =
             ViewModelProvider.create(
@@ -406,6 +411,7 @@ class TerminalViewModelTest {
                     NoUriSource,
                     CoroutineScope(UnconfinedTestDispatcher(testScheduler)),
                     FakeShareSeenRepository(),
+                    ShareDirectory(java.io.File(System.getProperty("java.io.tmpdir"), "flocket-vm-test-shares")),
                 )
             backgroundScope.launch { vm.uiState.collect {} }
             advanceUntilIdle()

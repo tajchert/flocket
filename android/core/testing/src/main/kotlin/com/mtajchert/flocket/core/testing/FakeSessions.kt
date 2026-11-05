@@ -17,6 +17,8 @@ import com.mtajchert.flocket.core.model.TerminalRef
 import com.mtajchert.flocket.core.model.TerminalTemplate
 import com.mtajchert.flocket.core.session.AttachRequest
 import com.mtajchert.flocket.core.session.CoreSession
+import com.mtajchert.flocket.core.session.DownloadEvent
+import com.mtajchert.flocket.core.session.DownloadResume
 import com.mtajchert.flocket.core.session.ExecOutcome
 import com.mtajchert.flocket.core.session.InterruptOutcome
 import com.mtajchert.flocket.core.session.RunRequest
@@ -27,6 +29,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -169,9 +172,14 @@ class FakeCoreSession(
     var execHandler: suspend (String?, List<String>, Boolean) -> AppResult<ExecOutcome> = { _, _, _ ->
         AppResult.Success(ExecOutcome(0, ByteArray(0), "", false))
     }
+
+    /** Scripted `download`: write bytes to `target` and emit events. The default fails with `Unsupported("download")`. */
+    var downloadHandler: (String?, String, java.io.File, DownloadResume?) -> Flow<DownloadEvent> = { _, _, _, _ ->
+        flowOf(DownloadEvent.Failed(AppError.Unsupported("download"), null))
+    }
     private val transferLog: MutableList<String> = java.util.Collections.synchronizedList(mutableListOf())
 
-    /** `put:<address>:<name>:<size>`, `write:<machine>:<path>:<size>`, `read:<machine>:<path>`, `exec:<machine>:<argv joined by space>:<mutating>`. */
+    /** `put:<address>:<name>:<size>`, `write:<machine>:<path>:<size>`, `read:<machine>:<path>`, `download:<machine>:<path>:<resume given>`, `exec:<machine>:<argv joined by space>:<mutating>`. */
     val transferCalls: List<String> get() = synchronized(transferLog) { transferLog.toList() }
 
     override suspend fun putFile(
@@ -198,6 +206,16 @@ class FakeCoreSession(
     ): AppResult<ByteArray> {
         transferLog += "read:$machine:$path"
         return readHandler(machine, path)
+    }
+
+    override fun download(
+        machine: String?,
+        path: String,
+        target: java.io.File,
+        resume: DownloadResume?,
+    ): Flow<DownloadEvent> {
+        transferLog += "download:$machine:$path:${resume != null}"
+        return downloadHandler(machine, path, target, resume)
     }
 
     override suspend fun exec(

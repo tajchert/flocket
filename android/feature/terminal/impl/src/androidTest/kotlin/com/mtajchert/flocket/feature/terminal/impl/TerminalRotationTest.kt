@@ -21,6 +21,7 @@ import com.mtajchert.flocket.core.testing.FakeShareSeenRepository
 import com.mtajchert.flocket.core.testing.FakeTerminalStream
 import com.mtajchert.flocket.core.testing.SampleData
 import com.mtajchert.flocket.feature.terminal.api.TerminalRoute
+import com.mtajchert.flocket.feature.terminal.impl.share.ShareDirectory
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -55,6 +56,15 @@ class TerminalRotationTest {
                     },
                     appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
                     shareSeen = FakeShareSeenRepository(),
+                    shareDirectory =
+                        ShareDirectory(
+                            java.io.File(
+                                androidx.test.core.app.ApplicationProvider
+                                    .getApplicationContext<android.content.Context>()
+                                    .cacheDir,
+                                "shares",
+                            ),
+                        ),
                 )
             }
         }

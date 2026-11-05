@@ -3,6 +3,7 @@ package com.mtajchert.flocket.feature.terminal.impl.share
 import androidx.compose.runtime.Immutable
 import com.mtajchert.flocket.core.model.AgentShare
 import com.mtajchert.flocket.core.ui.error.UiError
+import java.io.File
 
 /** One share as the screen shows it. */
 @Immutable
@@ -29,19 +30,25 @@ sealed interface FileLoad {
     /** Nothing chosen yet (a share with several files starts here). */
     data object Idle : FileLoad
 
-    /** The transfer has no size feedback, so this is an indeterminate progress. */
+    /** [size] is null until the remote file was checked. */
     data class Loading(
         val path: String,
+        val bytes: Long = 0,
+        val size: Long? = null,
     ) : FileLoad
 
-    class Loaded(
+    /** [askInstall]: true once, right after an APK finished downloading while shown. */
+    data class Loaded(
         val path: String,
-        val bytes: ByteArray,
+        val file: File,
+        val size: Long,
+        val askInstall: Boolean = false,
     ) : FileLoad
 
     data class Failed(
         val path: String,
         val error: UiError,
+        val canResume: Boolean,
     ) : FileLoad
 }
 
@@ -59,4 +66,8 @@ data class SharesUi(
     val all: List<ShareItem> = emptyList(),
     val sheetOpen: Boolean = false,
     val viewer: ViewerUi? = null,
+    /** Downloads running: path to fraction (0..1), null while the size is unknown. */
+    val downloading: Map<String, Float?> = emptyMap(),
+    /** The last APK install result, shown once as a message and then cleared. */
+    val installResult: ApkInstallResult? = null,
 )

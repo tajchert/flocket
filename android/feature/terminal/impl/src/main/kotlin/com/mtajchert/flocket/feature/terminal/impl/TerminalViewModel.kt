@@ -35,6 +35,7 @@ import com.mtajchert.flocket.core.ui.error.toUiError
 import com.mtajchert.flocket.core.ui.error.unreachableRenameText
 import com.mtajchert.flocket.feature.terminal.api.TerminalRoute
 import com.mtajchert.flocket.feature.terminal.impl.share.ShareController
+import com.mtajchert.flocket.feature.terminal.impl.share.ShareDirectory
 import com.mtajchert.flocket.feature.terminal.impl.transfer.TerminalTransfers
 import com.mtajchert.flocket.feature.terminal.impl.transfer.UriSource
 import dagger.assisted.Assisted
@@ -94,6 +95,7 @@ class TerminalViewModel
         @ApplicationScope private val appScope: CoroutineScope,
         // --- agent shares (T5) ---
         shareSeen: ShareSeenRepository,
+        shareDirectory: ShareDirectory,
         // --- end agent shares ---
     ) : ViewModel() {
         @AssistedFactory
@@ -165,6 +167,7 @@ class TerminalViewModel
                 session = { session.value },
                 seen = shareSeen,
                 pasteText = ::paste,
+                sharesRoot = shareDirectory.root,
             )
         // --- end agent shares ---
 
