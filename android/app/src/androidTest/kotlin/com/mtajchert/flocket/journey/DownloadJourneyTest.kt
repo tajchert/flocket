@@ -111,7 +111,7 @@ class DownloadJourneyTest {
         val address = openShare("big.bin")
         ui.waitFor(hasTestTag("share_cancel"), 30_000)
         poll(60_000, "download running") { Unit.takeIf { parts().sumOf { it.length() } > 1_000_000 } }
-        // Closing the viewer keeps the download running (DECISIONS.md); the terminal is then typeable.
+        // Closing the viewer keeps the download running (design 4.5: it belongs to the terminal screen, not the viewer); the terminal is then typeable.
         ui.clickDescription(journey.string(TerminalR.string.share_viewer_close))
         ui.waitFor(hasContentDescription(journey.string(TerminalR.string.terminal_action_more)), 10_000)
         check(isDownloading()) { "the download finished before the echo was typed" }

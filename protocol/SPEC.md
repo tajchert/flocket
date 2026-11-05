@@ -316,8 +316,9 @@ Verified facts [W 0.1.16]:
 
 **Chunked binary download (Flocket convention).** Used (on the transfer connection) for files on federated machines, and whenever SFTP on the SSH session is unavailable or cannot read the file (ADR-0012):
 - Stat: `machine.exec {argv: ["sh", "-c", STAT, "sh", path], on}` where
-  `STAT = 'stat -c "%s %Y %F" -- "$1" 2>/dev/null || stat -f "%z %m %HT" -- "$1"'`
-  (GNU/busybox, then BSD/macOS). Output `"<size> <mtime> <type words>"`; regular when the type
+  `STAT = 'stat -L -c "%s %Y %F" -- "$1" 2>/dev/null || stat -L -f "%z %m %HT" -- "$1"'`
+  (GNU/busybox, then BSD/macOS). `-L` follows symlinks, like `dd`, SFTP stat and `cat`: a link to a regular file
+  is regular, with the target's size and mtime. Output `"<size> <mtime> <type words>"`; regular when the type
   words lower-cased start with `regular`. Non-zero exit → missing.
 - Chunk: `machine.exec {argv: ["dd", "if=" + path, "bs=65536", "skip=" + offset/65536,
   "count=" + chunk/65536], on, timeout}`. Chunk = **4 MiB** when `machine == null`, **1 MiB** for

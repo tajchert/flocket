@@ -175,7 +175,7 @@ Rules
 
 Chunked protocol (also written into SPEC §4.20, on the transfer connection):
 - Stat: `machine.exec {argv: ["sh", "-c", STAT, "sh", path], on}` where
-  `STAT = 'stat -c "%s %Y %F" -- "$1" 2>/dev/null || stat -f "%z %m %HT" -- "$1"'`
+  `STAT = 'stat -L -c "%s %Y %F" -- "$1" 2>/dev/null || stat -L -f "%z %m %HT" -- "$1"'`
   (GNU/busybox, then BSD/macOS). Output `"<size> <mtime> <type words>"`; regular when the type
   words lower-cased start with `regular`. Non-zero exit → missing.
 - Chunk: `machine.exec {argv: ["dd", "if=" + path, "bs=65536", "skip=" + offset/65536,

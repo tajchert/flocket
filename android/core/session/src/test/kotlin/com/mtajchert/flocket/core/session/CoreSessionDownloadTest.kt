@@ -549,6 +549,22 @@ class CoreSessionDownloadTest {
         }
 
     @Test
+    fun `only a refused subsystem marks sftp unavailable for the link`() =
+        runTest {
+            put(MIB)
+            sftp.openFailure = DirectFileException(DirectFileException.Reason.IO, "channel hiccup")
+            val s = online(sftpHost())
+            repeat(2) {
+                assertEquals(
+                    DownloadEvent.Done(MIB.toLong(), DownloadMethod.CHUNKED),
+                    s.download(null, path, target()).toList().last(),
+                )
+            }
+            assertEquals(2, sftp.opens.get()) // not remembered: SFTP is tried again
+            s.stop()
+        }
+
+    @Test
     fun `sftp denied falls back to chunked`() =
         runTest {
             val bytes = put(MIB)
@@ -561,6 +577,22 @@ class CoreSessionDownloadTest {
             assertArrayEquals(bytes, target().readBytes())
             assertEquals(1, sftp.closes.get())
             assertTrue(sftp.copies.isEmpty())
+            s.stop()
+        }
+
+    @Test
+    fun `sftp denied at open of copy falls back to chunked`() =
+        runTest {
+            val bytes = put(MIB)
+            sftp.deniedAtOpen += path
+            val host = sftpHost()
+            val s = online(host)
+            val events = s.download(null, path, target()).toList()
+            assertEquals(DownloadEvent.Done(MIB.toLong(), DownloadMethod.CHUNKED), events.last())
+            assertArrayEquals(bytes, target().readBytes())
+            assertEquals(listOf(path to 0L), sftp.copies)
+            assertEquals(1, sftp.closes.get())
+            assertTrue(host.dds().isNotEmpty())
             s.stop()
         }
 
@@ -777,6 +809,6 @@ class CoreSessionDownloadTest {
 
     private companion object {
         const val MIB = 1024 * 1024
-        const val STAT_SCRIPT = "stat -c \"%s %Y %F\" -- \"\$1\" 2>/dev/null || stat -f \"%z %m %HT\" -- \"\$1\""
+        const val STAT_SCRIPT = "stat -L -c \"%s %Y %F\" -- \"\$1\" 2>/dev/null || stat -L -f \"%z %m %HT\" -- \"\$1\""
     }
 }

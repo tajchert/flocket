@@ -29,6 +29,7 @@ import java.io.File
 import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Agent shares of ONE terminal: the card, the shared-files list and the viewer. Owned by the terminal ViewModel.
@@ -64,7 +65,7 @@ class ShareController(
     private var installPending = false
 
     /** Tokens of finished files, so opening one again only checks it on the laptop (lost with the process). */
-    private val finished = mutableMapOf<Pair<String?, String>, DownloadResume>()
+    private val finished = ConcurrentHashMap<Pair<String?, String>, DownloadResume>() // Main and io both touch it
 
     private data class Local(
         val sheetOpen: Boolean = false,
@@ -169,7 +170,7 @@ class ShareController(
             return
         }
         val drop = discard()
-        val target = ShareFiles.target(sharesRoot, share.id, baseName(path))
+        val target = ShareFiles.target(sharesRoot, share.id, share.machine, path)
         start(
             Current(share.id, share.machine, path, target, ShareFiles.partOf(target), FileLoad.Loading(path)),
             drop,

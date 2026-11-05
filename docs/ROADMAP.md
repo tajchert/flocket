@@ -119,8 +119,9 @@ Known limits and what is left:
 - **Federated transfers stall that machine's terminals** on a slow link, for the whole
   transfer (measurements in ADR-0011 §4). Lower the cap for remote machines or send large
   remote files in chunks.
-- **Files over 8 MB:** needs chunked `file.write` and a chunked read on the core, or a
-  ranged `cat`.
+- **Uploads over 8 MB (phone to laptop):** needs chunked `file.write` on the core, or a
+  ranged `cat`. Downloads (laptop to phone) are done up to 200 MB, over SFTP with a chunked
+  fallback ([ADR-0012](decisions/0012-large-downloads-sftp-chunked.md)).
 - **Share into Flocket from the Android share sheet:** a share target in
   `android/app/src/main/AndroidManifest.xml` that picks a terminal and reuses
   `TerminalTransfers` in `android/feature/terminal/impl/.../transfer/`.

@@ -93,9 +93,9 @@ class SharePreviewTest {
     @Test
     fun `cache files are named safely`() {
         val root = tmp.root.resolve("shares")
-        val file = ShareFiles.target(root, "id/../1", "../evil.txt")
-        assertEquals(root.canonicalPath, file.parentFile.parentFile.canonicalPath)
-        assertEquals(".._evil.txt", file.name)
-        assertEquals(".._evil.txt.part", ShareFiles.partOf(file).name)
+        val file = ShareFiles.target(root, "id/../1", null, "/x/../evil.txt")
+        assertEquals(root.canonicalPath, file.parentFile.parentFile.parentFile.canonicalPath)
+        assertEquals("evil.txt", file.name)
+        assertEquals("evil.txt.part", ShareFiles.partOf(file).name)
     }
 }
