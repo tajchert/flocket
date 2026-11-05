@@ -21,6 +21,7 @@ import com.mtajchert.flocket.core.testing.FakeShareSeenRepository
 import com.mtajchert.flocket.core.testing.FakeTerminalStream
 import com.mtajchert.flocket.core.testing.SampleData
 import com.mtajchert.flocket.feature.terminal.api.TerminalRoute
+import com.mtajchert.flocket.feature.terminal.impl.share.ShareDirectory
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -53,8 +54,18 @@ class TerminalRotationTest {
                     controllerFactory = {
                         TerminalController({ c, r -> FakeTerminalEngine(c, r) }, FakeTerminalEngine.DEFAULT_THEME)
                     },
+                    uriSource = NoUriSource,
                     appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
                     shareSeen = FakeShareSeenRepository(),
+                    shareDirectory =
+                        ShareDirectory(
+                            java.io.File(
+                                androidx.test.core.app.ApplicationProvider
+                                    .getApplicationContext<android.content.Context>()
+                                    .cacheDir,
+                                "shares",
+                            ),
+                        ),
                 )
             }
         }
@@ -99,4 +110,21 @@ class TerminalRotationTest {
         scenario.close()
         waitFor { "detach" in streams.single().calls }
     }
+}
+
+/** The rotation test never picks a file. */
+private object NoUriSource : com.mtajchert.flocket.feature.terminal.impl.transfer.UriSource {
+    override suspend fun describe(uri: android.net.Uri) =
+        com.mtajchert.flocket.core.common.result.AppResult.Failure(
+            com.mtajchert.flocket.core.common.error.AppError
+                .FileMissing(""),
+        )
+
+    override suspend fun read(
+        uri: android.net.Uri,
+        maxBytes: Long,
+    ) = com.mtajchert.flocket.core.common.result.AppResult.Failure(
+        com.mtajchert.flocket.core.common.error.AppError
+            .FileMissing(""),
+    )
 }

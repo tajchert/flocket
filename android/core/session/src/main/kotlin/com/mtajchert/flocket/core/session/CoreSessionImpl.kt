@@ -49,16 +49,19 @@ import com.mtajchert.flocket.core.protocol.terminalRun
 import com.mtajchert.flocket.core.protocol.terminalSend
 import com.mtajchert.flocket.core.protocol.toAppError
 import com.mtajchert.flocket.core.protocol.transport.ByteTransport
+import com.mtajchert.flocket.core.protocol.transport.DirectFileSource
 import com.mtajchert.flocket.core.protocol.wire.ProtocolException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -70,11 +73,14 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import java.io.File
 import java.util.Base64
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArraySet
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
+import kotlin.coroutines.CoroutineContext
+import kotlin.time.Duration
 
 /**
  * [CoreSession] for one endpoint. Hosts are independent: create one instance per endpoint; nothing
@@ -91,6 +97,10 @@ class CoreSessionImpl(
     private val clock: Clock = Clock.System,
     private val logger: Logger = Logger.None,
     private val config: SessionConfig = SessionConfig(),
+    /** Where downloads write their target files (tests pass their own dispatcher). */
+    private val downloadIo: CoroutineContext = Dispatchers.IO,
+    /** Free bytes on the volume of a directory (tests fake a full disk). */
+    private val usableSpace: (File) -> Long = File::getUsableSpace,
 ) : CoreSession {
     /** One live connection. Everything derived from it carries its [epoch]. */
     private class Link(
@@ -109,6 +119,10 @@ class CoreSessionImpl(
 
         /** `flocket-share` reads per machine ([refreshShares]; key null = local); guarded by [readLock]. */
         val shareReads = HashMap<String?, Coalesced>()
+
+        /** This link refused SFTP: downloads use chunks until the next link (ADR-0012 §3). */
+        @Volatile
+        var sftpUnavailable = false
     }
 
     /** One coalesced read on one link: at most one in flight, plus one more if triggered meanwhile. */
@@ -1196,6 +1210,40 @@ class CoreSessionImpl(
             AppResult.Failure(e.toAppError(operation, mutating))
         }
     }
+
+    // Large downloads (design 2026-11-05 §4.4): the logic lives in [Downloader].
+    private val downloader =
+        Downloader(
+            object : DownloadHost {
+                override fun unavailable() =
+                    if (link.get() == null || state.value.isStale) AppError.ConnectionLost else null
+
+                override fun directFileSource() =
+                    link.get()?.takeUnless { it.sftpUnavailable }?.transport as? DirectFileSource
+
+                override fun sftpRefused(source: DirectFileSource) {
+                    link.get()?.takeIf { it.transport === source }?.sftpUnavailable = true
+                }
+
+                override suspend fun exec(
+                    argv: List<String>,
+                    on: String?,
+                    timeout: Duration,
+                ) = transferRead { it.machineExec(argv, on, timeout) }
+            },
+            clock,
+            logger,
+            config.readTimeout,
+            downloadIo,
+            usableSpace,
+        )
+
+    override fun download(
+        machine: String?,
+        path: String,
+        target: File,
+        resume: DownloadResume?,
+    ): Flow<DownloadEvent> = downloader.download(machine, path, target, resume)
 
     private fun decodeBase64(s: String): ByteArray? =
         try {
