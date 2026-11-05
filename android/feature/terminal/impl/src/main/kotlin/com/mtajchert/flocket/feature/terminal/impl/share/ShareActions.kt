@@ -13,6 +13,14 @@ data class ShareActions(
     val onBackToList: () -> Unit = {},
     val onCloseViewer: () -> Unit = {},
     val onPastePath: () -> Unit = {},
+    val onCancelDownload: () -> Unit = {},
+    val onResume: () -> Unit = {},
+    val onRetry: () -> Unit = {},
+    val onInstallPromptShown: () -> Unit = {},
+    val onInstallStarted: () -> Unit = {},
+    val onInstallResultShown: () -> Unit = {},
+    /** The Install button of an APK; the overlays supply the platform part. */
+    val onInstall: () -> Unit = {},
 ) {
     companion object {
         fun of(c: ShareController) =
@@ -25,6 +33,12 @@ data class ShareActions(
                 onBackToList = c::backToList,
                 onCloseViewer = c::closeViewer,
                 onPastePath = c::pastePath,
+                onCancelDownload = c::cancelDownload,
+                onResume = c::resume,
+                onRetry = c::retry,
+                onInstallPromptShown = c::installPromptShown,
+                onInstallStarted = c::installStarted,
+                onInstallResultShown = c::installResultShown,
             )
     }
 }

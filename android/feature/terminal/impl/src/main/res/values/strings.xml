@@ -103,7 +103,12 @@
     <string name="share_viewer_machine_local">this host</string>
     <string name="share_viewer_loading">Downloading…</string>
     <string name="share_viewer_files_title">Choose a file</string>
-    <string name="share_viewer_retry">Try again</string>
+    <string name="share_downloading_progress">%1$s of %2$s</string>
+    <string name="share_downloading_percent">Downloading %1$d%%</string>
+    <string name="share_cancel_download">Cancel</string>
+    <string name="share_resume">Resume</string>
+    <string name="share_try_again">Try again</string>
+    <string name="share_saving">Saving…</string>
     <string name="share_viewer_text_cut">Showing the first 1 MB</string>
     <string name="share_viewer_no_preview">No preview for this file type</string>
     <string name="share_viewer_image_alt">Preview of %1$s</string>
@@ -149,6 +154,7 @@
     <string name="apk_permission_still_off">Flocket can’t install apps yet</string>
     <string name="apk_installed">Installed %1$s</string>
     <string name="apk_install_failed">Couldn’t install %1$s</string>
+    <string name="apk_install_failed_reason">Couldn’t install %1$s: %2$s</string>
     <string name="apk_install_cancelled">Install of %1$s cancelled</string>
     <string name="apk_invalid">Not a valid app package</string>
     <!-- END APK install -->

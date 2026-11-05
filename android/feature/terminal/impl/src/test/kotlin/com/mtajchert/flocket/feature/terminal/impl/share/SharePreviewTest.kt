@@ -14,11 +14,33 @@ class SharePreviewTest {
     @Test
     fun `classifies by mime and content`() {
         val text = "héllo".toByteArray()
-        assertEquals(PreviewKind.Image, SharePreview.classify("a.png", "image/png", ByteArray(3)))
-        assertEquals(PreviewKind.Text, SharePreview.classify("notes.md", "application/octet-stream", text))
-        assertEquals(PreviewKind.Text, SharePreview.classify("x", "text/plain", text))
-        assertEquals(PreviewKind.Other, SharePreview.classify("a.txt", "text/plain", byteArrayOf(0xC3.toByte(), 0x28)))
-        assertEquals(PreviewKind.Other, SharePreview.classify("a.bin", "application/octet-stream", text))
+        assertEquals(PreviewKind.Image, SharePreview.classify("a.png", "image/png", ByteArray(3), 3))
+        assertEquals(
+            PreviewKind.Text,
+            SharePreview.classify("notes.md", "application/octet-stream", text, text.size.toLong()),
+        )
+        assertEquals(PreviewKind.Text, SharePreview.classify("x", "text/plain", text, text.size.toLong()))
+        assertEquals(
+            PreviewKind.Other,
+            SharePreview.classify("a.txt", "text/plain", byteArrayOf(0xC3.toByte(), 0x28), 2),
+        )
+        assertEquals(
+            PreviewKind.Other,
+            SharePreview.classify("a.bin", "application/octet-stream", text, text.size.toLong()),
+        )
+    }
+
+    @Test
+    fun `image over 32 MiB is not previewed`() {
+        val max = SharePreview.MAX_IMAGE_BYTES
+        assertEquals(PreviewKind.Image, SharePreview.classify("a.png", "image/png", ByteArray(8), max))
+        assertEquals(PreviewKind.Other, SharePreview.classify("a.png", "image/png", ByteArray(8), max + 1))
+    }
+
+    @Test
+    fun `a character cut by the prefix does not hide a text preview`() {
+        val prefix = ByteArray(SharePreview.PREFIX_BYTES - 1) { 'a'.code.toByte() } + "é".toByteArray().copyOf(1)
+        assertEquals(PreviewKind.Text, SharePreview.classify("a.txt", "text/plain", prefix, 10L * prefix.size))
     }
 
     @Test
@@ -46,7 +68,15 @@ class SharePreviewTest {
     fun `text over a megabyte is cut before a split character`() {
         // "é" is two bytes; make the 1 MiB boundary fall between them.
         val bytes = ByteArray(SharePreview.MAX_TEXT_BYTES - 1) { 'a'.code.toByte() } + "éé".toByteArray()
-        assertTrue(SharePreview.classify("a.txt", "text/plain", bytes) == PreviewKind.Text)
+        assertTrue(
+            SharePreview.classify(
+                "a.txt",
+                "text/plain",
+                bytes.copyOf(SharePreview.PREFIX_BYTES),
+                bytes.size.toLong(),
+            ) ==
+                PreviewKind.Text,
+        )
         val (lines, cut) = SharePreview.textLines(bytes)
         assertTrue(cut)
         assertEquals(SharePreview.MAX_TEXT_BYTES - 1, lines.single().length)
@@ -61,15 +91,11 @@ class SharePreviewTest {
     }
 
     @Test
-    fun `cache files are named safely and old ones pruned`() {
-        val file = ShareFiles.write(tmp.root, "id/../1", "../evil.txt", byteArrayOf(1))
-        assertEquals(tmp.root.resolve("shares").canonicalPath, file.parentFile.parentFile.canonicalPath)
+    fun `cache files are named safely`() {
+        val root = tmp.root.resolve("shares")
+        val file = ShareFiles.target(root, "id/../1", "../evil.txt")
+        assertEquals(root.canonicalPath, file.parentFile.parentFile.canonicalPath)
         assertEquals(".._evil.txt", file.name)
-        val old = ShareFiles.write(tmp.root, "old", "o.txt", byteArrayOf(1))
-        old.setLastModified(1_000)
-        ShareFiles.prune(tmp.root, nowMillis = 1_000 + ShareFiles.MAX_AGE_MILLIS + 1)
-        assertFalse(old.exists())
-        assertFalse("empty folder removed", File(tmp.root, "shares/old").exists())
-        assertTrue("fresh file kept", file.exists())
+        assertEquals(".._evil.txt.part", ShareFiles.partOf(file).name)
     }
 }

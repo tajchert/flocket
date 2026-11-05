@@ -6,29 +6,45 @@ import java.util.concurrent.TimeUnit
 /** Files handed to other apps live in `cacheDir/shares/<share id>/<name>` (the FileProvider's `shares` path). */
 object ShareFiles {
     const val DIRECTORY = "shares"
+    const val PART_SUFFIX = ".part"
     val MAX_AGE_MILLIS: Long = TimeUnit.HOURS.toMillis(24)
+    const val MAX_TOTAL_BYTES: Long = 1L shl 30
 
-    /** Writes [bytes] for sharing out and returns the file. Blocking: call on an IO dispatcher. */
-    fun write(
-        cacheDir: File,
+    /** Where a share's file [name] ends up. */
+    fun target(
+        root: File,
         shareId: String,
         name: String,
-        bytes: ByteArray,
-    ): File {
-        val dir = File(File(cacheDir, DIRECTORY), safeSegment(shareId)).apply { mkdirs() }
-        return File(dir, safeSegment(name)).apply { writeBytes(bytes) }
-    }
+    ): File = File(File(root, safeSegment(shareId)), safeSegment(name))
 
-    /** Deletes cached files older than [MAX_AGE_MILLIS], then empty folders. Blocking. */
+    fun partOf(target: File): File = File(target.parentFile, target.name + PART_SUFFIX)
+
+    /**
+     * Deletes files (also `.part`) older than [MAX_AGE_MILLIS], then the oldest first until the total is at most
+     * [maxTotalBytes], never a file in [keep]; then empty folders. Blocking.
+     */
     fun prune(
-        cacheDir: File,
+        root: File,
         nowMillis: Long,
+        keep: Set<File> = emptySet(),
+        maxTotalBytes: Long = MAX_TOTAL_BYTES,
     ) {
-        val root = File(cacheDir, DIRECTORY)
-        root.listFiles()?.forEach { dir ->
-            dir.listFiles()?.forEach { f -> if (nowMillis - f.lastModified() > MAX_AGE_MILLIS) f.delete() }
-            if (dir.listFiles().isNullOrEmpty()) dir.delete()
+        val kept = keep.map { it.absoluteFile }.toSet()
+        val dirs = root.listFiles()?.filter { it.isDirectory }.orEmpty()
+        val files = dirs.flatMap { it.listFiles()?.filter { f -> f.isFile }.orEmpty() }
+        val (old, fresh) =
+            files.partition {
+                nowMillis - it.lastModified() > MAX_AGE_MILLIS && it.absoluteFile !in kept
+            }
+        old.forEach { it.delete() }
+        var total = fresh.sumOf { it.length() }
+        for (f in fresh.sortedBy { it.lastModified() }) {
+            if (total <= maxTotalBytes) break
+            if (f.absoluteFile in kept) continue
+            val size = f.length()
+            if (f.delete()) total -= size
         }
+        dirs.forEach { if (it.listFiles().isNullOrEmpty()) it.delete() }
     }
 
     /** A single safe path segment: no separators, never `.` or `..`, never empty. */

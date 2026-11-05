@@ -29,9 +29,10 @@ fun SharedFilesSheet(
     shares: List<ShareItem>,
     nowEpochSeconds: Long,
     actions: ShareActions,
+    downloading: Map<String, Float?> = emptyMap(),
 ) {
     ModalBottomSheet(onDismissRequest = actions.onHideSheet) {
-        SharedFilesContent(shares, nowEpochSeconds, actions)
+        SharedFilesContent(shares, nowEpochSeconds, actions, downloading = downloading)
     }
 }
 
@@ -42,6 +43,7 @@ fun SharedFilesContent(
     nowEpochSeconds: Long,
     actions: ShareActions,
     modifier: Modifier = Modifier,
+    downloading: Map<String, Float?> = emptyMap(),
 ) {
     Column(modifier.navigationBarsPadding().testTag("shared_files")) {
         Text(
@@ -75,8 +77,27 @@ fun SharedFilesContent(
                     },
                     supportingContent = {
                         val note = share.note?.takeIf { it.isNotBlank() }
+                        val active = share.paths.firstOrNull { it in downloading }
                         Text(
-                            note ?: share.paths.firstOrNull().orEmpty(),
+                            when {
+                                active == null -> {
+                                    note ?: share.paths.firstOrNull().orEmpty()
+                                }
+
+                                downloading[active] == null -> {
+                                    stringResource(R.string.share_viewer_loading)
+                                }
+
+                                else -> {
+                                    stringResource(
+                                        R.string.share_downloading_percent,
+                                        (
+                                            downloading.getValue(active)!! *
+                                                100
+                                        ).toInt(),
+                                    )
+                                }
+                            },
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis,
                         )

@@ -10,6 +10,8 @@ enum class PreviewKind { Image, Text, Other }
 object SharePreview {
     const val MAX_IMAGE_SIDE = 2048
     const val MAX_TEXT_BYTES = 1024 * 1024
+    const val PREFIX_BYTES = 64 * 1024
+    const val MAX_IMAGE_BYTES = 32L * 1024 * 1024
 
     private val textExtensions =
         setOf(
@@ -54,18 +56,23 @@ object SharePreview {
 
     fun extension(name: String): String = name.substringAfterLast('.', "").lowercase()
 
-    /** Image by MIME type; text by MIME type or extension, and only when the whole content is valid UTF-8. */
+    /**
+     * Image by MIME type up to [MAX_IMAGE_BYTES]; text by MIME type or extension, and only when the [prefix] (the
+     * first [PREFIX_BYTES] of a file of [size] bytes) is valid UTF-8.
+     */
     fun classify(
         name: String,
         mime: String,
-        bytes: ByteArray,
+        prefix: ByteArray,
+        size: Long,
     ): PreviewKind =
         when {
             mime.startsWith("image/") -> {
-                PreviewKind.Image
+                if (size <= MAX_IMAGE_BYTES) PreviewKind.Image else PreviewKind.Other
             }
 
-            (mime.startsWith("text/") || extension(name) in textExtensions) && isUtf8(textPrefix(bytes)) -> {
+            (mime.startsWith("text/") || extension(name) in textExtensions) &&
+                isUtf8(whole(prefix, size)) -> {
                 PreviewKind.Text
             }
 
@@ -73,6 +80,23 @@ object SharePreview {
                 PreviewKind.Other
             }
         }
+
+    /** [prefix] without a character cut by the end of the prefix, unless it already is the whole file. */
+    private fun whole(
+        prefix: ByteArray,
+        size: Long,
+    ): ByteArray {
+        if (size <= prefix.size) return prefix
+        var end = prefix.size
+        var back = 0
+        while (end > 0 && back < 4 && (prefix[end - 1].toInt() and 0xC0) == 0x80) {
+            end--
+            back++
+        }
+        // `end - 1` is now a lead byte (or ASCII): drop it too when its character is incomplete.
+        if (end > 0 && (prefix[end - 1].toInt() and 0x80) != 0) end--
+        return prefix.copyOf(end)
+    }
 
     fun isUtf8(bytes: ByteArray): Boolean =
         try {

@@ -117,12 +117,49 @@ private fun ShareCardManyScreenshot() = Themed { Column { ShareCard(many, ShareA
 @PreviewTest
 @PreviewPhone
 @Composable
-private fun SharedFilesSheetScreenshot() = Themed { SharedFilesContent(listOf(one, many), NOW, ShareActions()) }
+private fun SharedFilesSheetScreenshot() =
+    Themed {
+        SharedFilesContent(
+            listOf(one, many),
+            NOW,
+            ShareActions(),
+            downloading =
+                mapOf(one.paths.first() to 0.25f),
+        )
+    }
 
 @PreviewTest
 @PreviewPhone
 @Composable
-private fun ShareViewerLoadingScreenshot() = Viewer(body = ViewerBody.Loading)
+private fun ShareViewerLoadingScreenshot() = Viewer(body = ViewerBody.Loading())
+
+@PreviewTest
+@PreviewPhone
+@Composable
+private fun ViewerDownloadingScreenshot() =
+    Viewer(
+        path = "/Users/dev/build/app-release.apk",
+        body = ViewerBody.Loading(bytes = 45_000_000L, size = 180_000_000L),
+    )
+
+@PreviewTest
+@PreviewPhone
+@Composable
+private fun ViewerFailedResumeScreenshot() =
+    Viewer(
+        path = "/Users/dev/build/app-release.apk",
+        body = ViewerBody.Failed(AppError.ConnectionLost.toUiError(), canResume = true),
+    )
+
+@PreviewTest
+@PreviewPhone
+@Composable
+private fun ViewerApkDetailScreenshot() =
+    Viewer(
+        path = "/Users/dev/build/app-release.apk",
+        body = ViewerBody.Apk(ApkInfo("Demo app", "com.example.demo", "1.2.0")),
+        size = 18_400_000L,
+    )
 
 @PreviewTest
 @PreviewPhone

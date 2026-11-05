@@ -24,12 +24,14 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.ContentPaste
 import androidx.compose.material.icons.outlined.Download
+import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.InsertDriveFile
 import androidx.compose.material.icons.outlined.Share
-import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -48,11 +50,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.mtajchert.flocket.core.common.error.AppError
-import com.mtajchert.flocket.core.ui.component.ErrorState
 import com.mtajchert.flocket.core.ui.error.UiError
+import com.mtajchert.flocket.core.ui.error.asString
 import com.mtajchert.flocket.feature.terminal.impl.R
 
 /** What the viewer's body shows. Decoding happens before this (see [ShareOverlays]); content is stateless. */
@@ -62,10 +65,15 @@ sealed interface ViewerBody {
         val paths: List<String>,
     ) : ViewerBody
 
-    data object Loading : ViewerBody
+    /** [size] is null until the remote file was checked. */
+    data class Loading(
+        val bytes: Long = 0,
+        val size: Long? = null,
+    ) : ViewerBody
 
     data class Failed(
         val error: UiError,
+        val canResume: Boolean = false,
     ) : ViewerBody
 
     class Image(
@@ -80,6 +88,11 @@ sealed interface ViewerBody {
 
     /** No preview: name and size are shown. */
     data object Other : ViewerBody
+
+    /** A downloaded APK: the detail card with Install; [info] is null when the file is not a valid app package. */
+    data class Apk(
+        val info: ApkInfo?,
+    ) : ViewerBody
 }
 
 /** The viewer screen. [path] is the chosen file, null while choosing; [sizeBytes] is known once downloaded. */
@@ -96,7 +109,8 @@ fun ShareViewerContent(
     onShare: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val loaded = body is ViewerBody.Image || body is ViewerBody.Text || body is ViewerBody.Other
+    val loaded =
+        body is ViewerBody.Image || body is ViewerBody.Text || body is ViewerBody.Other || body is ViewerBody.Apk
     val canGoBack = path != null && share.fileCount > 1
     Scaffold(
         modifier = modifier.testTag("share_viewer"),
@@ -159,31 +173,78 @@ fun ShareViewerContent(
                         }
                     }
 
-                    ViewerBody.Loading -> {
+                    is ViewerBody.Loading -> {
+                        val context = LocalContext.current
                         Column(
-                            Modifier.align(Alignment.Center),
+                            Modifier.align(Alignment.Center).padding(horizontal = 24.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.spacedBy(12.dp),
                         ) {
-                            CircularProgressIndicator(Modifier.testTag("share_loading"))
-                            Text(
-                                stringResource(R.string.share_viewer_loading),
-                                style = MaterialTheme.typography.bodyMedium,
-                            )
+                            val size = body.size
+                            if (size != null && size > 0) {
+                                LinearProgressIndicator(
+                                    progress = { (body.bytes.toFloat() / size).coerceIn(0f, 1f) },
+                                    modifier = Modifier.fillMaxWidth().testTag("share_loading"),
+                                )
+                                Text(
+                                    stringResource(
+                                        R.string.share_downloading_progress,
+                                        Formatter.formatShortFileSize(context, body.bytes),
+                                        Formatter.formatShortFileSize(context, size),
+                                    ),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                )
+                            } else {
+                                LinearProgressIndicator(Modifier.fillMaxWidth().testTag("share_loading"))
+                                Text(
+                                    stringResource(R.string.share_viewer_loading),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                )
+                            }
+                            OutlinedButton(
+                                onClick = actions.onCancelDownload,
+                                modifier = Modifier.testTag("share_cancel"),
+                            ) {
+                                Text(stringResource(R.string.share_cancel_download))
+                            }
                         }
                     }
 
                     is ViewerBody.Failed -> {
-                        Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
-                            ErrorState(body.error)
+                        Column(
+                            Modifier.align(Alignment.Center).padding(24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Icon(
+                                Icons.Outlined.ErrorOutline,
+                                null,
+                                Modifier.size(64.dp),
+                                tint = MaterialTheme.colorScheme.primary,
+                            )
+                            Text(
+                                body.error.title.asString(),
+                                style = MaterialTheme.typography.titleLarge,
+                                textAlign = TextAlign.Center,
+                            )
+                            Text(
+                                listOfNotNull(body.error.message.asString(), body.error.detail).joinToString("\n"),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                textAlign = TextAlign.Center,
+                            )
                             val retryable =
                                 body.error.source.let {
                                     it !is AppError.FileMissing &&
                                         it !is AppError.FileTooLarge
                                 }
-                            if (retryable && path != null) {
-                                TextButton(onClick = { actions.onOpenFile(path) }) {
-                                    Text(stringResource(R.string.share_viewer_retry))
+                            if (body.canResume) {
+                                Button(onClick = actions.onResume, modifier = Modifier.testTag("share_resume")) {
+                                    Text(stringResource(R.string.share_resume))
+                                }
+                            } else if (retryable && path != null) {
+                                Button(onClick = actions.onRetry, modifier = Modifier.testTag("share_retry")) {
+                                    Text(stringResource(R.string.share_try_again))
                                 }
                             }
                         }
@@ -235,7 +296,7 @@ fun ShareViewerContent(
                         }
                     }
 
-                    ViewerBody.Other -> {
+                    ViewerBody.Other, is ViewerBody.Apk -> {
                         Column(
                             Modifier.align(Alignment.Center).padding(24.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
@@ -250,10 +311,19 @@ fun ShareViewerContent(
                                 )
                             }
                             Text(
-                                stringResource(R.string.share_viewer_no_preview),
+                                if (body is ViewerBody.Apk && body.info == null) {
+                                    stringResource(R.string.apk_invalid)
+                                } else {
+                                    stringResource(R.string.share_viewer_no_preview)
+                                },
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
+                            if (body is ViewerBody.Apk && body.info != null) {
+                                Button(onClick = actions.onInstall, modifier = Modifier.testTag("share_install")) {
+                                    Text(stringResource(R.string.apk_install_action))
+                                }
+                            }
                         }
                     }
                 }
