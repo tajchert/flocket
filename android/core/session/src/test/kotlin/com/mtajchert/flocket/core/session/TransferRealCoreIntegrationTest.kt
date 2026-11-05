@@ -150,14 +150,8 @@ class TransferRealCoreIntegrationTest {
     fun `an 8 MiB transfer with a federated machine over a 10 Mbit link and the stall of its terminals`() =
         runBlocking {
             assumeTrue("set FLOCKET_SLOW=1 to measure over a throttled link", System.getenv("FLOCKET_SLOW") == "1")
-            val throttle =
-                "perl -e '\$|=1; while (sysread(STDIN, \$b, 16384)) { syswrite(STDOUT, \$b); " +
-                    "select(undef, undef, undef, length(\$b) / $LINK_BYTES_PER_SECOND) }'"
-            val via =
-                File(hc.workDir, "slow-link.sh").apply {
-                    writeText("#!/bin/sh\n$throttle | sh -c \"\$1\" | $throttle\n")
-                }
-            measureFederatedStall("10 Mbit", via = "sh ${via.absolutePath}")
+            val via = slowLinkVia()
+            measureFederatedStall("10 Mbit", via = via)
         }
 
     /** ADR-0012 measurements: a 200 MiB chunked (1 MiB) download from rohan over a pipe link. `FLOCKET_SLOW=1`. */
@@ -173,16 +167,10 @@ class TransferRealCoreIntegrationTest {
     fun `a 200 MiB download from a federated machine over a 10 Mbit link and the stall of its terminals`() =
         runBlocking {
             assumeTrue("set FLOCKET_SLOW=1 to measure 200 MiB", System.getenv("FLOCKET_SLOW") == "1")
-            val throttle =
-                "perl -e '\$|=1; while (sysread(STDIN, \$b, 16384)) { syswrite(STDOUT, \$b); " +
-                    "select(undef, undef, undef, length(\$b) / $LINK_BYTES_PER_SECOND) }'"
-            val via =
-                File(hc.workDir, "slow-link.sh").apply {
-                    writeText("#!/bin/sh\n$throttle | sh -c \"\$1\" | $throttle\n")
-                }
+            val via = slowLinkVia()
             measureFederatedStall(
                 "10 Mbit",
-                via = "sh ${via.absolutePath}",
+                via = via,
                 downloadBytes = 200 shl 20,
                 timeout = 600.seconds,
             )
@@ -241,24 +229,35 @@ class TransferRealCoreIntegrationTest {
             }
         for ((name, block) in windows) {
             val (w, echoMs) = typing(echoStream, echoChunks) { window(block) }
+            val ms = (w.last - w.first) / 1_000_000
+            val rate =
+                if (downloadBytes != null &&
+                    name.startsWith("download")
+                ) {
+                    ", %.2f MB/s".format(size / 1e3 / ms)
+                } else {
+                    ""
+                }
             println(
-                "FederatedTransferStall [$link] $name ${(w.last - w.first) / 1_000_000} ms" +
-                    (
-                        if (downloadBytes !=
-                            null
-                        ) {
-                            ", ${"%.2f".format(size / 1e6 / ((w.last - w.first) / 1e9))} MB/s"
-                        } else {
-                            ""
-                        }
-                    ) +
-                    ": max output gap " +
+                "FederatedTransferStall [$link] $name $ms ms$rate: max output gap " +
                     "rohan ${maxGapMs(remoteChunks, w)} ms, local ${maxGapMs(localChunks, w)} ms; " +
                     "slowest rohan echo $echoMs ms",
             )
         }
         if (downloadBytes == null) assertArrayEquals(upload, File(hc.workDir, "up.bin").readBytes())
         s.stop()
+    }
+
+    /** A `--via` command for a link limited to [LINK_BYTES_PER_SECOND] each way (a perl throttle on both pipes). */
+    private fun slowLinkVia(): String {
+        val throttle =
+            "perl -e '\$|=1; while (sysread(STDIN, \$b, 16384)) { syswrite(STDOUT, \$b); " +
+                "select(undef, undef, undef, length(\$b) / $LINK_BYTES_PER_SECOND) }'"
+        val script =
+            File(hc.workDir, "slow-link.sh").apply {
+                writeText("#!/bin/sh\n$throttle | sh -c \"\$1\" | $throttle\n")
+            }
+        return "sh ${script.absolutePath}"
     }
 
     /** Runs [block] while typing into [stream] every 100 ms; returns its result and the slowest echo (ms). */

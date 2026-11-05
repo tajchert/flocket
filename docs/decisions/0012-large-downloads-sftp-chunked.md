@@ -48,13 +48,19 @@ are the only option for federated machines, whose files the SSH host cannot reac
 
   | Link | Method | Duration | MB/s | Terminal echo during the transfer |
   |---|---|---|---|---|
-  | emulator to dev sshd (loopback) | SFTP | 6.6 s | 31.7 | local terminal echo 74 ms (journey `terminalKeepsEchoingDuringDownload`) |
-  | emulator to dev sshd (loopback) | chunked, 4 MiB | 10.6 s | 19.7 | not measured (same SSH session as the terminal) |
-  | rohan, pipe (`sh -c`) | chunked, 1 MiB | 3.6 s | 58.0 | rohan 27 ms, output gap 43 ms (baseline 42 ms); local gap 62 ms |
-  | rohan, 10 Mbit/s each way | chunked, 1 MiB | 294 s | 0.71 | rohan echo 1.4 s, longest rohan output gap 1.5 s; local gap 64 ms |
+  | emulator to dev sshd (loopback) | SFTP | 6.8 s | 30.8 | not measured |
+  | emulator to dev sshd (loopback) | chunked, 4 MiB | 11.0 s | 19.0 | local terminal echo 104 ms, typed mid-download (journey `terminalKeepsEchoingDuringDownload`, which fails if the download has finished) |
+  | rohan, pipe (`sh -c`) | chunked, 1 MiB | 3.5 s | 60.8 | rohan echo 86 ms, output gap 38 ms (baseline 41 ms); local gap 51 ms |
+  | rohan, 10 Mbit/s each way | chunked, 1 MiB | 296 s | 0.71 | rohan echo 1.5 s, longest rohan output gap 1.6 s; local gap 73 ms |
 
-  Result: SFTP is about 1.6× faster than chunks locally. With 1 MiB slices the stall that
-  ADR-0011 §4 measured for a single 8 MiB frame (12 s) drops to about 1.5 s on a 10 Mbit/s
-  link, since each slice crosses the core's link on its own and other frames get in between.
-  The slow link moves 0.71 MB/s (a link of 1.25 MB/s carrying base64 plus a `dd` round trip per
-  slice), so 200 MiB takes about 5 minutes there. Local terminals were never affected.
+  Result: SFTP is about 1.6x faster than chunks on loopback. Caveats: each row is a single run,
+  and the emulator rows are loopback, not Wi-Fi or LTE.
+
+  On a 10 Mbit/s link, 1 MiB slices cut the stall that ADR-0011 §4 measured for one 8 MiB frame
+  (12 s) to about 1.5 s, but that is still above our roughly 1 s target for echo and output
+  gaps: a rohan terminal visibly lags while a download from rohan runs. Local terminals were
+  never affected. Base64 bounds this link at about 0.94 MB/s (1.25 MB/s divided by 4/3); the
+  measured 0.71 MB/s also pays one `dd` round trip per slice, so 200 MiB takes about 5 minutes.
+  Open item (not done here, the chunk size is unchanged): try 512 KiB slices for federated
+  machines, which should halve the stall on slow links at the cost of more round trips, and
+  re-measure on a real slow link.

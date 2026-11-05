@@ -60,7 +60,7 @@ class DownloadJourneyTest {
         val hostSha = makeBigFile()
         openShare("big.bin")
         ui.waitFor(hasTestTag("share_cancel"), 30_000)
-        val done = awaitDownloaded("big.bin", 240_000)
+        val done = awaitDownloaded("big.bin", 150_000)
         check(done.length() == BIG_BYTES) { "size ${done.length()} != $BIG_BYTES" }
         val sha = sha256(done)
         check(sha == hostSha) { "sha256 $sha != host $hostSha" }
@@ -83,48 +83,56 @@ class DownloadJourneyTest {
         report("chunked", MAX_BYTES, ms)
     }
 
+    /** Chunked and 200 MiB (about 10 s), so the 10 % mark is reached long before the download could finish. */
+    @NoSftp
     @Test
     fun cancelMidwayRemovesPartFile() {
-        makeBigFile()
+        makeBigFile(MAX_BYTES)
         openShare("big.bin")
         ui.waitFor(hasTestTag("share_cancel"), 30_000)
-        poll(120_000, "10% of the file in the .part") {
-            Unit.takeIf { parts().sumOf { it.length() } >= BIG_BYTES / 10 }
+        poll(60_000, "10% of the file in the .part") {
+            Unit.takeIf { parts().sumOf { it.length() } >= MAX_BYTES / 10 }
         }
+        check(sharesDir.walkTopDown().none { it.name == "big.bin" }) { "the download finished before the cancel" }
         ui.click(hasTestTag("share_cancel"))
+        ui.waitForGone(hasTestTag("share_cancel"), 15_000)
         poll(15_000, "no .part left") { Unit.takeIf { parts().isEmpty() } }
-        Thread.sleep(1_500)
+        // The download must stay stopped: nothing reappears.
+        Thread.sleep(1_000)
         check(parts().isEmpty()) { "a .part came back: ${parts()}" }
         check(sharesDir.walkTopDown().none { it.name == "big.bin" }) { "a finished file exists after cancel" }
     }
 
+    /** Chunked and 200 MiB (about 10 s): the echo sample must land while the download is still running. */
+    @NoSftp
     @Test
     fun terminalKeepsEchoingDuringDownload() {
-        makeBigFile()
+        makeBigFile(MAX_BYTES)
         val address = openShare("big.bin")
         ui.waitFor(hasTestTag("share_cancel"), 30_000)
         poll(60_000, "download running") { Unit.takeIf { parts().sumOf { it.length() } > 1_000_000 } }
         // Closing the viewer keeps the download running (DECISIONS.md); the terminal is then typeable.
         ui.clickDescription(journey.string(TerminalR.string.share_viewer_close))
         ui.waitFor(hasContentDescription(journey.string(TerminalR.string.terminal_action_more)), 10_000)
+        check(isDownloading()) { "the download finished before the echo was typed" }
         val before = parts().sumOf { it.length() }
         val started = System.currentTimeMillis()
         InstrumentationRegistry.getInstrumentation().sendStringSync("echo marker-$MARK\n")
         poll(2_000, "marker in hc read within 2 s") { journey.host.read(address).takeIf { "marker-$MARK\n" in it } }
         val ms = System.currentTimeMillis() - started
-        val running = parts().isNotEmpty() || sharesDir.walkTopDown().any { it.name == "big.bin" }
+        // Overlap proof: still a .part (not renamed to big.bin) after the echo, and it grew meanwhile.
+        val after = parts().sumOf { it.length() }
+        check(isDownloading()) { "the download finished during the echo; it proves nothing" }
+        check(after >= before) { "the .part shrank?" }
         InstrumentationRegistry.getInstrumentation().sendStatus(
             0,
             android.os.Bundle().apply {
                 putString(
                     "stream",
-                    "echo-during-download: ${ms}ms, part bytes before=$before, after=${parts().sumOf {
-                        it.length()
-                    }}\n",
+                    "echo-during-download (chunked): ${ms}ms, part bytes before=$before, after=$after\n",
                 )
             },
         )
-        check(running) { "the download had already finished; the echo proves nothing" }
     }
 
     @Test
@@ -158,6 +166,8 @@ class DownloadJourneyTest {
             poll(60_000, "$pkg in pm list packages") {
                 Unit.takeIf { pkg in journey.host.adb("shell", "pm", "list", "packages", pkg) }
             }
+            // Dismiss the installer's "App installed" screen so it does not cover the next test.
+            device.wait(Until.findObject(By.pkg(Pattern.compile(".*packageinstaller.*")).text("Done")), 5_000)?.click()
         } finally {
             runCatching { journey.host.adb("shell", "pm", "uninstall", pkg) }
         }
@@ -168,7 +178,7 @@ class DownloadJourneyTest {
         val hostSha = makeBigFile(bytes)
         openShare("big.bin")
         val started = System.currentTimeMillis()
-        val done = awaitDownloaded("big.bin", 600_000)
+        val done = awaitDownloaded("big.bin", 150_000)
         val ms = System.currentTimeMillis() - started
         check(done.length() == bytes) { "size ${done.length()} != $bytes" }
         check(sha256(done) == hostSha) { "sha256 differs from the host's" }
@@ -222,6 +232,9 @@ class DownloadJourneyTest {
         return address
     }
 
+    /** A `.part` exists and the finished file does not. */
+    private fun isDownloading() = parts().isNotEmpty() && sharesDir.walkTopDown().none { it.name == "big.bin" }
+
     private fun parts() = sharesDir.walkTopDown().filter { it.isFile && it.name.endsWith(".part") }.toList()
 
     private fun awaitDownloaded(
@@ -262,7 +275,10 @@ class DownloadJourneyTest {
 @Target(AnnotationTarget.FUNCTION)
 annotation class NoSftp
 
-/** Comments out the harness sshd's `Subsystem sftp` line for [NoSftp] tests and restores it after; new connections only. */
+/**
+ * Comments out the harness sshd's `Subsystem sftp` line for [NoSftp] tests and restores it after; every other test
+ * also starts by restoring it, so a killed [NoSftp] test cannot leave SFTP off. Affects new connections only.
+ */
 private class SftpSwitch(
     private val hostRule: HostRule,
 ) : TestRule {
@@ -272,7 +288,12 @@ private class SftpSwitch(
     ): Statement =
         object : Statement() {
             override fun evaluate() {
-                if (description.getAnnotation(NoSftp::class.java) == null) return base.evaluate()
+                val noSftp = description.getAnnotation(NoSftp::class.java) != null
+                if (!noSftp) {
+                    // Cheap when already on: only a leftover "#Subsystem" line triggers the reload.
+                    if (isOff()) set(on = true)
+                    return base.evaluate()
+                }
                 set(on = false)
                 try {
                     base.evaluate()
@@ -282,12 +303,18 @@ private class SftpSwitch(
             }
         }
 
+    private fun isOff() =
+        hostRule.control
+            .sh("grep -c '^#Subsystem sftp' \"$1/sshd_config\" || true", hostRule.control.args.sshdDir)
+            .toInt() > 0
+
     private fun set(on: Boolean) {
         val dir = hostRule.control.args.sshdDir
+        // perl -pi is the same on BSD and GNU systems (sed -i is not).
         val edit = if (on) "s/^#Subsystem sftp/Subsystem sftp/" else "s/^Subsystem sftp/#Subsystem sftp/"
         // sshd re-reads its config on SIGHUP; sessions that are already open keep the old one.
         hostRule.control.sh(
-            "sed -i '' \"$1\" \"$2/sshd_config\" && kill -HUP \"$(cat \"$2/sshd.pid\")\" && sleep 1",
+            "perl -pi -e \"$1\" \"$2/sshd_config\" && kill -HUP \"$(cat \"$2/sshd.pid\")\" && sleep 1",
             edit,
             dir,
         )
